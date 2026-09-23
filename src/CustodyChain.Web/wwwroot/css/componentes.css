@@ -124,6 +124,12 @@
     border-color: color-mix(in srgb, var(--cor-sucesso) 30%, transparent);
 }
 
+.alerta-aviso {
+    background: var(--cor-alerta-fundo);
+    color: var(--cor-alerta);
+    border-color: color-mix(in srgb, var(--cor-alerta) 30%, transparent);
+}
+
 .alerta-icone {
     width: 18px;
     height: 18px;

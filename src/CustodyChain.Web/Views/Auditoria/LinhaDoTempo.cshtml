@@ -11,6 +11,11 @@
     <a href="/verificador" target="_blank" class="botao botao-secundario">Verificador independente</a>
 </div>
 
+<div class="alerta alerta-aviso" role="note">
+    <span class="alerta-icone"><svg><use href="#icone-alerta" /></svg></span>
+    <span>Nesta versão os eventos vêm do registro local do sistema (fila de ancoragem). A leitura direta da rede blockchain será habilitada quando o ledger entrar em operação.</span>
+</div>
+
 <form asp-controller="Auditoria" asp-action="LinhaDoTempo" method="get" class="formulario-busca">
     <div class="campo campo-busca">
         <label for="busca" class="campo-rotulo sr-only">Rótulo de evidência</label>

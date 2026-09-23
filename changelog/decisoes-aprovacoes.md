@@ -1,6 +1,6 @@
 # Decisões aprovadas e reprovadas — histórico consolidado
 
-_Última atualização: v0.15.0 (T-11 Auditoria e verificador), 2026-09-23_
+_Última atualização: v0.15.1 (limitação do verificador registrada), 2026-09-23_
 
 Registro único de toda pergunta de aprovação feita ao usuário ao longo da
 implementação, organizada por seção/versão do `changelog/`. Cobre tanto
@@ -199,6 +199,33 @@ todas as sessões futuras.
 
 ---
 
+## v0.15.1 — Limitação conceitual: verificador confere banco contra banco
+
+Registro pedido explicitamente pelo usuário, sem passar por
+`AskUserQuestion` — instrução direta com escopo definido (documentação +
+aviso na UI, sem implementar Fabric).
+
+**Limitação identificada:** `AuditoriaController` injeta só
+`CustodyChainDbContext`, não `IServicoLedger`. `LinhaDoTempo` lê de
+`db.RegistrosLedger` (fila de ancoragem no MySQL, não o ledger real);
+`Verificador` compara contra `VESTIGIO.HashSha256` (também MySQL). Quem
+administra o banco pode alterar os dois lados e a conferência continua
+passando — a mesma ameaça que a arquitetura de ledger existe para
+mitigar. O critério de aceitação da T-11 ("verificador independente, sem
+acesso ao sistema") só é atendido de verdade depois que
+`IServicoLedger` tiver implementação real (Fabric) e o controller passar
+a chamar `VerificarCredencialAsync`/`HistoricoRegistroAsync` em vez do
+`DbContext`.
+
+**Decisão: registrar como limitação documentada + aviso visível na UI,
+não implementar Fabric agora.** Não é um defeito da T-11 em si — é
+consequência inevitável de construir sobre `LedgerFake` (decisão de
+`v0.1.0`, já aprovada) antes do Fabric existir. Registrado em
+`changelog/v0.15.1-limitacao-verificador-le-do-banco.md`, com aviso
+adicionado em `Verificador.cshtml` e `LinhaDoTempo.cshtml`.
+
+---
+
 ## Resumo rápido
 
 | Decisão | Resultado |
@@ -238,5 +265,6 @@ todas as sessões futuras.
 | Linha do tempo baseada em REGISTRO_LEDGER (não LOG_AUDITORIA) | ✅ Aprovado |
 | Verificador busca hash por Rótulo de Evidência | ✅ Aprovado |
 | Trocar PayloadJson de `json` para `longtext` | ✅ Aprovado |
+| Registrar limitação do verificador (banco contra banco) sem implementar Fabric agora | ✅ Instruído diretamente pelo usuário |
 
 Nenhuma extensão ou proposta foi reprovada até o momento.
