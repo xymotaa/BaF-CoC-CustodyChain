@@ -1,0 +1,176 @@
+@model CustodyChain.Web.Models.ViewModels.RecebimentoListaViewModel
+@{
+    ViewData["Title"] = "Recebimento";
+}
+
+<div class="pagina-cabecalho">
+    <h1>Recebimento</h1>
+    <p class="campo-ajuda">Itens em trânsito destinados a você. Confira o lacre antes de confirmar.</p>
+</div>
+
+@if (TempData["MensagemSucesso"] is string mensagemSucesso)
+{
+    <div class="alerta alerta-sucesso" role="status">
+        <span class="alerta-icone"><svg><use href="#icone-sucesso" /></svg></span>
+        <span>@mensagemSucesso</span>
+    </div>
+}
+
+@if (TempData["MensagemErro"] is string mensagemErro)
+{
+    <div class="alerta alerta-erro" role="alert">
+        <span class="alerta-icone"><svg><use href="#icone-alerta" /></svg></span>
+        <span>@mensagemErro</span>
+    </div>
+}
+
+@if (Model.Pendentes.Count == 0)
+{
+    <div class="painel-vazio">
+        <span class="painel-vazio-icone"><svg width="28" height="28"><use href="#icone-recebimento" /></svg></span>
+        <p>Nenhum item em trânsito para você no momento.</p>
+    </div>
+}
+else
+{
+    <div class="lista-recebimento">
+        @foreach (var item in Model.Pendentes)
+        {
+            <section class="cartao item-recebimento">
+                <div class="item-recebimento-cabecalho">
+                    <div>
+                        <span class="mono item-recebimento-rotulo">@item.RotuloEvidencia</span>
+                        <p class="item-recebimento-descricao">@item.Descricao</p>
+                    </div>
+                    <span class="selo">Em trânsito</span>
+                </div>
+
+                <dl class="item-recebimento-detalhes">
+                    <div>
+                        <dt>Origem</dt>
+                        <dd>@item.OrigemNome</dd>
+                    </div>
+                    <div>
+                        <dt>Saída</dt>
+                        <dd>@(item.DataHoraSaida?.ToString("dd/MM/yyyy HH:mm") ?? "—")</dd>
+                    </div>
+                    <div>
+                        <dt>Rastreamento</dt>
+                        <dd class="mono">@(item.CodigoRastreamento ?? "—")</dd>
+                    </div>
+                </dl>
+
+                <div class="item-recebimento-acoes">
+                    <form asp-controller="Recebimento" asp-action="Confirmar" method="post" class="formulario-inline">
+                        @Html.AntiForgeryToken()
+                        <input type="hidden" name="MovimentacaoId" value="@item.MovimentacaoId" />
+                        <div class="campo campo-inline">
+                            <label class="campo-rotulo">Número do lacre conferido</label>
+                            <input name="NumeroLacreConferido" class="campo-entrada mono" required />
+                        </div>
+                        <button type="submit" class="botao botao-primario">Confirmar recebimento</button>
+                    </form>
+
+                    <form asp-controller="Recebimento" asp-action="Recusar" method="post" class="formulario-inline">
+                        @Html.AntiForgeryToken()
+                        <input type="hidden" name="MovimentacaoId" value="@item.MovimentacaoId" />
+                        <div class="campo campo-inline">
+                            <label class="campo-rotulo">Motivo da recusa</label>
+                            <input name="MotivoRecusa" class="campo-entrada" />
+                        </div>
+                        <button type="submit" class="botao botao-secundario">Recusar</button>
+                    </form>
+                </div>
+            </section>
+        }
+    </div>
+}
+
+@section Styles {
+    <style>
+        .pagina-cabecalho { margin-bottom: 1.5rem; }
+        .pagina-cabecalho h1 { margin-bottom: 0.25rem; }
+
+        .painel-vazio {
+            border: 1px dashed var(--cor-borda-forte);
+            border-radius: var(--raio);
+            padding: 2rem 1.5rem;
+            text-align: center;
+            color: var(--cor-texto-suave);
+        }
+
+        .painel-vazio-icone {
+            display: inline-flex;
+            color: var(--cor-texto-fraco);
+            margin-bottom: 0.5rem;
+        }
+
+        .lista-recebimento {
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+            max-width: 720px;
+        }
+
+        .item-recebimento { padding: 1.25rem 1.5rem; }
+
+        .item-recebimento-cabecalho {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            gap: 1rem;
+            margin-bottom: 0.75rem;
+        }
+
+        .item-recebimento-rotulo {
+            font-weight: 600;
+            font-size: 1rem;
+        }
+
+        .item-recebimento-descricao {
+            margin: 0.125rem 0 0;
+            color: var(--cor-texto-suave);
+            font-size: 0.875rem;
+        }
+
+        .item-recebimento-detalhes {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 0.75rem;
+            margin: 0 0 1rem;
+            padding: 0.75rem 0;
+            border-top: 1px solid var(--cor-borda);
+            border-bottom: 1px solid var(--cor-borda);
+        }
+
+        .item-recebimento-detalhes dt {
+            font-size: 0.75rem;
+            color: var(--cor-texto-fraco);
+            margin-bottom: 0.125rem;
+        }
+
+        .item-recebimento-detalhes dd {
+            margin: 0;
+            font-size: 0.875rem;
+        }
+
+        .item-recebimento-acoes {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 1rem;
+        }
+
+        .formulario-inline {
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+        }
+
+        .campo-inline { margin-bottom: 0; }
+
+        @@media (max-width: 640px) {
+            .item-recebimento-detalhes { grid-template-columns: 1fr; }
+            .item-recebimento-acoes { grid-template-columns: 1fr; }
+        }
+    </style>
+}
