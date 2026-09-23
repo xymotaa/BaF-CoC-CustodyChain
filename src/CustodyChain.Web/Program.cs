@@ -1,4 +1,5 @@
 using CustodyChain.Web.Data;
+using CustodyChain.Web.Services.Armazenamento;
 using CustodyChain.Web.Services.Ledger;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.EntityFrameworkCore;
@@ -17,6 +18,16 @@ builder.Services.AddDbContext<CustodyChainDbContext>(options =>
 // LedgerFake destrava o desenvolvimento das telas sem depender do Fabric.
 // Trocar por um IServicoLedger real (gateway) sem alterar controllers.
 builder.Services.AddSingleton<IServicoLedger, LedgerFake>();
+
+// Armazenamento off-chain de anexos (P-01): IPFS privado local via
+// docker-compose. A API HTTP roda em 127.0.0.1:5001, não exposta fora
+// do host de desenvolvimento.
+var ipfsApiUrl = builder.Configuration["Ipfs:ApiUrl"] ?? "http://127.0.0.1:5001";
+builder.Services.AddHttpClient<IServicoArmazenamentoArquivos, ServicoArmazenamentoIpfs>(client =>
+{
+    client.BaseAddress = new Uri(ipfsApiUrl);
+    client.Timeout = TimeSpan.FromSeconds(30);
+});
 
 // Sessão do interveniente autenticado. Não há senha centralizada (a senha
 // protege a wallet no dispositivo); o cookie guarda só a sessão pós-login.

@@ -19,5 +19,28 @@ services:
       timeout: 5s
       retries: 10
 
+  ipfs:
+    image: ipfs/kubo:latest
+    container_name: custodychain-ipfs
+    restart: unless-stopped
+    # Nó IPFS privado local (decisão P-01 do documento de contexto,
+    # resolvida via docker-compose em vez de IPFS público): a API HTTP
+    # (5001) é usada pela aplicação para adicionar/recuperar anexos; o
+    # gateway (8080) serve conteúdo por CID só para inspeção manual em
+    # desenvolvimento. Nenhuma porta é exposta à rede P2P pública — o
+    # objetivo é armazenamento de conteúdo endereçável, não uma rede
+    # distribuída real nesta fase.
+    ports:
+      - "127.0.0.1:5001:5001"
+      - "127.0.0.1:8899:8080"
+    volumes:
+      - ipfs_data:/data/ipfs
+    healthcheck:
+      test: ["CMD", "ipfs", "id"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
 volumes:
   mysql_data:
+  ipfs_data:

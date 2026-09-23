@@ -14,6 +14,7 @@ que propõe o framework BaF-CoC.
 | ORM | Entity Framework Core 9.0.x (provider `Pomelo.EntityFrameworkCore.MySql`) |
 | Banco | MySQL 8 (container Docker) |
 | Ledger (planejado) | Hyperledger Fabric — hoje substituído por `LedgerFake` em memória |
+| Anexos off-chain | IPFS privado local (`ipfs/kubo`, container Docker) |
 
 ## Pré-requisitos
 
@@ -29,7 +30,7 @@ que propõe o framework BaF-CoC.
 
 ## Como testar localmente no navegador
 
-### 1. Subir o banco de dados
+### 1. Subir o banco de dados e o nó IPFS
 
 Na raiz do projeto:
 
@@ -37,13 +38,18 @@ Na raiz do projeto:
 docker compose up -d
 ```
 
-Aguarde o container ficar saudável (leva alguns segundos na primeira vez):
+Isso sobe dois containers: `custodychain-mysql` (banco) e
+`custodychain-ipfs` (armazenamento de anexos, como o mandado judicial da
+T-07). Aguarde ambos ficarem saudáveis:
 
 ```bash
-docker inspect --format='{{.State.Health.Status}}' custodychain-mysql
+docker inspect --format='{{.State.Health.Status}}' custodychain-mysql custodychain-ipfs
 ```
 
-Repita até aparecer `healthy`.
+Repita até aparecer `healthy` nos dois. A API do IPFS fica em
+`127.0.0.1:5001` (usada pela aplicação) e o gateway de leitura em
+`127.0.0.1:8899` (só para inspecionar arquivos manualmente por CID, se
+precisar: `http://127.0.0.1:8899/ipfs/<cid>`).
 
 ### 2. Rodar a aplicação
 

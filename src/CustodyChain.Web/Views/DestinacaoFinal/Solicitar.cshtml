@@ -1,0 +1,134 @@
+@model CustodyChain.Web.Models.ViewModels.SolicitarDestinacaoViewModel
+@{
+    ViewData["Title"] = "Destinação final";
+}
+
+<div class="pagina-cabecalho">
+    <h1>Destinação final</h1>
+    <p class="campo-ajuda">Descarte ou restituição, com autorização judicial anexada. Encerra a cadeia de custódia.</p>
+</div>
+
+@if (TempData["MensagemSucesso"] is string mensagem)
+{
+    <div class="alerta alerta-sucesso" role="status">
+        <span class="alerta-icone"><svg><use href="#icone-sucesso" /></svg></span>
+        <span>@mensagem</span>
+    </div>
+}
+
+@if (!ViewData.ModelState.IsValid)
+{
+    <div class="alerta alerta-erro" role="alert">
+        <span class="alerta-icone"><svg><use href="#icone-alerta" /></svg></span>
+        <span>Verifique os campos destacados abaixo.</span>
+    </div>
+}
+
+@if (Model.VestigiosDisponiveis.Count == 0)
+{
+    <div class="painel-vazio">
+        <span class="painel-vazio-icone"><svg width="28" height="28"><use href="#icone-descarte" /></svg></span>
+        <p>Nenhum vestígio elegível para destinação final (Armazenado ou Periciado).</p>
+    </div>
+}
+else
+{
+    <form asp-controller="DestinacaoFinal" asp-action="Solicitar" method="post" enctype="multipart/form-data" novalidate class="formulario-vestigio">
+        @Html.AntiForgeryToken()
+
+        <section class="cartao secao-formulario">
+            <div class="grade-campos grade-2col">
+                <div class="campo">
+                    <label asp-for="VestigioId" class="campo-rotulo"></label>
+                    <select asp-for="VestigioId" class="campo-entrada @(ViewData.ModelState["VestigioId"]?.Errors.Count > 0 ? "campo-invalido" : "")">
+                        <option value="">Selecione o vestígio</option>
+                        @foreach (var opcao in Model.VestigiosDisponiveis)
+                        {
+                            <option value="@opcao.Id">@opcao.RotuloEvidencia — @opcao.Descricao</option>
+                        }
+                    </select>
+                    <span asp-validation-for="VestigioId" class="campo-erro"></span>
+                </div>
+
+                <div class="campo">
+                    <label asp-for="Tipo" class="campo-rotulo"></label>
+                    <select asp-for="Tipo" class="campo-entrada">
+                        <option value="DESCARTE">Descarte</option>
+                        <option value="RESTITUICAO">Restituição</option>
+                    </select>
+                    <span asp-validation-for="Tipo" class="campo-erro"></span>
+                </div>
+
+                <div class="campo">
+                    <label asp-for="DidMagistrado" class="campo-rotulo"></label>
+                    <input asp-for="DidMagistrado" class="campo-entrada mono @(ViewData.ModelState["DidMagistrado"]?.Errors.Count > 0 ? "campo-invalido" : "")" placeholder="did:legal:judge:..." />
+                    <span asp-validation-for="DidMagistrado" class="campo-erro"></span>
+                </div>
+
+                <div class="campo">
+                    <label asp-for="ArquivoAutorizacao" class="campo-rotulo"></label>
+                    <input asp-for="ArquivoAutorizacao" type="file" class="campo-entrada @(ViewData.ModelState["ArquivoAutorizacao"]?.Errors.Count > 0 ? "campo-invalido" : "")" />
+                    <span class="campo-ajuda">Mandado judicial em PDF ou imagem. Armazenado com verificação de integridade.</span>
+                    <span asp-validation-for="ArquivoAutorizacao" class="campo-erro"></span>
+                </div>
+            </div>
+
+            <div class="campo">
+                <label asp-for="Observacao" class="campo-rotulo"></label>
+                <textarea asp-for="Observacao" rows="3" class="campo-entrada campo-textarea"></textarea>
+                <span asp-validation-for="Observacao" class="campo-erro"></span>
+            </div>
+        </section>
+
+        <div class="formulario-acoes">
+            <button type="submit" class="botao botao-primario">Solicitar destinação final</button>
+        </div>
+    </form>
+}
+
+@section Styles {
+    <style>
+        .pagina-cabecalho { margin-bottom: 1.5rem; }
+        .pagina-cabecalho h1 { margin-bottom: 0.25rem; }
+
+        .formulario-vestigio {
+            display: flex;
+            flex-direction: column;
+            gap: 1.25rem;
+            max-width: 760px;
+        }
+
+        .secao-formulario { padding: 1.5rem; }
+        .grade-campos { display: grid; gap: 0 1rem; }
+        .grade-2col { grid-template-columns: 1fr 1fr; }
+
+        @@media (max-width: 640px) {
+            .grade-2col { grid-template-columns: 1fr; }
+        }
+
+        .campo-textarea {
+            height: auto;
+            padding: 0.625rem 0.75rem;
+            resize: vertical;
+            font-family: inherit;
+        }
+
+        .formulario-acoes { display: flex; justify-content: flex-end; }
+
+        .painel-vazio {
+            border: 1px dashed var(--cor-borda-forte);
+            border-radius: var(--raio);
+            padding: 2rem 1.5rem;
+            text-align: center;
+            color: var(--cor-texto-suave);
+        }
+
+        .painel-vazio-icone {
+            display: inline-flex;
+            color: var(--cor-texto-fraco);
+            margin-bottom: 0.5rem;
+        }
+
+        .painel-vazio p { margin: 0 auto 0.25rem; }
+    </style>
+}

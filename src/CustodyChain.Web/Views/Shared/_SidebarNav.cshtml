@@ -35,7 +35,7 @@
         <span class="sidebar-link-icone"><svg><use href="#icone-pericia" /></svg></span>
         Designar perícia
     </a>
-    <a class="sidebar-link" href="#" aria-disabled="true">
+    <a class="sidebar-link" href="/destinacao-final/solicitar" aria-current="@(EhAtual("DestinacaoFinal", "Solicitar") ? "page" : null)">
         <span class="sidebar-link-icone"><svg><use href="#icone-descarte" /></svg></span>
         Destinação final
     </a>
@@ -51,6 +51,10 @@
     </a>
 
     <div class="sidebar-grupo-titulo">Administração</div>
+    <a class="sidebar-link" href="/destinacao-final" aria-current="@(EhAtual("DestinacaoFinal", "Index") ? "page" : null)">
+        <span class="sidebar-link-icone"><svg><use href="#icone-descarte" /></svg></span>
+        Aprovar destinação final
+    </a>
     <a class="sidebar-link" href="#" aria-disabled="true">
         <span class="sidebar-link-icone"><svg><use href="#icone-perfis" /></svg></span>
         Gestão de perfis

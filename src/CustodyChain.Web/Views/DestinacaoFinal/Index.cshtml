@@ -1,0 +1,153 @@
+@model IReadOnlyList<CustodyChain.Web.Models.ViewModels.ItemDestinacaoViewModel>
+@{
+    ViewData["Title"] = "Aprovar destinação final";
+}
+
+<div class="pagina-cabecalho pagina-cabecalho-acao">
+    <div>
+        <h1>Aprovar destinação final</h1>
+        <p class="campo-ajuda">Solicitações de descarte ou restituição aguardando aprovação (RN16: quem aprova não pode ser quem solicitou).</p>
+    </div>
+    <a href="/destinacao-final/solicitar" class="botao botao-secundario">Nova solicitação</a>
+</div>
+
+@if (TempData["MensagemSucesso"] is string mensagemSucesso)
+{
+    <div class="alerta alerta-sucesso" role="status">
+        <span class="alerta-icone"><svg><use href="#icone-sucesso" /></svg></span>
+        <span>@mensagemSucesso</span>
+    </div>
+}
+
+@if (TempData["MensagemErro"] is string mensagemErro)
+{
+    <div class="alerta alerta-erro" role="alert">
+        <span class="alerta-icone"><svg><use href="#icone-alerta" /></svg></span>
+        <span>@mensagemErro</span>
+    </div>
+}
+
+@if (Model.Count == 0)
+{
+    <div class="painel-vazio">
+        <span class="painel-vazio-icone"><svg width="28" height="28"><use href="#icone-descarte" /></svg></span>
+        <p>Nenhuma destinação final pendente de aprovação.</p>
+    </div>
+}
+else
+{
+    <div class="lista-recebimento">
+        @foreach (var item in Model)
+        {
+            <section class="cartao item-recebimento">
+                <div class="item-recebimento-cabecalho">
+                    <div>
+                        <span class="mono item-recebimento-rotulo">@item.RotuloEvidencia</span>
+                        <p class="item-recebimento-descricao">Solicitado por @item.SolicitanteNome</p>
+                    </div>
+                    <span class="selo">@item.Tipo</span>
+                </div>
+
+                <dl class="item-recebimento-detalhes">
+                    <div>
+                        <dt>DID do magistrado</dt>
+                        <dd class="mono">@item.DidMagistrado</dd>
+                    </div>
+                    <div>
+                        <dt>Mandado anexado</dt>
+                        <dd>Anexo #@item.AnexoId</dd>
+                    </div>
+                    <div>
+                        <dt>Observação</dt>
+                        <dd>@(item.Observacao ?? "—")</dd>
+                    </div>
+                </dl>
+
+                <form asp-controller="DestinacaoFinal" asp-action="Aprovar" method="post">
+                    @Html.AntiForgeryToken()
+                    <input type="hidden" name="descarteId" value="@item.DescarteId" />
+                    <button type="submit" class="botao botao-primario">Aprovar e executar</button>
+                </form>
+            </section>
+        }
+    </div>
+}
+
+@section Styles {
+    <style>
+        .pagina-cabecalho { margin-bottom: 1.5rem; }
+        .pagina-cabecalho h1 { margin-bottom: 0.25rem; }
+
+        .pagina-cabecalho-acao {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            gap: 1rem;
+            flex-wrap: wrap;
+        }
+
+        .painel-vazio {
+            border: 1px dashed var(--cor-borda-forte);
+            border-radius: var(--raio);
+            padding: 2rem 1.5rem;
+            text-align: center;
+            color: var(--cor-texto-suave);
+        }
+
+        .painel-vazio-icone {
+            display: inline-flex;
+            color: var(--cor-texto-fraco);
+            margin-bottom: 0.5rem;
+        }
+
+        .lista-recebimento {
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+            max-width: 720px;
+        }
+
+        .item-recebimento { padding: 1.25rem 1.5rem; }
+
+        .item-recebimento-cabecalho {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            gap: 1rem;
+            margin-bottom: 0.75rem;
+        }
+
+        .item-recebimento-rotulo { font-weight: 600; font-size: 1rem; }
+
+        .item-recebimento-descricao {
+            margin: 0.125rem 0 0;
+            color: var(--cor-texto-suave);
+            font-size: 0.875rem;
+        }
+
+        .item-recebimento-detalhes {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 0.75rem;
+            margin: 0 0 1rem;
+            padding: 0.75rem 0;
+            border-top: 1px solid var(--cor-borda);
+            border-bottom: 1px solid var(--cor-borda);
+        }
+
+        .item-recebimento-detalhes dt {
+            font-size: 0.75rem;
+            color: var(--cor-texto-fraco);
+            margin-bottom: 0.125rem;
+        }
+
+        .item-recebimento-detalhes dd {
+            margin: 0;
+            font-size: 0.875rem;
+        }
+
+        @@media (max-width: 640px) {
+            .item-recebimento-detalhes { grid-template-columns: 1fr; }
+        }
+    </style>
+}
