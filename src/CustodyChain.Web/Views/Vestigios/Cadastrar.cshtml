@@ -1,0 +1,221 @@
+@model CustodyChain.Web.Models.ViewModels.CadastroVestigioViewModel
+@{
+    ViewData["Title"] = "Cadastro de vestígio";
+}
+
+<div class="pagina-cabecalho">
+    <h1>Cadastro de vestígio</h1>
+    <p class="campo-ajuda">Ficha de Acompanhamento de Vestígio (FAV). Gera o Lacre Digital e a primeira credencial de cadeia de custódia.</p>
+</div>
+
+@if (TempData["MensagemSucesso"] is string mensagem)
+{
+    <div class="alerta alerta-sucesso" role="status">
+        <span class="alerta-icone"><svg><use href="#icone-sucesso" /></svg></span>
+        <span>@mensagem</span>
+    </div>
+}
+
+@if (!ViewData.ModelState.IsValid)
+{
+    <div class="alerta alerta-erro" role="alert">
+        <span class="alerta-icone"><svg><use href="#icone-alerta" /></svg></span>
+        <span>Verifique os campos destacados abaixo.</span>
+    </div>
+}
+
+<form asp-controller="Vestigios" asp-action="Cadastrar" method="post" novalidate class="formulario-vestigio">
+    @Html.AntiForgeryToken()
+
+    <section class="cartao secao-formulario">
+        <h2>Lacre Digital</h2>
+        <p class="campo-ajuda secao-formulario-intro">Conjunto mínimo gravado na credencial de cadeia de custódia (decisão D-13).</p>
+
+        <div class="grade-campos grade-2col">
+            <div class="campo">
+                <label asp-for="RotuloEvidencia" class="campo-rotulo"></label>
+                <input asp-for="RotuloEvidencia" class="campo-entrada mono @(ViewData.ModelState["RotuloEvidencia"]?.Errors.Count > 0 ? "campo-invalido" : "")" />
+                <span asp-validation-for="RotuloEvidencia" class="campo-erro"></span>
+            </div>
+
+            <div class="campo">
+                <label asp-for="RotuloConjunto" class="campo-rotulo"></label>
+                <input asp-for="RotuloConjunto" class="campo-entrada mono @(ViewData.ModelState["RotuloConjunto"]?.Errors.Count > 0 ? "campo-invalido" : "")" />
+                <span asp-validation-for="RotuloConjunto" class="campo-erro"></span>
+            </div>
+
+            <div class="campo">
+                <label asp-for="NumeroEvidencia" class="campo-rotulo"></label>
+                <input asp-for="NumeroEvidencia" class="campo-entrada" />
+                <span asp-validation-for="NumeroEvidencia" class="campo-erro"></span>
+            </div>
+
+            <div class="campo">
+                <label asp-for="ProcessoId" class="campo-rotulo"></label>
+                <select asp-for="ProcessoId" class="campo-entrada @(ViewData.ModelState["ProcessoId"]?.Errors.Count > 0 ? "campo-invalido" : "")">
+                    <option value="">Selecione o processo</option>
+                    @foreach (var opcao in Model.ProcessosDisponiveis)
+                    {
+                        <option value="@opcao.Id">@opcao.Numero @(opcao.NomeOperacao is not null ? $"— {opcao.NomeOperacao}" : "")</option>
+                    }
+                </select>
+                <span asp-validation-for="ProcessoId" class="campo-erro"></span>
+            </div>
+        </div>
+
+        <div class="campo">
+            <label asp-for="Descricao" class="campo-rotulo"></label>
+            <textarea asp-for="Descricao" rows="3" class="campo-entrada campo-textarea @(ViewData.ModelState["Descricao"]?.Errors.Count > 0 ? "campo-invalido" : "")"></textarea>
+            <span asp-validation-for="Descricao" class="campo-erro"></span>
+        </div>
+    </section>
+
+    <section class="cartao secao-formulario">
+        <h2>Identificação do vestígio</h2>
+
+        <div class="grade-campos grade-2col">
+            <div class="campo">
+                <label asp-for="TipoVestigioId" class="campo-rotulo"></label>
+                <select asp-for="TipoVestigioId" class="campo-entrada @(ViewData.ModelState["TipoVestigioId"]?.Errors.Count > 0 ? "campo-invalido" : "")">
+                    <option value="">Selecione o tipo</option>
+                    @foreach (var opcao in Model.TiposDisponiveis)
+                    {
+                        <option value="@opcao.Id">@opcao.Descricao</option>
+                    }
+                </select>
+                <span asp-validation-for="TipoVestigioId" class="campo-erro"></span>
+            </div>
+
+            <div class="campo">
+                <label asp-for="LocalColeta" class="campo-rotulo"></label>
+                <input asp-for="LocalColeta" class="campo-entrada" />
+                <span asp-validation-for="LocalColeta" class="campo-erro"></span>
+            </div>
+        </div>
+    </section>
+
+    <section class="cartao secao-formulario">
+        <h2>Coleta</h2>
+
+        <div class="grade-campos grade-2col">
+            <div class="campo">
+                <label asp-for="DataHoraColeta" class="campo-rotulo"></label>
+                <input asp-for="DataHoraColeta" type="datetime-local" class="campo-entrada @(ViewData.ModelState["DataHoraColeta"]?.Errors.Count > 0 ? "campo-invalido" : "")" />
+                <span asp-validation-for="DataHoraColeta" class="campo-erro"></span>
+            </div>
+
+            <div class="campo">
+                <label asp-for="NumeroLacre" class="campo-rotulo"></label>
+                <input asp-for="NumeroLacre" class="campo-entrada mono @(ViewData.ModelState["NumeroLacre"]?.Errors.Count > 0 ? "campo-invalido" : "")" />
+                <span asp-validation-for="NumeroLacre" class="campo-erro"></span>
+            </div>
+        </div>
+
+        <div class="campo">
+            <label asp-for="MetodoColeta" class="campo-rotulo"></label>
+            <textarea asp-for="MetodoColeta" rows="2" class="campo-entrada campo-textarea"></textarea>
+            <span asp-validation-for="MetodoColeta" class="campo-erro"></span>
+        </div>
+
+        <div class="campo campo-checkbox">
+            <label class="campo-checkbox-rotulo">
+                <input asp-for="HouveIntercorrencia" type="checkbox" id="houve-intercorrencia" />
+                Houve intercorrência na coleta?
+            </label>
+        </div>
+
+        <div class="campo" id="bloco-intercorrencia" hidden>
+            <label asp-for="DescricaoIntercorrencia" class="campo-rotulo"></label>
+            <textarea asp-for="DescricaoIntercorrencia" rows="2" class="campo-entrada campo-textarea"></textarea>
+            <span asp-validation-for="DescricaoIntercorrencia" class="campo-erro"></span>
+        </div>
+    </section>
+
+    <div class="formulario-acoes">
+        <button type="submit" class="botao botao-primario">Cadastrar vestígio</button>
+    </div>
+</form>
+
+@section Styles {
+    <style>
+        .pagina-cabecalho {
+            margin-bottom: 1.5rem;
+        }
+
+        .pagina-cabecalho h1 {
+            margin-bottom: 0.25rem;
+        }
+
+        .formulario-vestigio {
+            display: flex;
+            flex-direction: column;
+            gap: 1.25rem;
+            max-width: 760px;
+        }
+
+        .secao-formulario {
+            padding: 1.5rem;
+        }
+
+        .secao-formulario h2 {
+            margin-bottom: 0.25rem;
+        }
+
+        .secao-formulario-intro {
+            margin-bottom: 1.25rem;
+        }
+
+        .grade-campos {
+            display: grid;
+            gap: 0 1rem;
+        }
+
+        .grade-2col {
+            grid-template-columns: 1fr 1fr;
+        }
+
+        @@media (max-width: 640px) {
+            .grade-2col {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        .campo-textarea {
+            height: auto;
+            padding: 0.625rem 0.75rem;
+            resize: vertical;
+            font-family: inherit;
+        }
+
+        .campo-checkbox {
+            flex-direction: row;
+            align-items: center;
+        }
+
+        .campo-checkbox-rotulo {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            font-size: 0.875rem;
+            font-weight: 500;
+            cursor: pointer;
+        }
+
+        .formulario-acoes {
+            display: flex;
+            justify-content: flex-end;
+        }
+    </style>
+}
+
+@section Scripts {
+    <script>
+        (function () {
+            var check = document.getElementById('houve-intercorrencia');
+            var bloco = document.getElementById('bloco-intercorrencia');
+            function sincronizar() { bloco.hidden = !check.checked; }
+            check.addEventListener('change', sincronizar);
+            sincronizar();
+        })();
+    </script>
+}

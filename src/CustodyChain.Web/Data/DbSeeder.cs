@@ -101,5 +101,21 @@ public static class DbSeeder
             );
             await db.SaveChangesAsync();
         }
+
+        // Não previsto no documento técnico, mas necessário: sem ao menos
+        // um processo ATIVO, a T-03 (cadastro de vestígio) não tem NC
+        // (Número do Caso) para associar.
+        if (!await db.Processos.AnyAsync())
+        {
+            db.Processos.Add(new Processo
+            {
+                Numero = "0000001-00.2026.8.14.0000",
+                NomeOperacao = "Processo de teste",
+                OrgaoOrigem = "Polícia Científica",
+                DataAbertura = DateOnly.FromDateTime(DateTime.UtcNow),
+                Situacao = SituacaoProcesso.ATIVO,
+            });
+            await db.SaveChangesAsync();
+        }
     }
 }
