@@ -2,6 +2,9 @@
 *.docs
 docs/
 
+# Log de alterações gerado por sessão (não é entregável do TCC)
+changelog/
+
 # .NET
 bin/
 obj/
@@ -16,3 +19,9 @@ node_modules/
 # IDE
 .vs/
 .idea/
+
+# Skills de agente instaladas via `npx skills add` (ferramenta local do
+# dev, não faz parte do código do TCC). .claude/skills/ contém apenas
+# symlinks para .agents/skills/, então basta ignorar a origem.
+.agents/
+.claude/skills/
