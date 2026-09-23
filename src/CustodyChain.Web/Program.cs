@@ -1,8 +1,24 @@
+using System.Reflection;
 using CustodyChain.Web.Data;
 using CustodyChain.Web.Services.Armazenamento;
 using CustodyChain.Web.Services.Ledger;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.EntityFrameworkCore;
+using QuestPDF.Drawing;
+using QuestPDF.Infrastructure;
+
+// Licença Community: uso gratuito para o TCC (projeto sem fins
+// comerciais). Exigida pelo QuestPDF desde a versão 2023.
+QuestPDF.Settings.License = LicenseType.Community;
+
+// Fontes embutidas como recurso (não dependem de fontes do sistema
+// operacional em nenhum ambiente onde a aplicação rodar).
+var assembly = Assembly.GetExecutingAssembly();
+foreach (var nomeRecurso in assembly.GetManifestResourceNames().Where(n => n.EndsWith(".ttf")))
+{
+    using var streamFonte = assembly.GetManifestResourceStream(nomeRecurso)!;
+    FontManager.RegisterFontFromStream(streamFonte);
+}
 
 var builder = WebApplication.CreateBuilder(args);
 

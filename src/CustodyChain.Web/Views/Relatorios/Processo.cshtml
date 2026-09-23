@@ -1,0 +1,226 @@
+@model CustodyChain.Web.Models.ViewModels.RelatorioProcessoViewModel
+@{
+    ViewData["Title"] = "Relatórios";
+}
+
+<div class="pagina-cabecalho">
+    <h1>Relatório do processo</h1>
+    <p class="campo-ajuda">Apresentação visual dos vestígios de um processo, com exportação em PDF e XML.</p>
+</div>
+
+<form asp-controller="Relatorios" asp-action="Processo" method="get" class="formulario-busca">
+    <div class="campo campo-filtro">
+        <label for="processoId" class="campo-rotulo sr-only">Processo</label>
+        <select id="processoId" name="processoId" class="campo-entrada" onchange="this.form.submit()">
+            <option value="">Selecione o processo</option>
+            @foreach (var opcao in Model.ProcessosDisponiveis)
+            {
+                <option value="@opcao.Id" selected="@(opcao.Id == Model.ProcessoId)">@opcao.Numero @(opcao.NomeOperacao is not null ? $"— {opcao.NomeOperacao}" : "")</option>
+            }
+        </select>
+    </div>
+    <noscript><button type="submit" class="botao botao-secundario">Buscar</button></noscript>
+</form>
+
+@if (Model.ProcessoId is null)
+{
+    <div class="painel-vazio">
+        <span class="painel-vazio-icone"><svg width="28" height="28"><use href="#icone-relatorio" /></svg></span>
+        <p>Selecione um processo para gerar o relatório.</p>
+    </div>
+}
+else
+{
+    <div class="relatorio-acoes">
+        <a href="/relatorios/processo/pdf?processoId=@Model.ProcessoId" class="botao botao-primario">Exportar PDF</a>
+        <a href="/relatorios/processo/xml?processoId=@Model.ProcessoId" class="botao botao-secundario">Exportar XML</a>
+    </div>
+
+    <section class="cartao relatorio-dados-processo">
+        <dl class="item-recebimento-detalhes relatorio-grade-processo">
+            <div>
+                <dt>Número</dt>
+                <dd class="mono">@Model.ProcessoNumero</dd>
+            </div>
+            <div>
+                <dt>Situação</dt>
+                <dd><span class="selo">@Model.ProcessoSituacao</span></dd>
+            </div>
+            <div>
+                <dt>Operação</dt>
+                <dd>@(Model.ProcessoNomeOperacao ?? "—")</dd>
+            </div>
+            <div>
+                <dt>Órgão de origem</dt>
+                <dd>@(Model.ProcessoOrgaoOrigem ?? "—")</dd>
+            </div>
+            <div>
+                <dt>Data de abertura</dt>
+                <dd>@(Model.ProcessoDataAbertura?.ToString("dd/MM/yyyy") ?? "—")</dd>
+            </div>
+        </dl>
+    </section>
+
+    <h2 class="relatorio-subtitulo">Vestígios (@Model.Vestigios.Count)</h2>
+
+    @if (Model.Vestigios.Count == 0)
+    {
+        <div class="painel-vazio">
+            <span class="painel-vazio-icone"><svg width="28" height="28"><use href="#icone-vestigio" /></svg></span>
+            <p>Nenhum vestígio cadastrado para este processo.</p>
+        </div>
+    }
+    else
+    {
+        <div class="tabela-wrapper">
+            <table class="tabela-arquivo">
+                <thead>
+                    <tr>
+                        <th>Rótulo</th>
+                        <th>Tipo</th>
+                        <th>Estado</th>
+                        <th>Custódia atual</th>
+                        <th>Hash</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var item in Model.Vestigios)
+                    {
+                        <tr>
+                            <td>
+                                <span class="mono">@item.RotuloEvidencia</span>
+                                <div class="tabela-descricao">@item.Descricao</div>
+                            </td>
+                            <td>@item.TipoVestigio</td>
+                            <td><span class="selo">@item.Estado</span></td>
+                            <td>@(item.CustodianteNome ?? "—")</td>
+                            <td>
+                                @if (!string.IsNullOrEmpty(item.HashSha256))
+                                {
+                                    <span class="mono tabela-hash" title="@item.HashSha256">@item.HashSha256[..12]…</span>
+                                }
+                                else
+                                {
+                                    <span>—</span>
+                                }
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+}
+
+@section Styles {
+    <style>
+        .pagina-cabecalho { margin-bottom: 1.5rem; }
+        .pagina-cabecalho h1 { margin-bottom: 0.25rem; }
+
+        .formulario-busca {
+            display: flex;
+            gap: 0.75rem;
+            align-items: flex-end;
+            margin-bottom: 1.5rem;
+            flex-wrap: wrap;
+        }
+
+        .campo-filtro { flex: 0 1 340px; margin-bottom: 0; }
+
+        .relatorio-acoes {
+            display: flex;
+            gap: 0.75rem;
+            margin-bottom: 1.5rem;
+        }
+
+        .relatorio-dados-processo {
+            padding: 1.25rem 1.5rem;
+            margin-bottom: 1.5rem;
+        }
+
+        .relatorio-grade-processo {
+            border: none;
+            padding: 0;
+            margin: 0;
+            grid-template-columns: repeat(3, 1fr);
+        }
+
+        .relatorio-subtitulo {
+            font-size: 1rem;
+            margin-bottom: 0.75rem;
+        }
+
+        .painel-vazio {
+            border: 1px dashed var(--cor-borda-forte);
+            border-radius: var(--raio);
+            padding: 2rem 1.5rem;
+            text-align: center;
+            color: var(--cor-texto-suave);
+        }
+
+        .painel-vazio-icone {
+            display: inline-flex;
+            color: var(--cor-texto-fraco);
+            margin-bottom: 0.5rem;
+        }
+
+        .item-recebimento-detalhes {
+            display: grid;
+            gap: 0.75rem;
+        }
+
+        .item-recebimento-detalhes dt {
+            font-size: 0.75rem;
+            color: var(--cor-texto-fraco);
+            margin-bottom: 0.125rem;
+        }
+
+        .item-recebimento-detalhes dd {
+            margin: 0;
+            font-size: 0.875rem;
+        }
+
+        .tabela-wrapper {
+            overflow-x: auto;
+            border: 1px solid var(--cor-borda);
+            border-radius: var(--raio);
+            background: var(--cor-superficie);
+        }
+
+        .tabela-arquivo {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.875rem;
+        }
+
+        .tabela-arquivo th {
+            text-align: left;
+            padding: 0.75rem 1rem;
+            font-size: 0.75rem;
+            color: var(--cor-texto-fraco);
+            font-weight: 600;
+            border-bottom: 1px solid var(--cor-borda);
+            white-space: nowrap;
+        }
+
+        .tabela-arquivo td {
+            padding: 0.75rem 1rem;
+            border-bottom: 1px solid var(--cor-borda);
+            vertical-align: top;
+        }
+
+        .tabela-arquivo tbody tr:last-child td { border-bottom: none; }
+
+        .tabela-descricao {
+            color: var(--cor-texto-fraco);
+            font-size: 0.8125rem;
+            margin-top: 0.125rem;
+        }
+
+        .tabela-hash { cursor: help; }
+
+        @@media (max-width: 640px) {
+            .relatorio-grade-processo { grid-template-columns: 1fr; }
+        }
+    </style>
+}

@@ -16,6 +16,13 @@
       <PrivateAssets>all</PrivateAssets>
     </PackageReference>
     <PackageReference Include="Pomelo.EntityFrameworkCore.MySql" Version="9.0.0" />
+    <PackageReference Include="QuestPDF" Version="2026.9.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Fontes TTF embutidas para geração de PDF (QuestPDF/SkiaSharp não
+         lê WOFF2 nem depende de fontes do sistema operacional). -->
+    <EmbeddedResource Include="Recursos/Fontes/*.ttf" />
   </ItemGroup>
 
 </Project>
