@@ -49,28 +49,36 @@ Repita até aparecer `healthy`.
 
 Em `src/CustodyChain.Web`:
 
-**bash / zsh:**
 ```bash
 cd src/CustodyChain.Web
-ASPNETCORE_ENVIRONMENT=Development dotnet run --urls "http://localhost:5219"
+dotnet run
 ```
 
-**fish:**
-```fish
-cd src/CustodyChain.Web
-env ASPNETCORE_ENVIRONMENT=Development dotnet run --urls "http://localhost:5219"
+Não é preciso passar `--urls` nem `ASPNETCORE_ENVIRONMENT` na mão: o
+perfil padrão em `Properties/launchSettings.json` já sobe em modo
+`Development` (o que ativa migration automática e o seed de dados de
+teste) e informa a porta no terminal, na linha:
+
+```
+Now listening on: http://localhost:5143
 ```
 
-`ASPNETCORE_ENVIRONMENT=Development` é o que ativa, no primeiro start:
-- aplicação automática das migrations pendentes (`Database.MigrateAsync()`);
-- o seed de dados de teste (ver abaixo).
+**Use a porta que aparecer nessa linha** — é a porta padrão do projeto
+(5143), não necessariamente a mesma de sessões anteriores. Se dois
+`dotnet run` ficarem abertos ao mesmo tempo (por exemplo um seu e um em
+background de uma sessão anterior do Claude), o segundo sobe numa porta
+diferente; verifique sempre o que o terminal imprimiu.
 
-Sem essa variável a aplicação sobe em modo `Production` e **não** roda
-migration nem seed automaticamente.
+Rodar sem `dotnet run` sozinho — passando `--urls` manualmente ou uma
+variável de ambiente diferente — também funciona, mas não é necessário
+no dia a dia.
 
 ### 3. Abrir no navegador
 
-**http://localhost:5219/entrar**
+A URL exata é a que apareceu em **"Now listening on"** no terminal —
+normalmente **http://localhost:5143/entrar**. Com o perfil padrão o
+navegador abre sozinho (`launchBrowser: true`); se não abrir, cole o
+endereço manualmente.
 
 A tela de login lista as credenciais DID disponíveis (populadas pelo
 seed). Selecione uma, digite qualquer senha não vazia — não há wallet
