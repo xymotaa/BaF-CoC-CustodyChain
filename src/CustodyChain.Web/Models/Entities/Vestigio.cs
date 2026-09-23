@@ -35,6 +35,16 @@ public class Vestigio
     public string? MetodoColeta { get; set; }
     public bool? HouveIntercorrencia { get; set; }
     public string? DescricaoIntercorrencia { get; set; }
+
+    /// <summary>
+    /// Hash SHA-256 do payload do Lacre Digital submetido na coleta.
+    /// Extensão deste projeto (não listada no dicionário de dados oficial,
+    /// Seção 8.2): sem ela, a busca por hash de T-06 e o verificador
+    /// independente de T-11 não teriam onde consultar — o hash existiria
+    /// só dentro do texto de REGISTRO_LEDGER.PayloadJson.
+    /// </summary>
+    public string? HashSha256 { get; set; }
+
     public byte EtapaAtual { get; set; }
     public FaseVestigio FaseAtual { get; set; }
     public EstadoVestigio Estado { get; set; }

@@ -97,6 +97,8 @@ public class VestigiosController(CustodyChainDbContext db, IServicoLedger ledger
         var payloadJson = JsonSerializer.Serialize(lacreDigital);
         var hashPayload = Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(payloadJson)));
 
+        vestigio.HashSha256 = hashPayload;
+
         // Credencial #1 (Quadro 14): criação, no ato da coleta.
         var credencialId = await ledger.EmitirCredencialCoCAsync(
             new CredencialCoCDto(vestigio.Id.ToString(), "COLETA", criador.Did, hashPayload));

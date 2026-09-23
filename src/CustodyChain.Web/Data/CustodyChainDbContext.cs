@@ -93,6 +93,8 @@ public class CustodyChainDbContext(DbContextOptions<CustodyChainDbContext> optio
             e.Property(v => v.DataHoraColeta).HasColumnType("datetime(6)");
             e.Property(v => v.MetodoColeta).HasColumnType("text");
             e.Property(v => v.DescricaoIntercorrencia).HasColumnType("text");
+            e.Property(v => v.HashSha256).HasColumnType("char(64)");
+            e.HasIndex(v => v.HashSha256);
             e.Property(v => v.FaseAtual).HasConversion<string>().HasMaxLength(10);
             e.Property(v => v.Estado).HasConversion<string>().HasMaxLength(30);
             e.Property(v => v.CriadoEm).HasColumnType("datetime(6)").IsRequired();

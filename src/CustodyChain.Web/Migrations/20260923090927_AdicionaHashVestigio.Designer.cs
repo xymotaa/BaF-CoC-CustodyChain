@@ -4,6 +4,7 @@ using CustodyChain.Web.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
@@ -11,9 +12,11 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace CustodyChain.Web.Migrations
 {
     [DbContext(typeof(CustodyChainDbContext))]
-    partial class CustodyChainDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260923090927_AdicionaHashVestigio")]
+    partial class AdicionaHashVestigio
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
