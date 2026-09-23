@@ -25,3 +25,13 @@ public class RomperLacreViewModel
     [Display(Name = "Justificativa do rompimento")]
     public string? Justificativa { get; set; }
 }
+
+public class EmitirLaudoViewModel
+{
+    [Required]
+    public long PericiaId { get; set; }
+
+    [Required(ErrorMessage = "Informe o conteúdo do laudo.")]
+    [Display(Name = "Conteúdo do laudo")]
+    public string? Conteudo { get; set; }
+}

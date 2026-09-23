@@ -73,6 +73,18 @@ else
                         <button type="submit" class="botao botao-primario" @(item.CredencialPermissaoValida ? "" : "disabled")>Romper lacre</button>
                     </form>
                 }
+                else if (item.Situacao == "EM_EXECUCAO")
+                {
+                    <form asp-controller="ProcessamentoPericial" asp-action="EmitirLaudo" method="post" class="formulario-inline">
+                        @Html.AntiForgeryToken()
+                        <input type="hidden" name="PericiaId" value="@item.PericiaId" />
+                        <div class="campo campo-inline">
+                            <label class="campo-rotulo">Conteúdo do laudo</label>
+                            <textarea name="Conteudo" rows="4" class="campo-entrada campo-textarea" required></textarea>
+                        </div>
+                        <button type="submit" class="botao botao-primario">Emitir laudo</button>
+                    </form>
+                }
             </section>
         }
     </div>
@@ -130,5 +142,12 @@ else
         }
 
         .campo-inline { margin-bottom: 0; }
+
+        .campo-textarea {
+            height: auto;
+            padding: 0.625rem 0.75rem;
+            resize: vertical;
+            font-family: inherit;
+        }
     </style>
 }
