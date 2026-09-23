@@ -1,0 +1,126 @@
+@model CustodyChain.Web.Models.ViewModels.DesignarPericiaViewModel
+@{
+    ViewData["Title"] = "Designar perícia";
+}
+
+<div class="pagina-cabecalho">
+    <h1>Designar perícia</h1>
+    <p class="campo-ajuda">Designa um perito para examinar um vestígio armazenado e emite a credencial de permissão (RN10).</p>
+</div>
+
+@if (TempData["MensagemSucesso"] is string mensagem)
+{
+    <div class="alerta alerta-sucesso" role="status">
+        <span class="alerta-icone"><svg><use href="#icone-sucesso" /></svg></span>
+        <span>@mensagem</span>
+    </div>
+}
+
+@if (!ViewData.ModelState.IsValid)
+{
+    <div class="alerta alerta-erro" role="alert">
+        <span class="alerta-icone"><svg><use href="#icone-alerta" /></svg></span>
+        <span>Verifique os campos destacados abaixo.</span>
+    </div>
+}
+
+@if (Model.VestigiosDisponiveis.Count == 0)
+{
+    <div class="painel-vazio">
+        <span class="painel-vazio-icone"><svg width="28" height="28"><use href="#icone-pericia" /></svg></span>
+        <p>Nenhum vestígio armazenado disponível para designação pericial.</p>
+    </div>
+}
+else
+{
+    <form asp-controller="Pericias" asp-action="Designar" method="post" novalidate class="formulario-vestigio">
+        @Html.AntiForgeryToken()
+
+        <section class="cartao secao-formulario">
+            <div class="grade-campos grade-2col">
+                <div class="campo">
+                    <label asp-for="VestigioId" class="campo-rotulo"></label>
+                    <select asp-for="VestigioId" class="campo-entrada @(ViewData.ModelState["VestigioId"]?.Errors.Count > 0 ? "campo-invalido" : "")">
+                        <option value="">Selecione o vestígio</option>
+                        @foreach (var opcao in Model.VestigiosDisponiveis)
+                        {
+                            <option value="@opcao.Id">@opcao.RotuloEvidencia — @opcao.Descricao</option>
+                        }
+                    </select>
+                    <span asp-validation-for="VestigioId" class="campo-erro"></span>
+                </div>
+
+                <div class="campo">
+                    <label asp-for="PeritoId" class="campo-rotulo"></label>
+                    <select asp-for="PeritoId" class="campo-entrada @(ViewData.ModelState["PeritoId"]?.Errors.Count > 0 ? "campo-invalido" : "")">
+                        <option value="">Selecione o perito</option>
+                        @foreach (var opcao in Model.PeritosDisponiveis)
+                        {
+                            <option value="@opcao.Id">@opcao.Nome</option>
+                        }
+                    </select>
+                    <span asp-validation-for="PeritoId" class="campo-erro"></span>
+                </div>
+
+                <div class="campo">
+                    <label asp-for="AreaPericial" class="campo-rotulo"></label>
+                    <input asp-for="AreaPericial" class="campo-entrada" />
+                    <span asp-validation-for="AreaPericial" class="campo-erro"></span>
+                </div>
+
+                <div class="campo">
+                    <label asp-for="Prioridade" class="campo-rotulo"></label>
+                    <select asp-for="Prioridade" class="campo-entrada">
+                        <option value="NORMAL">Normal</option>
+                        <option value="URGENTE">Urgente</option>
+                    </select>
+                    <span asp-validation-for="Prioridade" class="campo-erro"></span>
+                </div>
+            </div>
+        </section>
+
+        <div class="formulario-acoes">
+            <button type="submit" class="botao botao-primario">Designar perícia</button>
+        </div>
+    </form>
+}
+
+@section Styles {
+    <style>
+        .pagina-cabecalho { margin-bottom: 1.5rem; }
+        .pagina-cabecalho h1 { margin-bottom: 0.25rem; }
+
+        .formulario-vestigio {
+            display: flex;
+            flex-direction: column;
+            gap: 1.25rem;
+            max-width: 760px;
+        }
+
+        .secao-formulario { padding: 1.5rem; }
+        .grade-campos { display: grid; gap: 0 1rem; }
+        .grade-2col { grid-template-columns: 1fr 1fr; }
+
+        @@media (max-width: 640px) {
+            .grade-2col { grid-template-columns: 1fr; }
+        }
+
+        .formulario-acoes { display: flex; justify-content: flex-end; }
+
+        .painel-vazio {
+            border: 1px dashed var(--cor-borda-forte);
+            border-radius: var(--raio);
+            padding: 2rem 1.5rem;
+            text-align: center;
+            color: var(--cor-texto-suave);
+        }
+
+        .painel-vazio-icone {
+            display: inline-flex;
+            color: var(--cor-texto-fraco);
+            margin-bottom: 0.5rem;
+        }
+
+        .painel-vazio p { margin: 0 auto 0.25rem; }
+    </style>
+}

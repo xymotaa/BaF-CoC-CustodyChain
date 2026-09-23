@@ -31,6 +31,10 @@
         <span class="sidebar-link-icone"><svg><use href="#icone-arquivo" /></svg></span>
         Arquivo
     </a>
+    <a class="sidebar-link" href="/pericias/designar" aria-current="@(EhAtual("Pericias", "Designar") ? "page" : null)">
+        <span class="sidebar-link-icone"><svg><use href="#icone-pericia" /></svg></span>
+        Designar perícia
+    </a>
     <a class="sidebar-link" href="#" aria-disabled="true">
         <span class="sidebar-link-icone"><svg><use href="#icone-descarte" /></svg></span>
         Destinação final
@@ -41,7 +45,7 @@
     </a>
 
     <div class="sidebar-grupo-titulo">Perito</div>
-    <a class="sidebar-link" href="#" aria-disabled="true">
+    <a class="sidebar-link" href="/processamento-pericial" aria-current="@(EhAtual("ProcessamentoPericial", "Index") ? "page" : null)">
         <span class="sidebar-link-icone"><svg><use href="#icone-pericia" /></svg></span>
         Processamento pericial
     </a>

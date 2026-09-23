@@ -1,0 +1,134 @@
+@model CustodyChain.Web.Models.ViewModels.ProcessamentoPericialListaViewModel
+@{
+    ViewData["Title"] = "Processamento pericial";
+}
+
+<div class="pagina-cabecalho">
+    <h1>Processamento pericial</h1>
+    <p class="campo-ajuda">Vestígios designados a você. Receba e rompa o lacre para liberar o exame.</p>
+</div>
+
+@if (TempData["MensagemSucesso"] is string mensagemSucesso)
+{
+    <div class="alerta alerta-sucesso" role="status">
+        <span class="alerta-icone"><svg><use href="#icone-sucesso" /></svg></span>
+        <span>@mensagemSucesso</span>
+    </div>
+}
+
+@if (TempData["MensagemErro"] is string mensagemErro)
+{
+    <div class="alerta alerta-erro" role="alert">
+        <span class="alerta-icone"><svg><use href="#icone-alerta" /></svg></span>
+        <span>@mensagemErro</span>
+    </div>
+}
+
+@if (Model.Pericias.Count == 0)
+{
+    <div class="painel-vazio">
+        <span class="painel-vazio-icone"><svg width="28" height="28"><use href="#icone-pericia" /></svg></span>
+        <p>Nenhuma perícia designada a você no momento.</p>
+    </div>
+}
+else
+{
+    <div class="lista-recebimento">
+        @foreach (var item in Model.Pericias)
+        {
+            <section class="cartao item-recebimento">
+                <div class="item-recebimento-cabecalho">
+                    <div>
+                        <span class="mono item-recebimento-rotulo">@item.RotuloEvidencia</span>
+                        <p class="item-recebimento-descricao">@item.Descricao</p>
+                    </div>
+                    <span class="selo">@item.Situacao</span>
+                </div>
+
+                @if (!item.CredencialPermissaoValida)
+                {
+                    <div class="alerta alerta-erro" role="alert">
+                        <span class="alerta-icone"><svg><use href="#icone-alerta" /></svg></span>
+                        <span>Credencial de permissão inválida para este vestígio (RN10). Rompimento bloqueado.</span>
+                    </div>
+                }
+
+                @if (item.Situacao == "DESIGNADA")
+                {
+                    <form asp-controller="ProcessamentoPericial" asp-action="Receber" method="post">
+                        @Html.AntiForgeryToken()
+                        <input type="hidden" name="periciaId" value="@item.PericiaId" />
+                        <button type="submit" class="botao botao-primario">Receber vestígio</button>
+                    </form>
+                }
+                else if (item.Situacao == "RECEBIDA")
+                {
+                    <form asp-controller="ProcessamentoPericial" asp-action="RomperLacre" method="post" class="formulario-inline">
+                        @Html.AntiForgeryToken()
+                        <input type="hidden" name="PericiaId" value="@item.PericiaId" />
+                        <div class="campo campo-inline">
+                            <label class="campo-rotulo">Justificativa do rompimento (lacre @item.NumeroLacreAtual)</label>
+                            <input name="Justificativa" class="campo-entrada" required />
+                        </div>
+                        <button type="submit" class="botao botao-primario" @(item.CredencialPermissaoValida ? "" : "disabled")>Romper lacre</button>
+                    </form>
+                }
+            </section>
+        }
+    </div>
+}
+
+@section Styles {
+    <style>
+        .pagina-cabecalho { margin-bottom: 1.5rem; }
+        .pagina-cabecalho h1 { margin-bottom: 0.25rem; }
+
+        .painel-vazio {
+            border: 1px dashed var(--cor-borda-forte);
+            border-radius: var(--raio);
+            padding: 2rem 1.5rem;
+            text-align: center;
+            color: var(--cor-texto-suave);
+        }
+
+        .painel-vazio-icone {
+            display: inline-flex;
+            color: var(--cor-texto-fraco);
+            margin-bottom: 0.5rem;
+        }
+
+        .lista-recebimento {
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+            max-width: 720px;
+        }
+
+        .item-recebimento { padding: 1.25rem 1.5rem; }
+
+        .item-recebimento-cabecalho {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            gap: 1rem;
+            margin-bottom: 0.75rem;
+        }
+
+        .item-recebimento-rotulo { font-weight: 600; font-size: 1rem; }
+
+        .item-recebimento-descricao {
+            margin: 0.125rem 0 0;
+            color: var(--cor-texto-suave);
+            font-size: 0.875rem;
+        }
+
+        .formulario-inline {
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+            max-width: 420px;
+        }
+
+        .campo-inline { margin-bottom: 0; }
+    </style>
+}
