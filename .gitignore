@@ -2,9 +2,6 @@
 *.docs
 docs/
 
-# Log de alterações gerado por sessão (não é entregável do TCC)
-changelog
-
 # .NET
 bin/
 obj/
