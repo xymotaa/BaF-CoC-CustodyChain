@@ -1,0 +1,217 @@
+@model CustodyChain.Web.Models.ViewModels.LinhaDoTempoViewModel
+@{
+    ViewData["Title"] = "Auditoria";
+}
+
+<div class="pagina-cabecalho pagina-cabecalho-acao">
+    <div>
+        <h1>Linha do tempo do vestígio</h1>
+        <p class="campo-ajuda">Histórico imutável de eventos registrados no ledger, por rótulo de evidência (RF15).</p>
+    </div>
+    <a href="/verificador" target="_blank" class="botao botao-secundario">Verificador independente</a>
+</div>
+
+<form asp-controller="Auditoria" asp-action="LinhaDoTempo" method="get" class="formulario-busca">
+    <div class="campo campo-busca">
+        <label for="busca" class="campo-rotulo sr-only">Rótulo de evidência</label>
+        <input type="search" id="busca" name="busca" value="@Model.Busca" class="campo-entrada mono" placeholder="Rótulo de evidência (RE)" />
+    </div>
+    <button type="submit" class="botao botao-secundario">Buscar</button>
+</form>
+
+@if (!string.IsNullOrWhiteSpace(Model.Busca) && Model.VestigioId is null)
+{
+    <div class="painel-vazio">
+        <span class="painel-vazio-icone"><svg width="28" height="28"><use href="#icone-auditoria" /></svg></span>
+        <p>Nenhum vestígio encontrado com o rótulo "@Model.Busca".</p>
+    </div>
+}
+else if (Model.VestigioId is not null)
+{
+    <section class="cartao relatorio-dados-processo">
+        <dl class="item-recebimento-detalhes relatorio-grade-processo">
+            <div>
+                <dt>Rótulo</dt>
+                <dd class="mono">@Model.RotuloEvidencia</dd>
+            </div>
+            <div>
+                <dt>Estado atual</dt>
+                <dd><span class="selo">@Model.EstadoAtual</span></dd>
+            </div>
+            <div>
+                <dt>Hash SHA-256</dt>
+                <dd class="mono">@(Model.HashSha256 ?? "—")</dd>
+            </div>
+        </dl>
+    </section>
+
+    <h2 class="relatorio-subtitulo">Eventos (@Model.Eventos.Count)</h2>
+
+    @if (Model.Eventos.Count == 0)
+    {
+        <div class="painel-vazio">
+            <span class="painel-vazio-icone"><svg width="28" height="28"><use href="#icone-auditoria" /></svg></span>
+            <p>Nenhum evento registrado no ledger para este vestígio.</p>
+        </div>
+    }
+    else
+    {
+        <ol class="linha-tempo">
+            @foreach (var evento in Model.Eventos)
+            {
+                <li class="linha-tempo-item">
+                    <div class="linha-tempo-marcador"></div>
+                    <div class="linha-tempo-conteudo">
+                        <div class="linha-tempo-cabecalho">
+                            <span class="linha-tempo-evento">@evento.Evento</span>
+                            <span class="selo @(evento.Estado == "ANCORADO" ? "selo-sucesso" : evento.Estado == "FALHA" ? "selo-alerta" : "")">@evento.Estado</span>
+                        </div>
+                        <p class="linha-tempo-data">@evento.CriadoEm.ToString("dd/MM/yyyy HH:mm:ss") UTC</p>
+                        <p class="linha-tempo-origem">Origem: <span class="mono">@evento.EntidadeOrigem #@evento.RegistroId</span></p>
+                        @if (evento.AncoradoEm is not null)
+                        {
+                            <p class="linha-tempo-ancorado">Ancorado em @evento.AncoradoEm.Value.ToString("dd/MM/yyyy HH:mm:ss") UTC</p>
+                        }
+                        @if (!string.IsNullOrEmpty(evento.TxHash))
+                        {
+                            <p class="linha-tempo-tx mono">Tx: @evento.TxHash</p>
+                        }
+                    </div>
+                </li>
+            }
+        </ol>
+    }
+}
+
+@section Styles {
+    <style>
+        .pagina-cabecalho { margin-bottom: 1.5rem; }
+        .pagina-cabecalho h1 { margin-bottom: 0.25rem; }
+
+        .pagina-cabecalho-acao {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            gap: 1rem;
+            flex-wrap: wrap;
+        }
+
+        .formulario-busca {
+            display: flex;
+            gap: 0.75rem;
+            align-items: flex-end;
+            margin-bottom: 1.5rem;
+            flex-wrap: wrap;
+        }
+
+        .campo-busca { flex: 1 1 320px; margin-bottom: 0; }
+
+        .painel-vazio {
+            border: 1px dashed var(--cor-borda-forte);
+            border-radius: var(--raio);
+            padding: 2rem 1.5rem;
+            text-align: center;
+            color: var(--cor-texto-suave);
+        }
+
+        .painel-vazio-icone {
+            display: inline-flex;
+            color: var(--cor-texto-fraco);
+            margin-bottom: 0.5rem;
+        }
+
+        .relatorio-dados-processo {
+            padding: 1.25rem 1.5rem;
+            margin-bottom: 1.5rem;
+        }
+
+        .relatorio-grade-processo {
+            border: none;
+            padding: 0;
+            margin: 0;
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 0.75rem;
+        }
+
+        .item-recebimento-detalhes dt {
+            font-size: 0.75rem;
+            color: var(--cor-texto-fraco);
+            margin-bottom: 0.125rem;
+        }
+
+        .item-recebimento-detalhes dd { margin: 0; font-size: 0.875rem; }
+
+        .relatorio-subtitulo { font-size: 1rem; margin-bottom: 0.75rem; }
+
+        .linha-tempo {
+            list-style: none;
+            margin: 0;
+            padding: 0;
+            max-width: 640px;
+        }
+
+        .linha-tempo-item {
+            display: flex;
+            gap: 1rem;
+            padding-bottom: 1.5rem;
+            position: relative;
+        }
+
+        .linha-tempo-item:not(:last-child)::before {
+            content: "";
+            position: absolute;
+            left: 5px;
+            top: 16px;
+            bottom: 0;
+            width: 1px;
+            background: var(--cor-borda);
+        }
+
+        .linha-tempo-marcador {
+            width: 11px;
+            height: 11px;
+            border-radius: 999px;
+            background: var(--cor-acento);
+            margin-top: 4px;
+            flex-shrink: 0;
+        }
+
+        .linha-tempo-conteudo {
+            background: var(--cor-superficie);
+            border: 1px solid var(--cor-borda);
+            border-radius: var(--raio);
+            padding: 0.875rem 1rem;
+            flex: 1;
+        }
+
+        .linha-tempo-cabecalho {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 0.5rem;
+            margin-bottom: 0.25rem;
+        }
+
+        .linha-tempo-evento { font-weight: 600; font-size: 0.9375rem; }
+
+        .linha-tempo-data {
+            margin: 0 0 0.375rem;
+            font-size: 0.8125rem;
+            color: var(--cor-texto-fraco);
+        }
+
+        .linha-tempo-origem, .linha-tempo-ancorado, .linha-tempo-tx {
+            margin: 0.125rem 0 0;
+            font-size: 0.8125rem;
+            color: var(--cor-texto-suave);
+        }
+
+        .selo-sucesso { background: var(--cor-sucesso-fundo); color: var(--cor-sucesso); }
+        .selo-alerta { background: var(--cor-erro-fundo); color: var(--cor-erro); }
+
+        @@media (max-width: 640px) {
+            .relatorio-grade-processo { grid-template-columns: 1fr; }
+        }
+    </style>
+}

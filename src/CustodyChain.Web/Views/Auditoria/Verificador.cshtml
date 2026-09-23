@@ -1,0 +1,132 @@
+@model CustodyChain.Web.Models.ViewModels.VerificadorViewModel
+@{
+    ViewData["Title"] = "Verificador independente";
+    Layout = "_LayoutMinimo";
+}
+
+<div class="tela-verificador">
+    <div class="tela-verificador-cartao cartao">
+        <div class="tela-verificador-cabecalho">
+            <span class="tela-verificador-selo">CoC</span>
+            <h1>Verificador independente</h1>
+            <p class="tela-verificador-subtitulo">Confere o hash de um arquivo contra o registro do vestígio, sem necessidade de acesso ao sistema.</p>
+        </div>
+
+        @if (Model.Conferido is not null)
+        {
+            <div class="alerta @(Model.Conferido == true ? "alerta-sucesso" : "alerta-erro")" role="status">
+                <span class="alerta-icone"><svg><use href="#icone-@(Model.Conferido == true ? "sucesso" : "alerta")" /></svg></span>
+                <span>@Model.MensagemResultado</span>
+            </div>
+
+            @if (Model.HashCalculado is not null)
+            {
+                <dl class="verificador-detalhes">
+                    <div>
+                        <dt>Hash do arquivo enviado</dt>
+                        <dd class="mono">@Model.HashCalculado</dd>
+                    </div>
+                    <div>
+                        <dt>Hash registrado no vestígio</dt>
+                        <dd class="mono">@(Model.HashRegistrado ?? "—")</dd>
+                    </div>
+                </dl>
+            }
+        }
+
+        @if (!ViewData.ModelState.IsValid)
+        {
+            <div class="alerta alerta-erro" role="alert">
+                <span class="alerta-icone"><svg><use href="#icone-alerta" /></svg></span>
+                <span>Verifique os campos destacados abaixo.</span>
+            </div>
+        }
+
+        <form asp-controller="Auditoria" asp-action="Verificador" method="post" enctype="multipart/form-data" novalidate>
+            @Html.AntiForgeryToken()
+
+            <div class="campo">
+                <label asp-for="RotuloEvidencia" class="campo-rotulo"></label>
+                <input asp-for="RotuloEvidencia" class="campo-entrada mono @(ViewData.ModelState["RotuloEvidencia"]?.Errors.Count > 0 ? "campo-invalido" : "")" />
+                <span asp-validation-for="RotuloEvidencia" class="campo-erro"></span>
+            </div>
+
+            <div class="campo">
+                <label asp-for="Arquivo" class="campo-rotulo"></label>
+                <input asp-for="Arquivo" type="file" class="campo-entrada @(ViewData.ModelState["Arquivo"]?.Errors.Count > 0 ? "campo-invalido" : "")" />
+                <span asp-validation-for="Arquivo" class="campo-erro"></span>
+            </div>
+
+            <button type="submit" class="botao botao-primario botao-largura-total">Conferir</button>
+        </form>
+    </div>
+</div>
+
+@section Styles {
+    <style>
+        .tela-verificador {
+            min-height: 100dvh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 1.5rem;
+        }
+
+        .tela-verificador-cartao {
+            width: 100%;
+            max-width: 440px;
+            padding: 2rem;
+        }
+
+        .tela-verificador-cabecalho {
+            text-align: center;
+            margin-bottom: 1.75rem;
+        }
+
+        .tela-verificador-selo {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 44px;
+            height: 44px;
+            border-radius: var(--raio);
+            background: var(--cor-acento);
+            color: var(--cor-acento-texto);
+            font-weight: 700;
+            font-size: 0.9rem;
+            margin-bottom: 0.875rem;
+        }
+
+        .tela-verificador-cabecalho h1 {
+            font-size: 1.25rem;
+            margin-bottom: 0.25rem;
+        }
+
+        .tela-verificador-subtitulo {
+            color: var(--cor-texto-fraco);
+            font-size: 0.875rem;
+            margin: 0;
+        }
+
+        .verificador-detalhes {
+            margin: 0 0 1.125rem;
+            padding: 0.75rem;
+            background: var(--cor-fundo);
+            border-radius: var(--raio-pequeno);
+        }
+
+        .verificador-detalhes dt {
+            font-size: 0.75rem;
+            color: var(--cor-texto-fraco);
+            margin-bottom: 0.125rem;
+        }
+
+        .verificador-detalhes dd {
+            margin: 0 0 0.625rem;
+            font-size: 0.8125rem;
+            word-break: break-all;
+        }
+
+        .verificador-detalhes div:last-child dd { margin-bottom: 0; }
+    </style>
+}

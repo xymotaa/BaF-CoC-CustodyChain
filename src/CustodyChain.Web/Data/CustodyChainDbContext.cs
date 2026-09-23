@@ -412,7 +412,11 @@ public class CustodyChainDbContext(DbContextOptions<CustodyChainDbContext> optio
             e.HasKey(r => r.Id);
             e.Property(r => r.EntidadeOrigem).HasMaxLength(30).IsRequired();
             e.Property(r => r.Evento).HasMaxLength(40).IsRequired();
-            e.Property(r => r.PayloadJson).HasColumnType("json");
+            // LONGTEXT, não JSON: a coluna nativa `json` do MySQL
+            // reformata o texto ao armazenar (reordena chaves, normaliza
+            // espaços), o que quebra a reprodutibilidade byte a byte do
+            // hash calculado sobre o payload original antes da gravação.
+            e.Property(r => r.PayloadJson).HasColumnType("longtext");
             e.Property(r => r.Estado).HasConversion<string>().HasMaxLength(15);
             e.Property(r => r.TxHash).HasMaxLength(128);
             e.Property(r => r.Erro).HasColumnType("text");

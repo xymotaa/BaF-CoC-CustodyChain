@@ -1,6 +1,6 @@
 # Decisões aprovadas e reprovadas — histórico consolidado
 
-_Última atualização: v0.14.0 (T-10 Gestão de perfis), 2026-09-23_
+_Última atualização: v0.15.0 (T-11 Auditoria e verificador), 2026-09-23_
 
 Registro único de toda pergunta de aprovação feita ao usuário ao longo da
 implementação, organizada por seção/versão do `changelog/`. Cobre tanto
@@ -186,6 +186,19 @@ todas as sessões futuras.
 
 ---
 
+## v0.15.0 — T-11 Auditoria e verificador independente
+
+**A linha do tempo pode vir de REGISTRO_LEDGER (já preenchido desde a T-03) ou LOG_AUDITORIA (nunca populado em 14 versões anteriores, exigiria instrumentar todos os controllers já testados)?**
+✅ Aprovado: **REGISTRO_LEDGER** — é literalmente a linha do tempo do vestígio no ledger, já tem um registro por evento real. `LOG_AUDITORIA` (RF23-25) fica como pendência documentada.
+
+**O verificador (usuário sobe arquivo + hash é comparado) busca o hash por Rótulo de Evidência informado, ou tenta achar batendo contra todos os vestígios sem esse dado?**
+✅ Aprovado: **buscar por Rótulo de Evidência** — mais preciso, evita colisão de contexto.
+
+**Bug real encontrado: REGISTRO_LEDGER.PayloadJson usa o tipo `json` do MySQL, que reformata o texto ao armazenar — o hash não pode ser reproduzido a partir do que fica salvo no banco. Documentar como limitação conhecida, ou trocar o tipo de coluna agora (nova migration)?**
+✅ Aprovado: **trocar a coluna para `longtext` agora** — resolve a limitação de verdade; nenhum controller precisou mudar, e validado ponta a ponta que o hash recalculado a partir do payload armazenado bate exatamente após a correção.
+
+---
+
 ## Resumo rápido
 
 | Decisão | Resultado |
@@ -222,5 +235,8 @@ todas as sessões futuras.
 | QuestPDF para geração de PDF | ✅ Aprovado |
 | Fontes próprias embutidas em vez de fonte do SO | ✅ Aprovado |
 | Cadastro de interveniente em duas etapas (GERADO→ATIVO) | ✅ Aprovado |
+| Linha do tempo baseada em REGISTRO_LEDGER (não LOG_AUDITORIA) | ✅ Aprovado |
+| Verificador busca hash por Rótulo de Evidência | ✅ Aprovado |
+| Trocar PayloadJson de `json` para `longtext` | ✅ Aprovado |
 
 Nenhuma extensão ou proposta foi reprovada até o momento.
