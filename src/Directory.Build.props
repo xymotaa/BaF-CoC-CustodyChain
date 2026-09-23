@@ -1,0 +1,13 @@
+<Project>
+
+  <PropertyGroup>
+    <!-- O pacote dotnet-sdk do Arch/CachyOS não empacota o pack
+         Microsoft.AspNetCore.App.Ref (só o Microsoft.NETCore.App.Ref), então o
+         SDK falha ao resolver os dados de "package pruning" antes mesmo da
+         restauração NuGet normal (NETSDK1226). A própria mensagem de erro
+         indica este workaround; não afeta o build, só desativa uma otimização
+         de remoção de referências redundantes. -->
+    <AllowMissingPrunePackageData>true</AllowMissingPrunePackageData>
+  </PropertyGroup>
+
+</Project>

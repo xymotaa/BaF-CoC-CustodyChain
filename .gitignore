@@ -1,3 +1,18 @@
-// Ignore documentation files
+# Ignore documentation files
 *.docs
 docs/
+
+# .NET
+bin/
+obj/
+*.user
+
+# appsettings com segredos locais (não commitar credenciais reais)
+appsettings.*.local.json
+
+# Node (gateway/wallet, quando entrarem)
+node_modules/
+
+# IDE
+.vs/
+.idea/
