@@ -1,0 +1,29 @@
+@{
+    ViewData["Title"] = "Acesso negado";
+}
+
+<div class="painel-vazio">
+    <span class="painel-vazio-icone"><svg width="28" height="28"><use href="#icone-cadeado" /></svg></span>
+    <p>Seu perfil não tem permissão para acessar esta página.</p>
+    <p class="campo-ajuda">Se você acredita que deveria ter acesso, procure um administrador.</p>
+</div>
+
+@section Styles {
+    <style>
+        .painel-vazio {
+            border: 1px dashed var(--cor-borda-forte);
+            border-radius: var(--raio);
+            padding: 2.5rem 1.5rem;
+            text-align: center;
+            color: var(--cor-texto-suave);
+            max-width: 480px;
+            margin: 2rem auto 0;
+        }
+
+        .painel-vazio-icone {
+            display: inline-flex;
+            color: var(--cor-texto-fraco);
+            margin-bottom: 0.75rem;
+        }
+    </style>
+}

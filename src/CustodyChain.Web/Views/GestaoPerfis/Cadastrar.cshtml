@@ -1,0 +1,89 @@
+@model CustodyChain.Web.Models.ViewModels.CadastrarIntervenienteViewModel
+@{
+    ViewData["Title"] = "Cadastrar interveniente";
+}
+
+<div class="pagina-cabecalho">
+    <h1>Cadastrar interveniente</h1>
+    <p class="campo-ajuda">Gera o DID do novo interveniente. A ativação (com assinatura do emissor) acontece na tela de Gestão de perfis.</p>
+</div>
+
+@if (!ViewData.ModelState.IsValid)
+{
+    <div class="alerta alerta-erro" role="alert">
+        <span class="alerta-icone"><svg><use href="#icone-alerta" /></svg></span>
+        <span>Verifique os campos destacados abaixo.</span>
+    </div>
+}
+
+<form asp-controller="GestaoPerfis" asp-action="Cadastrar" method="post" novalidate class="formulario-vestigio">
+    @Html.AntiForgeryToken()
+
+    <section class="cartao secao-formulario">
+        <div class="grade-campos grade-2col">
+            <div class="campo">
+                <label asp-for="Nome" class="campo-rotulo"></label>
+                <input asp-for="Nome" class="campo-entrada @(ViewData.ModelState["Nome"]?.Errors.Count > 0 ? "campo-invalido" : "")" />
+                <span asp-validation-for="Nome" class="campo-erro"></span>
+            </div>
+
+            <div class="campo">
+                <label asp-for="PerfilId" class="campo-rotulo"></label>
+                <select asp-for="PerfilId" class="campo-entrada @(ViewData.ModelState["PerfilId"]?.Errors.Count > 0 ? "campo-invalido" : "")">
+                    <option value="">Selecione o perfil</option>
+                    @foreach (var opcao in Model.PerfisDisponiveis)
+                    {
+                        <option value="@opcao.Id">@opcao.Nome</option>
+                    }
+                </select>
+                <span asp-validation-for="PerfilId" class="campo-erro"></span>
+            </div>
+
+            <div class="campo">
+                <label asp-for="Matricula" class="campo-rotulo"></label>
+                <input asp-for="Matricula" class="campo-entrada mono" />
+                <span asp-validation-for="Matricula" class="campo-erro"></span>
+            </div>
+
+            <div class="campo">
+                <label asp-for="Orgao" class="campo-rotulo"></label>
+                <input asp-for="Orgao" class="campo-entrada" />
+                <span asp-validation-for="Orgao" class="campo-erro"></span>
+            </div>
+
+            <div class="campo">
+                <label asp-for="Lotacao" class="campo-rotulo"></label>
+                <input asp-for="Lotacao" class="campo-entrada" />
+                <span asp-validation-for="Lotacao" class="campo-erro"></span>
+            </div>
+        </div>
+    </section>
+
+    <div class="formulario-acoes">
+        <button type="submit" class="botao botao-primario">Cadastrar e gerar DID</button>
+    </div>
+</form>
+
+@section Styles {
+    <style>
+        .pagina-cabecalho { margin-bottom: 1.5rem; }
+        .pagina-cabecalho h1 { margin-bottom: 0.25rem; }
+
+        .formulario-vestigio {
+            display: flex;
+            flex-direction: column;
+            gap: 1.25rem;
+            max-width: 760px;
+        }
+
+        .secao-formulario { padding: 1.5rem; }
+        .grade-campos { display: grid; gap: 0 1rem; }
+        .grade-2col { grid-template-columns: 1fr 1fr; }
+
+        @@media (max-width: 640px) {
+            .grade-2col { grid-template-columns: 1fr; }
+        }
+
+        .formulario-acoes { display: flex; justify-content: flex-end; }
+    </style>
+}

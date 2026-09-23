@@ -1,0 +1,150 @@
+@model CustodyChain.Web.Models.ViewModels.GestaoPerfisListaViewModel
+@{
+    ViewData["Title"] = "Gestão de perfis";
+}
+
+<div class="pagina-cabecalho pagina-cabecalho-acao">
+    <div>
+        <h1>Gestão de perfis</h1>
+        <p class="campo-ajuda">Intervenientes cadastrados. Ative um DID recém-gerado ou revogue um ativo.</p>
+    </div>
+    <div class="relatorio-acoes">
+        <a href="/gestao-perfis/cadastrar" class="botao botao-secundario">Cadastrar interveniente</a>
+        <a href="/gestao-perfis/emitir-credencial" class="botao botao-secundario">Emitir credencial de permissão</a>
+    </div>
+</div>
+
+@if (TempData["MensagemSucesso"] is string mensagemSucesso)
+{
+    <div class="alerta alerta-sucesso" role="status">
+        <span class="alerta-icone"><svg><use href="#icone-sucesso" /></svg></span>
+        <span>@mensagemSucesso</span>
+    </div>
+}
+
+@if (TempData["MensagemErro"] is string mensagemErro)
+{
+    <div class="alerta alerta-erro" role="alert">
+        <span class="alerta-icone"><svg><use href="#icone-alerta" /></svg></span>
+        <span>@mensagemErro</span>
+    </div>
+}
+
+@if (Model.Intervenientes.Count == 0)
+{
+    <div class="painel-vazio">
+        <span class="painel-vazio-icone"><svg width="28" height="28"><use href="#icone-perfis" /></svg></span>
+        <p>Nenhum interveniente cadastrado.</p>
+    </div>
+}
+else
+{
+    <div class="tabela-wrapper">
+        <table class="tabela-arquivo">
+            <thead>
+                <tr>
+                    <th>Nome</th>
+                    <th>Perfil</th>
+                    <th>DID</th>
+                    <th>Situação</th>
+                    <th>Ativado em</th>
+                    <th>Ação</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var item in Model.Intervenientes)
+                {
+                    <tr>
+                        <td>@item.Nome</td>
+                        <td>@item.PerfilNome</td>
+                        <td><span class="mono">@item.Did</span></td>
+                        <td><span class="selo">@item.Situacao</span></td>
+                        <td>@(item.AtivadoEm?.ToString("dd/MM/yyyy HH:mm") ?? "—")</td>
+                        <td>
+                            @if (item.Situacao == "GERADO")
+                            {
+                                <form asp-controller="GestaoPerfis" asp-action="Ativar" method="post" class="formulario-acao-tabela">
+                                    @Html.AntiForgeryToken()
+                                    <input type="hidden" name="intervenienteId" value="@item.Id" />
+                                    <button type="submit" class="botao botao-primario">Ativar</button>
+                                </form>
+                            }
+                            else if (item.Situacao == "ATIVO")
+                            {
+                                <form asp-controller="GestaoPerfis" asp-action="Revogar" method="post" class="formulario-acao-tabela">
+                                    @Html.AntiForgeryToken()
+                                    <input type="hidden" name="intervenienteId" value="@item.Id" />
+                                    <button type="submit" class="botao botao-secundario">Revogar</button>
+                                </form>
+                            }
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+}
+
+@section Styles {
+    <style>
+        .pagina-cabecalho { margin-bottom: 1.5rem; }
+        .pagina-cabecalho h1 { margin-bottom: 0.25rem; }
+
+        .pagina-cabecalho-acao {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            gap: 1rem;
+            flex-wrap: wrap;
+        }
+
+        .relatorio-acoes { display: flex; gap: 0.75rem; flex-wrap: wrap; }
+
+        .painel-vazio {
+            border: 1px dashed var(--cor-borda-forte);
+            border-radius: var(--raio);
+            padding: 2rem 1.5rem;
+            text-align: center;
+            color: var(--cor-texto-suave);
+        }
+
+        .painel-vazio-icone {
+            display: inline-flex;
+            color: var(--cor-texto-fraco);
+            margin-bottom: 0.5rem;
+        }
+
+        .tabela-wrapper {
+            overflow-x: auto;
+            border: 1px solid var(--cor-borda);
+            border-radius: var(--raio);
+            background: var(--cor-superficie);
+        }
+
+        .tabela-arquivo {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.875rem;
+        }
+
+        .tabela-arquivo th {
+            text-align: left;
+            padding: 0.75rem 1rem;
+            font-size: 0.75rem;
+            color: var(--cor-texto-fraco);
+            font-weight: 600;
+            border-bottom: 1px solid var(--cor-borda);
+            white-space: nowrap;
+        }
+
+        .tabela-arquivo td {
+            padding: 0.75rem 1rem;
+            border-bottom: 1px solid var(--cor-borda);
+            vertical-align: middle;
+        }
+
+        .tabela-arquivo tbody tr:last-child td { border-bottom: none; }
+
+        .formulario-acao-tabela { margin: 0; }
+    </style>
+}

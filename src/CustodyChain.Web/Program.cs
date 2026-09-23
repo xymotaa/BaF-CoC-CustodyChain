@@ -52,7 +52,7 @@ builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationSc
     {
         options.LoginPath = "/entrar";
         options.LogoutPath = "/sair";
-        options.AccessDeniedPath = "/entrar";
+        options.AccessDeniedPath = "/acesso-negado";
         options.ExpireTimeSpan = TimeSpan.FromHours(8);
         options.SlidingExpiration = true;
     });

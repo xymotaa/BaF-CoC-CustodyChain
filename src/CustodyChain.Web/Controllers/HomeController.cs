@@ -35,4 +35,10 @@ public class HomeController(CustodyChainDbContext db) : Controller
     {
         return View(new ErrorViewModel { RequestId = Activity.Current?.Id ?? HttpContext.TraceIdentifier });
     }
+
+    [HttpGet("/acesso-negado")]
+    public IActionResult AcessoNegado()
+    {
+        return View();
+    }
 }
