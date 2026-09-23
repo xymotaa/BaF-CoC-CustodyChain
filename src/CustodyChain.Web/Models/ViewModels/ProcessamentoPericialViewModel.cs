@@ -6,10 +6,12 @@ public record ItemPericiaViewModel(
     long PericiaId,
     long VestigioId,
     string RotuloEvidencia,
+    string RotuloConjunto,
     string Descricao,
     string Situacao,
     string? NumeroLacreAtual,
-    bool CredencialPermissaoValida);
+    bool CredencialPermissaoValida,
+    bool LacreRompido);
 
 public class ProcessamentoPericialListaViewModel
 {

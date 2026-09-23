@@ -75,6 +75,80 @@ else
                 }
                 else if (item.Situacao == "EM_EXECUCAO")
                 {
+                    <details class="operacao-amostra-detalhes">
+                        <summary>Fracionar</summary>
+                        <form asp-controller="ProcessamentoPericial" asp-action="Fracionar" method="post" class="formulario-inline">
+                            @Html.AntiForgeryToken()
+                            <input type="hidden" name="PericiaId" value="@item.PericiaId" />
+                            <div class="campo campo-inline">
+                                <label class="campo-rotulo">Rótulo de evidência do item resultante</label>
+                                <input name="RotuloEvidenciaResultante" class="campo-entrada mono" required />
+                            </div>
+                            <div class="campo campo-inline">
+                                <label class="campo-rotulo">Descrição do item resultante</label>
+                                <input name="DescricaoResultante" class="campo-entrada" required />
+                            </div>
+                            <div class="campo campo-inline">
+                                <label class="campo-rotulo">Quantidade descrita</label>
+                                <input name="QuantidadeDescrita" class="campo-entrada" />
+                            </div>
+                            <div class="campo campo-inline">
+                                <label class="campo-rotulo">Justificativa</label>
+                                <input name="Justificativa" class="campo-entrada" required />
+                            </div>
+                            <button type="submit" class="botao botao-secundario">Registrar fracionamento</button>
+                        </form>
+                    </details>
+
+                    <details class="operacao-amostra-detalhes">
+                        <summary>Unificar com outro vestígio do mesmo conjunto (RC: @item.RotuloConjunto)</summary>
+                        <form asp-controller="ProcessamentoPericial" asp-action="Unificar" method="post" class="formulario-inline">
+                            @Html.AntiForgeryToken()
+                            <input type="hidden" name="PericiaId" value="@item.PericiaId" />
+                            <div class="campo campo-inline">
+                                <label class="campo-rotulo">ID do(s) outro(s) vestígio(s) de origem (mesmo RC), separados por vírgula</label>
+                                <input name="OutrosVestigiosOrigemIds" class="campo-entrada mono" placeholder="ex: 6, 7" required />
+                            </div>
+                            <div class="campo campo-inline">
+                                <label class="campo-rotulo">Rótulo de evidência do item unificado</label>
+                                <input name="RotuloEvidenciaResultante" class="campo-entrada mono" required />
+                            </div>
+                            <div class="campo campo-inline">
+                                <label class="campo-rotulo">Descrição do item unificado</label>
+                                <input name="DescricaoResultante" class="campo-entrada" required />
+                            </div>
+                            <div class="campo campo-inline">
+                                <label class="campo-rotulo">Justificativa</label>
+                                <input name="Justificativa" class="campo-entrada" required />
+                            </div>
+                            <button type="submit" class="botao botao-secundario">Registrar unificação</button>
+                        </form>
+                    </details>
+
+                    <details class="operacao-amostra-detalhes">
+                        <summary>Consumo ou exaurimento</summary>
+                        <form asp-controller="ProcessamentoPericial" asp-action="ConsumirOuExaurir" method="post" class="formulario-inline">
+                            @Html.AntiForgeryToken()
+                            <input type="hidden" name="PericiaId" value="@item.PericiaId" />
+                            <div class="campo campo-inline">
+                                <label class="campo-rotulo">Tipo</label>
+                                <select name="Tipo" class="campo-entrada">
+                                    <option value="CONSUMO">Consumo</option>
+                                    <option value="EXAURIMENTO">Exaurimento</option>
+                                </select>
+                            </div>
+                            <div class="campo campo-inline">
+                                <label class="campo-rotulo">Quantidade descrita</label>
+                                <input name="QuantidadeDescrita" class="campo-entrada" />
+                            </div>
+                            <div class="campo campo-inline">
+                                <label class="campo-rotulo">Justificativa</label>
+                                <input name="Justificativa" class="campo-entrada" required />
+                            </div>
+                            <button type="submit" class="botao botao-secundario">Registrar</button>
+                        </form>
+                    </details>
+
                     <form asp-controller="ProcessamentoPericial" asp-action="EmitirLaudo" method="post" class="formulario-inline">
                         @Html.AntiForgeryToken()
                         <input type="hidden" name="PericiaId" value="@item.PericiaId" />
@@ -148,6 +222,23 @@ else
             padding: 0.625rem 0.75rem;
             resize: vertical;
             font-family: inherit;
+        }
+
+        .operacao-amostra-detalhes {
+            border-top: 1px solid var(--cor-borda);
+            padding-top: 0.75rem;
+            margin-top: 0.75rem;
+        }
+
+        .operacao-amostra-detalhes summary {
+            cursor: pointer;
+            font-size: 0.875rem;
+            font-weight: 600;
+            color: var(--cor-texto-suave);
+        }
+
+        .operacao-amostra-detalhes .formulario-inline {
+            margin-top: 0.75rem;
         }
     </style>
 }
