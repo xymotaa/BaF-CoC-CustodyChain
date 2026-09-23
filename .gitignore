@@ -3,7 +3,7 @@
 docs/
 
 # Log de alterações gerado por sessão (não é entregável do TCC)
-changelog/
+changelog
 
 # .NET
 bin/
