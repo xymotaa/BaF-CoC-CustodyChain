@@ -1,21 +1,35 @@
 using System.Diagnostics;
-using Microsoft.AspNetCore.Mvc;
+using CustodyChain.Web.Data;
 using CustodyChain.Web.Models;
+using CustodyChain.Web.Models.ViewModels;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 
 namespace CustodyChain.Web.Controllers;
 
-public class HomeController : Controller
+[Authorize]
+public class HomeController(CustodyChainDbContext db) : Controller
 {
-    public IActionResult Index()
+    public async Task<IActionResult> Index()
     {
-        return View();
+        var contagemPorEstado = await db.Vestigios
+            .GroupBy(v => v.Estado)
+            .Select(g => new ContagemEstadoViewModel(g.Key.ToString(), g.Count()))
+            .ToListAsync();
+
+        var modelo = new DashboardViewModel
+        {
+            TotalVestigios = contagemPorEstado.Sum(c => c.Quantidade),
+            TotalProcessosAtivos = await db.Processos.CountAsync(p => p.Situacao == Models.Entities.SituacaoProcesso.ATIVO),
+            RegistrosLedgerPendentes = await db.RegistrosLedger.CountAsync(r => r.Estado == Models.Entities.EstadoRegistroLedger.PENDENTE),
+            ContagemPorEstado = contagemPorEstado
+        };
+
+        return View(modelo);
     }
 
-    public IActionResult Privacy()
-    {
-        return View();
-    }
-
+    [AllowAnonymous]
     [ResponseCache(Duration = 0, Location = ResponseCacheLocation.None, NoStore = true)]
     public IActionResult Error()
     {

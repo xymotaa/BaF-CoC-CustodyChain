@@ -1,0 +1,87 @@
+:root {
+    --font-sans: "Source Sans 3", system-ui, sans-serif;
+    --font-mono: "JetBrains Mono", ui-monospace, monospace;
+
+    /* Neutros (slate) */
+    --cor-fundo: #f6f7f9;
+    --cor-superficie: #ffffff;
+    --cor-superficie-elevada: #ffffff;
+    --cor-borda: #d7dce3;
+    --cor-borda-forte: #b7c0cc;
+    --cor-texto: #1c2430;
+    --cor-texto-suave: #4c5768;
+    --cor-texto-fraco: #7c8899;
+
+    /* Acento único: azul institucional */
+    --cor-acento: #2c4a6e;
+    --cor-acento-hover: #223a57;
+    --cor-acento-texto: #ffffff;
+    --cor-acento-suave: #e6ecf3;
+
+    /* Estados semânticos */
+    --cor-sucesso: #1f6f4a;
+    --cor-sucesso-fundo: #e6f2ec;
+    --cor-alerta: #8a5a10;
+    --cor-alerta-fundo: #faf0dd;
+    --cor-erro: #9c2b2b;
+    --cor-erro-fundo: #fbe9e9;
+
+    --raio: 6px;
+    --raio-pequeno: 4px;
+    --sombra-elevacao: 0 1px 2px rgba(28, 36, 48, 0.06), 0 4px 12px rgba(28, 36, 48, 0.06);
+
+    --largura-sidebar: 264px;
+    --altura-navbar: 64px;
+}
+
+@media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+        --cor-fundo: #14181f;
+        --cor-superficie: #1b212b;
+        --cor-superficie-elevada: #222936;
+        --cor-borda: #2e3746;
+        --cor-borda-forte: #3d4859;
+        --cor-texto: #e8ebf0;
+        --cor-texto-suave: #b0b9c7;
+        --cor-texto-fraco: #7c8899;
+
+        --cor-acento: #6f97c4;
+        --cor-acento-hover: #8bacd4;
+        --cor-acento-texto: #0e1520;
+        --cor-acento-suave: #223449;
+
+        --cor-sucesso: #5fb98a;
+        --cor-sucesso-fundo: #16281f;
+        --cor-alerta: #d9a54a;
+        --cor-alerta-fundo: #2c2210;
+        --cor-erro: #e08080;
+        --cor-erro-fundo: #2c1616;
+
+        --sombra-elevacao: 0 1px 2px rgba(0, 0, 0, 0.3), 0 4px 16px rgba(0, 0, 0, 0.35);
+    }
+}
+
+:root[data-theme="dark"] {
+    --cor-fundo: #14181f;
+    --cor-superficie: #1b212b;
+    --cor-superficie-elevada: #222936;
+    --cor-borda: #2e3746;
+    --cor-borda-forte: #3d4859;
+    --cor-texto: #e8ebf0;
+    --cor-texto-suave: #b0b9c7;
+    --cor-texto-fraco: #7c8899;
+
+    --cor-acento: #6f97c4;
+    --cor-acento-hover: #8bacd4;
+    --cor-acento-texto: #0e1520;
+    --cor-acento-suave: #223449;
+
+    --cor-sucesso: #5fb98a;
+    --cor-sucesso-fundo: #16281f;
+    --cor-alerta: #d9a54a;
+    --cor-alerta-fundo: #2c2210;
+    --cor-erro: #e08080;
+    --cor-erro-fundo: #2c1616;
+
+    --sombra-elevacao: 0 1px 2px rgba(0, 0, 0, 0.3), 0 4px 16px rgba(0, 0, 0, 0.35);
+}

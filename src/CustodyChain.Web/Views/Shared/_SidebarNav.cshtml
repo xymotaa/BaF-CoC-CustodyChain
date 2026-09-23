@@ -1,0 +1,59 @@
+@{
+    string acaoAtual = ViewContext.RouteData.Values["action"]?.ToString() ?? "";
+    string controladorAtual = ViewContext.RouteData.Values["controller"]?.ToString() ?? "";
+
+    bool EhAtual(string controlador, string acao) =>
+        string.Equals(controladorAtual, controlador, StringComparison.OrdinalIgnoreCase)
+        && string.Equals(acaoAtual, acao, StringComparison.OrdinalIgnoreCase);
+}
+
+<nav class="sidebar-nav" aria-label="Navegação principal">
+
+    <a class="sidebar-link" href="/" aria-current="@(EhAtual("Home", "Index") ? "page" : null)">
+        <span class="sidebar-link-icone"><svg><use href="#icone-painel" /></svg></span>
+        Painel
+    </a>
+
+    <div class="sidebar-grupo-titulo">Central de Custódia</div>
+    <a class="sidebar-link" href="#" aria-disabled="true">
+        <span class="sidebar-link-icone"><svg><use href="#icone-vestigio" /></svg></span>
+        Cadastro de vestígio
+    </a>
+    <a class="sidebar-link" href="#" aria-disabled="true">
+        <span class="sidebar-link-icone"><svg><use href="#icone-recebimento" /></svg></span>
+        Recebimento
+    </a>
+    <a class="sidebar-link" href="#" aria-disabled="true">
+        <span class="sidebar-link-icone"><svg><use href="#icone-movimentacao" /></svg></span>
+        Movimentações
+    </a>
+    <a class="sidebar-link" href="#" aria-disabled="true">
+        <span class="sidebar-link-icone"><svg><use href="#icone-arquivo" /></svg></span>
+        Arquivo
+    </a>
+    <a class="sidebar-link" href="#" aria-disabled="true">
+        <span class="sidebar-link-icone"><svg><use href="#icone-descarte" /></svg></span>
+        Destinação final
+    </a>
+    <a class="sidebar-link" href="#" aria-disabled="true">
+        <span class="sidebar-link-icone"><svg><use href="#icone-relatorio" /></svg></span>
+        Relatórios
+    </a>
+
+    <div class="sidebar-grupo-titulo">Perito</div>
+    <a class="sidebar-link" href="#" aria-disabled="true">
+        <span class="sidebar-link-icone"><svg><use href="#icone-pericia" /></svg></span>
+        Processamento pericial
+    </a>
+
+    <div class="sidebar-grupo-titulo">Administração</div>
+    <a class="sidebar-link" href="#" aria-disabled="true">
+        <span class="sidebar-link-icone"><svg><use href="#icone-perfis" /></svg></span>
+        Gestão de perfis
+    </a>
+    <a class="sidebar-link" href="#" aria-disabled="true">
+        <span class="sidebar-link-icone"><svg><use href="#icone-auditoria" /></svg></span>
+        Auditoria e verificador
+    </a>
+
+</nav>

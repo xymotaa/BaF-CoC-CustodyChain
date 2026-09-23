@@ -1,0 +1,168 @@
+/* Botões */
+
+.botao {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    height: 40px;
+    padding: 0 1rem;
+    border-radius: var(--raio-pequeno);
+    border: 1px solid transparent;
+    font-weight: 600;
+    font-size: 0.875rem;
+    cursor: pointer;
+    transition: transform 0.1s ease, background 0.15s ease, border-color 0.15s ease;
+}
+
+.botao:active {
+    transform: scale(0.98);
+}
+
+.botao-primario {
+    background: var(--cor-acento);
+    color: var(--cor-acento-texto);
+}
+
+.botao-primario:hover {
+    background: var(--cor-acento-hover);
+}
+
+.botao-secundario {
+    background: var(--cor-superficie);
+    color: var(--cor-texto);
+    border-color: var(--cor-borda-forte);
+}
+
+.botao-secundario:hover {
+    background: var(--cor-fundo);
+}
+
+.botao-largura-total {
+    width: 100%;
+}
+
+.botao:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+/* Cartão de superfície (uso deliberado: só quando eleva algo do fundo) */
+
+.cartao {
+    background: var(--cor-superficie);
+    border: 1px solid var(--cor-borda);
+    border-radius: var(--raio);
+    box-shadow: var(--sombra-elevacao);
+}
+
+/* Formulários */
+
+.campo {
+    display: flex;
+    flex-direction: column;
+    gap: 0.375rem;
+    margin-bottom: 1.125rem;
+}
+
+.campo-rotulo {
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: var(--cor-texto);
+}
+
+.campo-ajuda {
+    font-size: 0.8125rem;
+    color: var(--cor-texto-fraco);
+}
+
+.campo-entrada {
+    height: 42px;
+    padding: 0 0.75rem;
+    border: 1px solid var(--cor-borda-forte);
+    border-radius: var(--raio-pequeno);
+    background: var(--cor-superficie);
+    color: var(--cor-texto);
+}
+
+.campo-entrada:focus {
+    border-color: var(--cor-acento);
+}
+
+.campo-entrada.campo-invalido {
+    border-color: var(--cor-erro);
+}
+
+.campo-erro {
+    font-size: 0.8125rem;
+    color: var(--cor-erro);
+    font-weight: 500;
+}
+
+/* Alertas / mensagens de estado */
+
+.alerta {
+    display: flex;
+    gap: 0.625rem;
+    align-items: flex-start;
+    padding: 0.75rem 0.875rem;
+    border-radius: var(--raio-pequeno);
+    font-size: 0.875rem;
+    border: 1px solid transparent;
+    margin-bottom: 1.125rem;
+}
+
+.alerta-erro {
+    background: var(--cor-erro-fundo);
+    color: var(--cor-erro);
+    border-color: color-mix(in srgb, var(--cor-erro) 30%, transparent);
+}
+
+.alerta-sucesso {
+    background: var(--cor-sucesso-fundo);
+    color: var(--cor-sucesso);
+    border-color: color-mix(in srgb, var(--cor-sucesso) 30%, transparent);
+}
+
+.alerta-icone {
+    width: 18px;
+    height: 18px;
+    flex-shrink: 0;
+    margin-top: 0.0625rem;
+}
+
+.alerta-icone svg {
+    width: 100%;
+    height: 100%;
+}
+
+.botao-sair {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    border: none;
+    border-radius: var(--raio-pequeno);
+    background: transparent;
+    color: var(--cor-texto-fraco);
+    cursor: pointer;
+}
+
+.botao-sair:hover {
+    background: var(--cor-fundo);
+    color: var(--cor-texto);
+}
+
+/* Distintivo de perfil */
+
+.selo {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.1875rem 0.5rem;
+    border-radius: 999px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    background: var(--cor-acento-suave);
+    color: var(--cor-acento);
+}

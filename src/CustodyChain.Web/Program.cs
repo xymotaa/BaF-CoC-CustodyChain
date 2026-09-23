@@ -1,5 +1,6 @@
 using CustodyChain.Web.Data;
 using CustodyChain.Web.Services.Ledger;
+using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.EntityFrameworkCore;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -16,6 +17,18 @@ builder.Services.AddDbContext<CustodyChainDbContext>(options =>
 // LedgerFake destrava o desenvolvimento das telas sem depender do Fabric.
 // Trocar por um IServicoLedger real (gateway) sem alterar controllers.
 builder.Services.AddSingleton<IServicoLedger, LedgerFake>();
+
+// Sessão do interveniente autenticado. Não há senha centralizada (a senha
+// protege a wallet no dispositivo); o cookie guarda só a sessão pós-login.
+builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme)
+    .AddCookie(options =>
+    {
+        options.LoginPath = "/entrar";
+        options.LogoutPath = "/sair";
+        options.AccessDeniedPath = "/entrar";
+        options.ExpireTimeSpan = TimeSpan.FromHours(8);
+        options.SlidingExpiration = true;
+    });
 
 var app = builder.Build();
 
@@ -38,6 +51,7 @@ if (!app.Environment.IsDevelopment())
 app.UseHttpsRedirection();
 app.UseRouting();
 
+app.UseAuthentication();
 app.UseAuthorization();
 
 app.MapStaticAssets();

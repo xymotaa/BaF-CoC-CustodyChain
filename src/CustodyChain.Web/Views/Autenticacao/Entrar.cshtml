@@ -1,0 +1,96 @@
+@model CustodyChain.Web.Models.ViewModels.LoginViewModel
+@{
+    ViewData["Title"] = "Entrar";
+    Layout = "_LayoutMinimo";
+}
+
+<div class="tela-login">
+    <div class="tela-login-cartao cartao">
+        <div class="tela-login-cabecalho">
+            <span class="tela-login-selo">CoC</span>
+            <h1>CustodyChain</h1>
+            <p class="tela-login-subtitulo">Cadeia de custódia de evidências periciais</p>
+        </div>
+
+        @if (!ViewData.ModelState.IsValid && ViewData.ModelState[string.Empty]?.Errors.Count > 0)
+        {
+            <div class="alerta alerta-erro" role="alert">
+                <span class="alerta-icone"><svg><use href="#icone-alerta" /></svg></span>
+                <span>@ViewData.ModelState[string.Empty]!.Errors[0].ErrorMessage</span>
+            </div>
+        }
+
+        <form asp-controller="Autenticacao" asp-action="Entrar" method="post" novalidate>
+            @Html.AntiForgeryToken()
+
+            <div class="campo">
+                <label asp-for="Did" class="campo-rotulo">Credencial DID</label>
+                <select asp-for="Did" class="campo-entrada @(ViewData.ModelState["Did"]?.Errors.Count > 0 ? "campo-invalido" : "")">
+                    <option value="">Selecione sua credencial</option>
+                    @foreach (var opcao in Model.CredenciaisDisponiveis)
+                    {
+                        <option value="@opcao.Did">@opcao.Nome — @opcao.Perfil</option>
+                    }
+                </select>
+                <span asp-validation-for="Did" class="campo-erro"></span>
+            </div>
+
+            <div class="campo">
+                <label asp-for="Senha" class="campo-rotulo">Senha da wallet</label>
+                <input asp-for="Senha" type="password" class="campo-entrada @(ViewData.ModelState["Senha"]?.Errors.Count > 0 ? "campo-invalido" : "")" autocomplete="current-password" />
+                <span class="campo-ajuda">Protege sua wallet neste dispositivo. Não é enviada nem armazenada no servidor.</span>
+                <span asp-validation-for="Senha" class="campo-erro"></span>
+            </div>
+
+            <button type="submit" class="botao botao-primario botao-largura-total">Entrar</button>
+        </form>
+    </div>
+</div>
+
+@section Styles {
+    <style>
+        .tela-login {
+            min-height: 100dvh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 1.5rem;
+        }
+
+        .tela-login-cartao {
+            width: 100%;
+            max-width: 380px;
+            padding: 2rem;
+        }
+
+        .tela-login-cabecalho {
+            text-align: center;
+            margin-bottom: 1.75rem;
+        }
+
+        .tela-login-selo {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 44px;
+            height: 44px;
+            border-radius: var(--raio);
+            background: var(--cor-acento);
+            color: var(--cor-acento-texto);
+            font-weight: 700;
+            font-size: 0.9rem;
+            margin-bottom: 0.875rem;
+        }
+
+        .tela-login-cabecalho h1 {
+            font-size: 1.25rem;
+            margin-bottom: 0.25rem;
+        }
+
+        .tela-login-subtitulo {
+            color: var(--cor-texto-fraco);
+            font-size: 0.875rem;
+            margin: 0;
+        }
+    </style>
+}

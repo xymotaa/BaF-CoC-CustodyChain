@@ -1,50 +1,68 @@
-﻿<!DOCTYPE html>
-<html lang="en">
+@{
+    string tituloPagina = ViewData["Title"]?.ToString() ?? "CustodyChain";
+    string nomeUsuario = User.Identity?.Name ?? "";
+    string perfilUsuario = User.FindFirst("perfil_nome")?.Value ?? "";
+    string iniciais = string.Concat(nomeUsuario.Split(' ', StringSplitOptions.RemoveEmptyEntries)
+        .Take(2)
+        .Select(parte => char.ToUpperInvariant(parte[0])));
+}
+<!DOCTYPE html>
+<html lang="pt-BR">
 <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>@ViewData["Title"] - CustodyChain.Web</title>
-    <script type="importmap"></script>
-    <link rel="stylesheet" href="~/lib/bootstrap/dist/css/bootstrap.min.css" />
-    <link rel="stylesheet" href="~/css/site.css" asp-append-version="true" />
-    <link rel="stylesheet" href="~/CustodyChain.Web.styles.css" asp-append-version="true" />
+    <title>@tituloPagina — CustodyChain</title>
+    <link rel="stylesheet" href="~/css/fonts.css" asp-append-version="true" />
+    <link rel="stylesheet" href="~/css/tokens.css" asp-append-version="true" />
+    <link rel="stylesheet" href="~/css/base.css" asp-append-version="true" />
+    <link rel="stylesheet" href="~/css/componentes.css" asp-append-version="true" />
+    <link rel="stylesheet" href="~/css/layout.css" asp-append-version="true" />
+    @await RenderSectionAsync("Styles", required: false)
 </head>
 <body>
-    <header>
-        <nav class="navbar navbar-expand-sm navbar-toggleable-sm navbar-light bg-white border-bottom box-shadow mb-3">
-            <div class="container-fluid">
-                <a class="navbar-brand" asp-area="" asp-controller="Home" asp-action="Index">CustodyChain.Web</a>
-                <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target=".navbar-collapse" aria-controls="navbarSupportedContent"
-                        aria-expanded="false" aria-label="Toggle navigation">
-                    <span class="navbar-toggler-icon"></span>
-                </button>
-                <div class="navbar-collapse collapse d-sm-inline-flex justify-content-between">
-                    <ul class="navbar-nav flex-grow-1">
-                        <li class="nav-item">
-                            <a class="nav-link text-dark" asp-area="" asp-controller="Home" asp-action="Index">Home</a>
-                        </li>
-                        <li class="nav-item">
-                            <a class="nav-link text-dark" asp-area="" asp-controller="Home" asp-action="Privacy">Privacy</a>
-                        </li>
-                    </ul>
-                </div>
+    @await Html.PartialAsync("_IconesSvg")
+
+    <input type="checkbox" id="sidebar-toggle" class="sidebar-toggle-input" />
+
+    <div class="app-shell">
+        <aside class="sidebar">
+            <div class="sidebar-marca">
+                <span class="sidebar-marca-selo">CoC</span>
+                <span>CustodyChain</span>
             </div>
-        </nav>
-    </header>
-    <div class="container">
-        <main role="main" class="pb-3">
+            @await Html.PartialAsync("_SidebarNav")
+        </aside>
+
+        <header class="navbar">
+            <div class="navbar-esquerda">
+                <label for="sidebar-toggle" class="navbar-toggle-btn" aria-label="Alternar menu de navegação">
+                    <svg width="20" height="20"><use href="#icone-menu" /></svg>
+                </label>
+                <span class="navbar-titulo">@tituloPagina</span>
+            </div>
+
+            <div class="navbar-usuario">
+                <span class="navbar-usuario-avatar">@iniciais</span>
+                <div>
+                    <div>@nomeUsuario</div>
+                    <div class="navbar-usuario-perfil">@perfilUsuario</div>
+                </div>
+                <form asp-controller="Autenticacao" asp-action="Sair" method="post">
+                    @Html.AntiForgeryToken()
+                    <button type="submit" class="botao-sair" title="Sair" aria-label="Sair">
+                        <svg width="18" height="18"><use href="#icone-sair" /></svg>
+                    </button>
+                </form>
+            </div>
+        </header>
+
+        <label for="sidebar-toggle" class="sidebar-scrim" aria-hidden="true"></label>
+
+        <main class="main-content">
             @RenderBody()
         </main>
     </div>
 
-    <footer class="border-top footer text-muted">
-        <div class="container">
-            &copy; 2026 - CustodyChain.Web - <a asp-area="" asp-controller="Home" asp-action="Privacy">Privacy</a>
-        </div>
-    </footer>
-    <script src="~/lib/jquery/dist/jquery.min.js"></script>
-    <script src="~/lib/bootstrap/dist/js/bootstrap.bundle.min.js"></script>
-    <script src="~/js/site.js" asp-append-version="true"></script>
     @await RenderSectionAsync("Scripts", required: false)
 </body>
 </html>
