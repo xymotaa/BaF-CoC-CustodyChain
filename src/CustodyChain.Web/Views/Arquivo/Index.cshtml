@@ -7,111 +7,124 @@
     <h1>Arquivo</h1>
 </div>
 
-<form asp-controller="Arquivo" asp-action="Index" method="get" class="cartao formulario-busca">
-    <div class="campo campo-busca">
-        <label for="busca" class="campo-rotulo sr-only">Buscar</label>
-        <input type="search" id="busca" name="busca" value="@Model.Busca" class="campo-entrada" placeholder="Rótulo, hash, processo ou responsável" />
-    </div>
-    <div class="campo campo-filtro">
-        <label for="categoria" class="campo-rotulo sr-only">Categoria</label>
-        <select id="categoria" name="categoria" class="campo-entrada">
-            <option value="">Todas as categorias</option>
-            @foreach (var cat in Model.Categorias)
-            {
-                <option value="@cat" selected="@(cat == Model.CategoriaFiltro)">@cat</option>
-            }
-        </select>
-    </div>
-    <button type="submit" class="botao botao-secundario">Buscar</button>
-    <a href="/arquivo/entrada" class="botao botao-secundario">Registrar entrada</a>
-</form>
-
-@if (Model.Itens.Count == 0)
-{
-    <div class="painel-vazio">
-        <span class="painel-vazio-icone"><svg width="28" height="28"><use href="#icone-arquivo" /></svg></span>
-        <p>Nenhum vestígio encontrado.</p>
-    </div>
-}
-else
-{
-    <div class="tabela-wrapper">
-        <table class="tabela-arquivo">
-            <thead>
-                <tr>
-                    <th>Rótulo</th>
-                    <th>Tipo</th>
-                    <th>Processo</th>
-                    <th>Estado</th>
-                    <th>Custódia atual</th>
-                    <th>Hash</th>
-                    <th>Guarda</th>
-                </tr>
-            </thead>
-            <tbody>
-                @foreach (var item in Model.Itens)
+<div class="cartao painel-arquivo">
+    <form asp-controller="Arquivo" asp-action="Index" method="get" class="formulario-busca">
+        <div class="campo campo-busca">
+            <label for="busca" class="campo-rotulo sr-only">Buscar</label>
+            <input type="search" id="busca" name="busca" value="@Model.Busca" class="campo-entrada" placeholder="Rótulo, hash, processo ou responsável" />
+        </div>
+        <div class="campo campo-filtro">
+            <label for="categoria" class="campo-rotulo sr-only">Categoria</label>
+            <select id="categoria" name="categoria" class="campo-entrada">
+                <option value="">Todas as categorias</option>
+                @foreach (var cat in Model.Categorias)
                 {
-                    <tr>
-                        <td>
-                            <span class="mono">@item.RotuloEvidencia</span>
-                            <div class="tabela-descricao">@item.Descricao</div>
-                        </td>
-                        <td>@item.TipoVestigio</td>
-                        <td class="mono">@item.ProcessoNumero</td>
-                        <td><span class="selo">@item.Estado</span></td>
-                        <td>@(item.CustodianteNome ?? "—")</td>
-                        <td>
-                            @if (!string.IsNullOrEmpty(item.HashSha256))
-                            {
-                                <span class="mono tabela-hash" title="@item.HashSha256">@item.HashSha256[..12]…</span>
-                            }
-                            else
-                            {
-                                <span>—</span>
-                            }
-                        </td>
-                        <td>
-                            @if (item.PrazoGuardaAte is not null)
-                            {
-                                <span class="@(item.PrazoVencido ? "tabela-prazo-vencido" : "")">
-                                    @item.PrazoGuardaAte.Value.ToString("dd/MM/yyyy")
-                                    @if (item.PrazoVencido)
-                                    {
-                                        <span class="selo selo-alerta">Vencido</span>
-                                    }
-                                </span>
-                            }
-                            else
-                            {
-                                <span>—</span>
-                            }
-                        </td>
-                    </tr>
+                    <option value="@cat" selected="@(cat == Model.CategoriaFiltro)">@cat</option>
                 }
-            </tbody>
-        </table>
-    </div>
-}
+            </select>
+        </div>
+        <button type="submit" class="botao botao-secundario botao-altura-campo">Buscar</button>
+        <a href="/arquivo/entrada" class="botao botao-secundario botao-altura-campo">Registrar entrada</a>
+    </form>
+
+    @if (Model.Itens.Count == 0)
+    {
+        <div class="painel-vazio">
+            <span class="painel-vazio-icone"><svg width="28" height="28"><use href="#icone-arquivo" /></svg></span>
+            <p>Nenhum vestígio encontrado.</p>
+        </div>
+    }
+    else
+    {
+        <div class="tabela-wrapper">
+            <table class="tabela-arquivo">
+                <thead>
+                    <tr>
+                        <th>Rótulo</th>
+                        <th>Tipo</th>
+                        <th>Processo</th>
+                        <th>Estado</th>
+                        <th>Custódia atual</th>
+                        <th>Hash</th>
+                        <th>Guarda</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var item in Model.Itens)
+                    {
+                        <tr>
+                            <td>
+                                <span class="mono">@item.RotuloEvidencia</span>
+                                <div class="tabela-descricao">@item.Descricao</div>
+                            </td>
+                            <td>@item.TipoVestigio</td>
+                            <td class="mono">@item.ProcessoNumero</td>
+                            <td><span class="selo">@item.Estado</span></td>
+                            <td>@(item.CustodianteNome ?? "—")</td>
+                            <td>
+                                @if (!string.IsNullOrEmpty(item.HashSha256))
+                                {
+                                    <span class="mono tabela-hash" title="@item.HashSha256">@item.HashSha256[..12]…</span>
+                                }
+                                else
+                                {
+                                    <span>—</span>
+                                }
+                            </td>
+                            <td>
+                                @if (item.PrazoGuardaAte is not null)
+                                {
+                                    <span class="@(item.PrazoVencido ? "tabela-prazo-vencido" : "")">
+                                        @item.PrazoGuardaAte.Value.ToString("dd/MM/yyyy")
+                                        @if (item.PrazoVencido)
+                                        {
+                                            <span class="selo selo-alerta">Vencido</span>
+                                        }
+                                    </span>
+                                }
+                                else
+                                {
+                                    <span>—</span>
+                                }
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+</div>
 
 @section Styles {
     <style>
         .pagina-cabecalho { margin-bottom: 1.5rem; }
         .pagina-cabecalho h1 { margin-bottom: 0.25rem; }
 
-        .formulario-busca {
-            display: flex;
-            gap: 0.75rem;
-            align-items: flex-end;
-            margin-bottom: 1.5rem;
-            flex-wrap: wrap;
+        .painel-arquivo {
             padding: 1.125rem 1.25rem;
             box-shadow: none;
         }
 
-        .campo-busca { flex: 1 1 280px; margin-bottom: 0; }
-        .campo-filtro { flex: 0 1 200px; margin-bottom: 0; }
+        .formulario-busca {
+            display: flex;
+            gap: 0.75rem;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+
+        .campo-busca,
+        .campo-filtro {
+            margin-bottom: 0;
+            gap: 0;
+        }
+
+        .campo-busca { flex: 1 1 280px; }
+        .campo-filtro { flex: 0 1 200px; }
+
+        .botao-altura-campo { height: 36px; }
 
         .painel-vazio {
+            margin-top: 1.25rem;
             border: 1px dashed var(--cor-borda-forte);
             border-radius: var(--raio);
             padding: 2rem 1.5rem;
@@ -127,9 +140,18 @@ else
 
         .tabela-wrapper {
             overflow-x: auto;
-            border: 1px solid var(--cor-borda);
-            border-radius: var(--raio);
-            background: var(--cor-superficie);
+            border-top: 1px solid var(--cor-borda);
+            margin: 1.25rem -1.25rem -1.125rem;
+        }
+
+        .tabela-arquivo th:first-child,
+        .tabela-arquivo td:first-child {
+            padding-left: 1.25rem;
+        }
+
+        .tabela-arquivo th:last-child,
+        .tabela-arquivo td:last-child {
+            padding-right: 1.25rem;
         }
 
         .tabela-arquivo {
