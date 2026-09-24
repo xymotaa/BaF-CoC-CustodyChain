@@ -3,11 +3,8 @@
     ViewData["Title"] = "Arquivo";
 }
 
-<div class="pagina-cabecalho pagina-cabecalho-acao">
-    <div>
-        <h1>Arquivo</h1>
-    </div>
-    <a href="/arquivo/entrada" class="botao botao-secundario">Registrar entrada</a>
+<div class="pagina-cabecalho">
+    <h1>Arquivo</h1>
 </div>
 
 <form asp-controller="Arquivo" asp-action="Index" method="get" class="formulario-busca">
@@ -26,6 +23,7 @@
         </select>
     </div>
     <button type="submit" class="botao botao-secundario">Buscar</button>
+    <a href="/arquivo/entrada" class="botao botao-secundario">Registrar entrada</a>
 </form>
 
 @if (Model.Itens.Count == 0)
@@ -99,14 +97,6 @@ else
     <style>
         .pagina-cabecalho { margin-bottom: 1.5rem; }
         .pagina-cabecalho h1 { margin-bottom: 0.25rem; }
-
-        .pagina-cabecalho-acao {
-            display: flex;
-            justify-content: space-between;
-            align-items: flex-start;
-            gap: 1rem;
-            flex-wrap: wrap;
-        }
 
         .formulario-busca {
             display: flex;
