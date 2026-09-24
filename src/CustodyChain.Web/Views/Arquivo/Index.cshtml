@@ -64,7 +64,7 @@
                             <td>
                                 @if (!string.IsNullOrEmpty(item.HashSha256))
                                 {
-                                    <span class="mono tabela-hash" title="@item.HashSha256">@item.HashSha256[..12]…</span>
+                                    <span class="mono tabela-hash">@item.HashSha256</span>
                                 }
                                 else
                                 {
@@ -171,9 +171,10 @@
         }
 
         .tabela-arquivo td {
-            padding: 0.75rem 1rem;
+            padding: 1rem;
             border-bottom: 1px solid var(--cor-borda);
             vertical-align: top;
+            white-space: nowrap;
         }
 
         .tabela-arquivo tbody tr:last-child td {
@@ -183,11 +184,13 @@
         .tabela-descricao {
             color: var(--cor-texto-fraco);
             font-size: 0.8125rem;
-            margin-top: 0.125rem;
+            margin-top: 0.25rem;
+            white-space: normal;
         }
 
         .tabela-hash {
-            cursor: help;
+            font-size: 0.8125rem;
+            color: var(--cor-texto-suave);
         }
 
         .tabela-prazo-vencido {
