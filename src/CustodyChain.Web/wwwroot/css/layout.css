@@ -45,12 +45,6 @@
     cursor: pointer;
 }
 
-.navbar-titulo {
-    font-weight: 600;
-    font-size: 1rem;
-    color: var(--cor-texto);
-}
-
 .navbar-usuario {
     display: flex;
     align-items: center;
@@ -81,7 +75,6 @@
 .sidebar {
     grid-area: sidebar;
     background: var(--cor-superficie);
-    border-right: 1px solid var(--cor-borda);
     display: flex;
     flex-direction: column;
     overflow-y: auto;
@@ -120,6 +113,8 @@
     display: flex;
     flex-direction: column;
     gap: 0.125rem;
+    border-right: 1px solid var(--cor-borda);
+    flex: 1;
 }
 
 .sidebar-grupo-titulo {
