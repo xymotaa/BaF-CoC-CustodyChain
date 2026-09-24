@@ -95,10 +95,14 @@ else
             display: flex;
             flex-direction: column;
             gap: 1.25rem;
-            max-width: 760px;
         }
 
-        .secao-formulario { padding: 1.5rem; }
+        .secao-formulario {
+            padding: 1.125rem 1.25rem;
+            font-size: 0.9rem;
+            box-shadow: none;
+        }
+
         .grade-campos { display: grid; gap: 0 1rem; }
         .grade-2col { grid-template-columns: 1fr 1fr; }
 
@@ -109,7 +113,7 @@ else
         .campo-textarea {
             height: auto;
             padding: 0.625rem 0.75rem;
-            resize: vertical;
+            resize: none;
             font-family: inherit;
         }
 
