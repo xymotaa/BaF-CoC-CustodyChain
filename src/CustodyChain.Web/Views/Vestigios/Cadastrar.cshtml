@@ -65,7 +65,7 @@
 
         <div class="campo">
             <label asp-for="Descricao" class="campo-rotulo"></label>
-            <textarea asp-for="Descricao" rows="3" class="campo-entrada campo-textarea @(ViewData.ModelState["Descricao"]?.Errors.Count > 0 ? "campo-invalido" : "")"></textarea>
+            <textarea asp-for="Descricao" rows="4" class="campo-entrada campo-textarea @(ViewData.ModelState["Descricao"]?.Errors.Count > 0 ? "campo-invalido" : "")"></textarea>
             <span asp-validation-for="Descricao" class="campo-erro"></span>
         </div>
     </section>
