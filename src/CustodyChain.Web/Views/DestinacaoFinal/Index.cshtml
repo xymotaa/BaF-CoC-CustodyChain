@@ -3,12 +3,8 @@
     ViewData["Title"] = "Aprovar destinação final";
 }
 
-<div class="pagina-cabecalho pagina-cabecalho-acao">
-    <div>
-        <h1>Aprovar destinação final</h1>
-        <p class="campo-ajuda">Solicitações de descarte ou restituição aguardando aprovação (RN16: quem aprova não pode ser quem solicitou).</p>
-    </div>
-    <a href="/destinacao-final/solicitar" class="botao botao-secundario">Nova solicitação</a>
+<div class="pagina-cabecalho">
+    <h1>Aprovar destinação final</h1>
 </div>
 
 @if (TempData["MensagemSucesso"] is string mensagemSucesso)
@@ -63,11 +59,14 @@ else
                     </div>
                 </dl>
 
-                <form asp-controller="DestinacaoFinal" asp-action="Aprovar" method="post">
-                    @Html.AntiForgeryToken()
-                    <input type="hidden" name="descarteId" value="@item.DescarteId" />
-                    <button type="submit" class="botao botao-primario">Aprovar e executar</button>
-                </form>
+                <div class="item-recebimento-acoes">
+                    <a href="/destinacao-final/solicitar" class="botao botao-secundario">Nova solicitação</a>
+                    <form asp-controller="DestinacaoFinal" asp-action="Aprovar" method="post">
+                        @Html.AntiForgeryToken()
+                        <input type="hidden" name="descarteId" value="@item.DescarteId" />
+                        <button type="submit" class="botao botao-primario">Aprovar e executar</button>
+                    </form>
+                </div>
             </section>
         }
     </div>
@@ -77,14 +76,6 @@ else
     <style>
         .pagina-cabecalho { margin-bottom: 1.5rem; }
         .pagina-cabecalho h1 { margin-bottom: 0.25rem; }
-
-        .pagina-cabecalho-acao {
-            display: flex;
-            justify-content: space-between;
-            align-items: flex-start;
-            gap: 1rem;
-            flex-wrap: wrap;
-        }
 
         .painel-vazio {
             border: 1px dashed var(--cor-borda-forte);
@@ -120,7 +111,7 @@ else
             margin-bottom: 0.75rem;
         }
 
-        .item-recebimento-rotulo { font-weight: 600; font-size: 1rem; }
+        .item-recebimento-rotulo { font-weight: 600; font-size: 1.125rem; }
 
         .item-recebimento-descricao {
             margin: 0.125rem 0 0;
@@ -147,10 +138,18 @@ else
         .item-recebimento-detalhes dd {
             margin: 0;
             font-size: 0.875rem;
+            overflow-wrap: break-word;
+        }
+
+        .item-recebimento-acoes {
+            display: flex;
+            justify-content: flex-end;
+            gap: 0.75rem;
         }
 
         @@media (max-width: 640px) {
             .item-recebimento-detalhes { grid-template-columns: 1fr; }
+            .item-recebimento-acoes { flex-wrap: wrap; }
         }
     </style>
 }
