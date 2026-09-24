@@ -63,13 +63,17 @@ else
                     <input asp-for="DidMagistrado" class="campo-entrada mono @(ViewData.ModelState["DidMagistrado"]?.Errors.Count > 0 ? "campo-invalido" : "")" placeholder="did:legal:judge:..." />
                     <span asp-validation-for="DidMagistrado" class="campo-erro"></span>
                 </div>
+            </div>
 
-                <div class="campo">
-                    <label asp-for="ArquivoAutorizacao" class="campo-rotulo"></label>
-                    <input asp-for="ArquivoAutorizacao" type="file" class="campo-entrada @(ViewData.ModelState["ArquivoAutorizacao"]?.Errors.Count > 0 ? "campo-invalido" : "")" />
-                    <span class="campo-ajuda">Mandado judicial em PDF ou imagem. Armazenado com verificação de integridade.</span>
-                    <span asp-validation-for="ArquivoAutorizacao" class="campo-erro"></span>
+            <div class="campo">
+                <label asp-for="ArquivoAutorizacao" class="campo-rotulo"></label>
+                <div class="campo-arquivo">
+                    <input asp-for="ArquivoAutorizacao" type="file" class="campo-arquivo-input @(ViewData.ModelState["ArquivoAutorizacao"]?.Errors.Count > 0 ? "campo-invalido" : "")" data-campo-arquivo-input />
+                    <label for="ArquivoAutorizacao" class="botao botao-secundario botao-altura-campo campo-arquivo-botao">Escolher arquivo</label>
+                    <span class="campo-arquivo-nome" data-campo-arquivo-nome data-placeholder="Nenhum arquivo selecionado">Nenhum arquivo selecionado</span>
                 </div>
+                <span class="campo-ajuda">Mandado judicial em PDF ou imagem. Armazenado com verificação de integridade.</span>
+                <span asp-validation-for="ArquivoAutorizacao" class="campo-erro"></span>
             </div>
 
             <div class="campo">
@@ -116,6 +120,43 @@ else
             font-family: inherit;
         }
 
+        .campo-arquivo {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+        }
+
+        .campo-arquivo-botao {
+            flex-shrink: 0;
+            cursor: pointer;
+        }
+
+        .campo-arquivo-nome {
+            flex: 1;
+            min-width: 0;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            font-size: 0.875rem;
+            color: var(--cor-texto-fraco);
+        }
+
+        .campo-arquivo-input {
+            position: absolute;
+            width: 1px;
+            height: 1px;
+            padding: 0;
+            margin: -1px;
+            overflow: hidden;
+            clip: rect(0, 0, 0, 0);
+            white-space: nowrap;
+            border: 0;
+        }
+
+        .campo-arquivo-input.campo-invalido ~ .campo-arquivo-nome {
+            color: var(--cor-erro);
+        }
+
         .formulario-acoes { display: flex; justify-content: flex-end; }
 
         .painel-vazio {
@@ -134,4 +175,17 @@ else
 
         .painel-vazio p { margin: 0 auto 0.25rem; }
     </style>
+}
+
+@section Scripts {
+    <script>
+        (function () {
+            var entrada = document.querySelector('[data-campo-arquivo-input]');
+            var nome = document.querySelector('[data-campo-arquivo-nome]');
+            if (!entrada || !nome) return;
+            entrada.addEventListener('change', function () {
+                nome.textContent = entrada.files.length > 0 ? entrada.files[0].name : nome.dataset.placeholder;
+            });
+        })();
+    </script>
 }
