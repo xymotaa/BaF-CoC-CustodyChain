@@ -7,7 +7,7 @@
     <h1>Arquivo</h1>
 </div>
 
-<form asp-controller="Arquivo" asp-action="Index" method="get" class="formulario-busca">
+<form asp-controller="Arquivo" asp-action="Index" method="get" class="cartao formulario-busca">
     <div class="campo campo-busca">
         <label for="busca" class="campo-rotulo sr-only">Buscar</label>
         <input type="search" id="busca" name="busca" value="@Model.Busca" class="campo-entrada" placeholder="Rótulo, hash, processo ou responsável" />
@@ -104,6 +104,8 @@ else
             align-items: flex-end;
             margin-bottom: 1.5rem;
             flex-wrap: wrap;
+            padding: 1.125rem 1.25rem;
+            box-shadow: none;
         }
 
         .campo-busca { flex: 1 1 280px; margin-bottom: 0; }
