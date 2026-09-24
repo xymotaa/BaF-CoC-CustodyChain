@@ -87,6 +87,11 @@
 
 .campo-entrada:focus {
     border-color: var(--cor-acento);
+    outline: none;
+}
+
+.campo-entrada:focus-visible {
+    outline: none;
 }
 
 .campo-entrada.campo-invalido {
