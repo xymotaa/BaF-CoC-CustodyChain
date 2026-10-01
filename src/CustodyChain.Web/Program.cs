@@ -1,6 +1,8 @@
 using System.Reflection;
 using CustodyChain.Web.Application.CadastroVestigio;
 using CustodyChain.Web.Application.Common;
+using CustodyChain.Web.Application.Remessa;
+using CustodyChain.Web.Application.Recebimento;
 using CustodyChain.Web.Data;
 using CustodyChain.Web.Security;
 using CustodyChain.Web.Services.Armazenamento;
@@ -37,6 +39,13 @@ builder.Services.AddDbContext<CustodyChainDbContext>(options =>
 builder.Services.AddScoped<ICadastrarVestigio, CadastrarVestigioUseCase>();
 builder.Services.AddScoped<ICadastroVestigioStore, CadastroVestigioStore>();
 builder.Services.AddScoped<ICadastroVestigioOpcoesQuery, CadastroVestigioOpcoesQuery>();
+builder.Services.AddScoped<ICriarRemessa, CriarRemessaUseCase>();
+builder.Services.AddScoped<ICriarRemessaStore, RemessaStore>();
+builder.Services.AddScoped<IRemessaOpcoesQuery, RemessaOpcoesQuery>();
+builder.Services.AddScoped<IConfirmarRecebimento, ConfirmarRecebimentoUseCase>();
+builder.Services.AddScoped<IRecusarRecebimento, RecusarRecebimentoUseCase>();
+builder.Services.AddScoped<IRecebimentoStore, RecebimentoStore>();
+builder.Services.AddScoped<IRecebimentoPendentesQuery, RecebimentoPendentesQuery>();
 builder.Services.AddSingleton<IClock, SystemClock>();
 builder.Services.AddSingleton<IGeradorIdentificadorCredencial, GeradorIdentificadorCredencial>();
 

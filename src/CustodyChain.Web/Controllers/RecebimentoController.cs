@@ -1,230 +1,80 @@
 using System.Security.Claims;
-using System.Security.Cryptography;
-using System.Text;
-using System.Text.Json;
-using CustodyChain.Web.Data;
-using CustodyChain.Web.Models.Entities;
+using CustodyChain.Web.Application.Recebimento;
 using CustodyChain.Web.Models.ViewModels;
-using CustodyChain.Web.Services.Ledger;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.EntityFrameworkCore;
 
 namespace CustodyChain.Web.Controllers;
 
 [Authorize]
-public class RecebimentoController(CustodyChainDbContext db, IServicoLedger ledger) : Controller
+public class RecebimentoController(
+    IConfirmarRecebimento confirmarRecebimento,
+    IRecusarRecebimento recusarRecebimento,
+    IRecebimentoPendentesQuery recebimentoPendentesQuery) : Controller
 {
     [HttpGet("/recebimento")]
-    public async Task<IActionResult> Index()
+    public async Task<IActionResult> Index(CancellationToken cancellationToken)
     {
-        var destinoId = long.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);
+        if (!TryObterIntervenienteId(out var destinoId))
+            return Forbid();
 
-        var pendentes = await db.Movimentacoes
-            .Include(m => m.Vestigio)
-            .Include(m => m.Origem)
-            .Where(m => m.Situacao == SituacaoMovimentacao.PENDENTE && m.DestinoId == destinoId)
-            .OrderBy(m => m.DataHoraSaida)
-            .ToListAsync();
-
-        var itens = new List<ItemRecebimentoViewModel>();
-        foreach (var m in pendentes)
+        var pendentes = await recebimentoPendentesQuery.ListarAsync(destinoId, cancellationToken);
+        return View(new RecebimentoListaViewModel
         {
-            var lacreAtual = await db.Lacres
-                .Where(l => l.VestigioId == m.VestigioId && l.Situacao == SituacaoLacre.INTACTO)
-                .OrderByDescending(l => l.AplicadoEm)
-                .FirstOrDefaultAsync();
-
-            itens.Add(new ItemRecebimentoViewModel(
-                m.Id, m.VestigioId, m.Vestigio.RotuloEvidencia, m.Vestigio.Descricao,
-                m.Origem?.Nome ?? "—", m.DataHoraSaida, m.CodigoRastreamento,
-                lacreAtual?.Numero ?? ""));
-        }
-
-        return View(new RecebimentoListaViewModel { Pendentes = itens });
+            Pendentes = pendentes.Select(item => new ItemRecebimentoViewModel(
+                item.MovimentacaoId, item.VestigioId, item.RotuloEvidencia, item.Descricao,
+                item.OrigemNome, item.DataHoraSaida, item.CodigoRastreamento,
+                item.NumeroLacreEsperado)).ToList(),
+        });
     }
 
     [HttpPost("/recebimento/confirmar")]
     [ValidateAntiForgeryToken]
-    public async Task<IActionResult> Confirmar(ConfirmarRecebimentoViewModel modelo)
+    public async Task<IActionResult> Confirmar(ConfirmarRecebimentoViewModel modelo, CancellationToken cancellationToken)
     {
-        var destinoId = long.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);
-        var agora = DateTime.UtcNow;
+        if (!TryObterIntervenienteId(out var destinoId))
+            return Forbid();
 
-        var movimentacao = await db.Movimentacoes
-            .Include(m => m.Vestigio)
-            .FirstOrDefaultAsync(m => m.Id == modelo.MovimentacaoId
-                && m.Situacao == SituacaoMovimentacao.PENDENTE && m.DestinoId == destinoId);
-
-        if (movimentacao is null || string.IsNullOrWhiteSpace(modelo.NumeroLacreConferido))
+        try
         {
-            TempData["MensagemErro"] = "Recebimento não encontrado ou número do lacre não informado.";
-            return RedirectToAction(nameof(Index));
+            var resultado = await confirmarRecebimento.ExecutarAsync(
+                new ConfirmarRecebimentoCommand(destinoId, modelo.MovimentacaoId, modelo.NumeroLacreConferido), cancellationToken);
+            TempData["MensagemSucesso"] = resultado.LacreConfere
+                ? $"Vestígio {resultado.RotuloEvidencia} recebido. Lacre conferido."
+                : $"Divergência no lacre do vestígio {resultado.RotuloEvidencia}. Custódia marcada como comprometida.";
         }
-
-        var lacreEsperado = await db.Lacres
-            .Where(l => l.VestigioId == movimentacao.VestigioId && l.Situacao == SituacaoLacre.INTACTO)
-            .OrderByDescending(l => l.AplicadoEm)
-            .FirstOrDefaultAsync();
-
-        var vestigio = movimentacao.Vestigio;
-        var lacreConfere = lacreEsperado is not null && lacreEsperado.Numero == modelo.NumeroLacreConferido.Trim();
-
-        movimentacao.DataHoraChegada = agora;
-        movimentacao.CondicoesAdequadas = lacreConfere;
-        // Segregação de funções (RN16): quem cria a remessa é a origem; quem
-        // aprova o recebimento é sempre o destino, nunca a mesma pessoa.
-        movimentacao.AprovadoPorId = destinoId;
-
-        string evento;
-        string payloadExtra;
-
-        if (lacreConfere)
+        catch (Exception exception) when (exception is ValidacaoRecebimentoException
+            or RecursoRecebimentoNaoEncontradoException or ConflitoRecebimentoException)
         {
-            movimentacao.Situacao = SituacaoMovimentacao.ACEITA;
-            vestigio.Estado = EstadoVestigio.Recebido;
-            vestigio.EtapaAtual = 7;
-            vestigio.CustodianteAtualId = destinoId;
-            vestigio.AtualizadoEm = agora;
-            evento = "RECEBIMENTO";
-            payloadExtra = "lacre_conferido";
+            TempData["MensagemErro"] = exception.Message;
         }
-        else
-        {
-            // RN21: divergência de lacre leva a CustodiaComprometida,
-            // registrada e não revertida em silêncio.
-            movimentacao.Situacao = SituacaoMovimentacao.ACEITA;
-            vestigio.Estado = EstadoVestigio.CustodiaComprometida;
-            vestigio.EtapaAtual = 7;
-            vestigio.CustodianteAtualId = destinoId;
-            vestigio.AtualizadoEm = agora;
-            evento = "ROMPIMENTO";
-            payloadExtra = "divergencia_lacre";
-        }
-
-        await db.SaveChangesAsync();
-
-        var destino = await db.Intervenientes.FindAsync(destinoId);
-        var payload = new
-        {
-            RE = vestigio.RotuloEvidencia,
-            NumeroLacreEsperado = lacreEsperado?.Numero,
-            NumeroLacreConferido = modelo.NumeroLacreConferido.Trim(),
-            Resultado = payloadExtra,
-            Recebedor = destino!.Did,
-            RecebidoEm = agora,
-        };
-        var payloadJson = JsonSerializer.Serialize(payload);
-        var hashPayload = Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(payloadJson)));
-
-        var credencialId = await ledger.EmitirCredencialCoCAsync(
-            new CredencialCoCDto(vestigio.Id.ToString(), evento, destino.Did, hashPayload));
-
-        db.Credenciais.Add(new Credencial
-        {
-            Tipo = TipoCredencial.COC,
-            Identificador = credencialId,
-            TitularId = destinoId,
-            EmissorId = destinoId,
-            VestigioId = vestigio.Id,
-            EmitidaEm = agora,
-            Situacao = SituacaoCredencial.VIGENTE,
-        });
-
-        db.RegistrosLedger.Add(new RegistroLedger
-        {
-            EntidadeOrigem = "MOVIMENTACAO",
-            RegistroOrigemId = movimentacao.Id,
-            VestigioId = vestigio.Id,
-            Evento = evento,
-            PayloadJson = payloadJson,
-            Estado = EstadoRegistroLedger.PENDENTE,
-            Tentativas = 0,
-            CriadoEm = agora,
-        });
-
-        await db.SaveChangesAsync();
-
-        TempData["MensagemSucesso"] = lacreConfere
-            ? $"Vestígio {vestigio.RotuloEvidencia} recebido. Lacre conferido."
-            : $"Divergência no lacre do vestígio {vestigio.RotuloEvidencia}. Custódia marcada como comprometida.";
 
         return RedirectToAction(nameof(Index));
     }
 
     [HttpPost("/recebimento/recusar")]
     [ValidateAntiForgeryToken]
-    public async Task<IActionResult> Recusar(RecusarRecebimentoViewModel modelo)
+    public async Task<IActionResult> Recusar(RecusarRecebimentoViewModel modelo, CancellationToken cancellationToken)
     {
-        var destinoId = long.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);
-        var agora = DateTime.UtcNow;
+        if (!TryObterIntervenienteId(out var destinoId))
+            return Forbid();
 
-        var movimentacao = await db.Movimentacoes
-            .Include(m => m.Vestigio)
-            .FirstOrDefaultAsync(m => m.Id == modelo.MovimentacaoId
-                && m.Situacao == SituacaoMovimentacao.PENDENTE && m.DestinoId == destinoId);
-
-        if (movimentacao is null || string.IsNullOrWhiteSpace(modelo.MotivoRecusa))
+        try
         {
-            TempData["MensagemErro"] = "Recebimento não encontrado ou motivo da recusa não informado.";
-            return RedirectToAction(nameof(Index));
+            var resultado = await recusarRecebimento.ExecutarAsync(
+                new RecusarRecebimentoCommand(destinoId, modelo.MovimentacaoId, modelo.MotivoRecusa), cancellationToken);
+            TempData["MensagemSucesso"] =
+                $"Recebimento do vestígio {resultado.RotuloEvidencia} recusado. Custódia revertida para a origem.";
+        }
+        catch (Exception exception) when (exception is ValidacaoRecebimentoException
+            or RecursoRecebimentoNaoEncontradoException or ConflitoRecebimentoException)
+        {
+            TempData["MensagemErro"] = exception.Message;
         }
 
-        // RN19: a recusa reverte o vestígio ao estado anterior e remove o
-        // solicitante (a movimentação some da fila de destino) — nada fica
-        // em limbo. A custódia volta para quem originou a remessa.
-        movimentacao.Situacao = SituacaoMovimentacao.RECUSADA;
-        movimentacao.MotivoRecusa = modelo.MotivoRecusa.Trim();
-        movimentacao.DataHoraChegada = agora;
-        movimentacao.AprovadoPorId = destinoId;
-
-        var vestigio = movimentacao.Vestigio;
-        vestigio.Estado = EstadoVestigio.Coletado;
-        vestigio.CustodianteAtualId = movimentacao.OrigemId;
-        vestigio.AtualizadoEm = agora;
-
-        await db.SaveChangesAsync();
-
-        var destino = await db.Intervenientes.FindAsync(destinoId);
-        var payload = new
-        {
-            RE = vestigio.RotuloEvidencia,
-            MotivoRecusa = movimentacao.MotivoRecusa,
-            RecusadoPor = destino!.Did,
-            RecusadoEm = agora,
-        };
-        var payloadJson = JsonSerializer.Serialize(payload);
-        var hashPayload = Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(payloadJson)));
-
-        var credencialId = await ledger.EmitirCredencialCoCAsync(
-            new CredencialCoCDto(vestigio.Id.ToString(), "RECUSA", destino.Did, hashPayload));
-
-        db.Credenciais.Add(new Credencial
-        {
-            Tipo = TipoCredencial.COC,
-            Identificador = credencialId,
-            TitularId = destinoId,
-            EmissorId = destinoId,
-            VestigioId = vestigio.Id,
-            EmitidaEm = agora,
-            Situacao = SituacaoCredencial.VIGENTE,
-        });
-
-        db.RegistrosLedger.Add(new RegistroLedger
-        {
-            EntidadeOrigem = "MOVIMENTACAO",
-            RegistroOrigemId = movimentacao.Id,
-            VestigioId = vestigio.Id,
-            Evento = "RECUSA",
-            PayloadJson = payloadJson,
-            Estado = EstadoRegistroLedger.PENDENTE,
-            Tentativas = 0,
-            CriadoEm = agora,
-        });
-
-        await db.SaveChangesAsync();
-
-        TempData["MensagemSucesso"] = $"Recebimento do vestígio {vestigio.RotuloEvidencia} recusado. Custódia revertida para a origem.";
         return RedirectToAction(nameof(Index));
     }
+
+    private bool TryObterIntervenienteId(out long intervenienteId) =>
+        long.TryParse(User.FindFirstValue(ClaimTypes.NameIdentifier), out intervenienteId) && intervenienteId > 0;
 }
