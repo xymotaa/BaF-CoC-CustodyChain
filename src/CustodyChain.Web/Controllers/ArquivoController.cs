@@ -1,11 +1,8 @@
 using System.Security.Claims;
-using System.Security.Cryptography;
-using System.Text;
-using System.Text.Json;
+using CustodyChain.Web.Application.Arquivo;
 using CustodyChain.Web.Data;
 using CustodyChain.Web.Models.Entities;
 using CustodyChain.Web.Models.ViewModels;
-using CustodyChain.Web.Services.Ledger;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -13,7 +10,7 @@ using Microsoft.EntityFrameworkCore;
 namespace CustodyChain.Web.Controllers;
 
 [Authorize]
-public class ArquivoController(CustodyChainDbContext db, IServicoLedger ledger) : Controller
+public class ArquivoController(CustodyChainDbContext db, IDarEntradaArquivo darEntradaArquivo) : Controller
 {
     [HttpGet("/arquivo")]
     public async Task<IActionResult> Index(string? busca, string? categoria)
@@ -87,88 +84,45 @@ public class ArquivoController(CustodyChainDbContext db, IServicoLedger ledger) 
 
     [HttpPost("/arquivo/entrada")]
     [ValidateAntiForgeryToken]
-    public async Task<IActionResult> Entrada(DarEntradaArquivoViewModel modelo)
+    public async Task<IActionResult> Entrada(DarEntradaArquivoViewModel modelo, CancellationToken cancellationToken)
     {
-        var recebedorId = long.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);
+        if (!TryObterIntervenienteId(out var recebedorId))
+            return Forbid();
 
-        var vestigio = modelo.VestigioId is not null
-            ? await db.Vestigios.FirstOrDefaultAsync(v =>
-                v.Id == modelo.VestigioId && v.Estado == EstadoVestigio.Recebido && v.CustodianteAtualId == recebedorId)
-            : null;
-
-        if (modelo.VestigioId is not null && vestigio is null)
-        {
-            ModelState.AddModelError(nameof(modelo.VestigioId), "Vestígio não encontrado, não está com você, ou não está mais no estado Recebido.");
-        }
-
-        if (!ModelState.IsValid || vestigio is null)
+        if (!ModelState.IsValid)
         {
             await CarregarOpcoesAsync(modelo);
             return View(modelo);
         }
 
-        var agora = DateTime.UtcNow;
-
-        db.Armazenamentos.Add(new Armazenamento
+        try
         {
-            VestigioId = vestigio.Id,
-            Central = modelo.Central!,
-            Posicao = modelo.Posicao,
-            EntradaEm = agora,
-            PrazoGuardaAte = modelo.PrazoGuardaAte,
-            RecebidoPorId = recebedorId,
-            Situacao = SituacaoArmazenamento.GUARDADO,
-        });
-
-        vestigio.Estado = EstadoVestigio.Armazenado;
-        vestigio.EtapaAtual = 9; // Armazenamento, art. 158-B
-        vestigio.AtualizadoEm = agora;
-
-        await db.SaveChangesAsync();
-
-        var recebedor = await db.Intervenientes.FindAsync(recebedorId);
-        var payload = new
+            var resultado = await darEntradaArquivo.ExecutarAsync(new DarEntradaArquivoCommand(
+                recebedorId,
+                modelo.VestigioId ?? 0,
+                modelo.Central,
+                modelo.Posicao,
+                modelo.PrazoGuardaAte), cancellationToken);
+            TempData["MensagemSucesso"] =
+                $"Vestígio {resultado.RotuloEvidencia} arquivado. A ancoragem da credencial está pendente.";
+        }
+        catch (ValidacaoEntradaArquivoException exception)
         {
-            RE = vestigio.RotuloEvidencia,
-            Central = modelo.Central,
-            Posicao = modelo.Posicao,
-            PrazoGuardaAte = modelo.PrazoGuardaAte,
-            Responsavel = recebedor!.Did,
-            EntradaEm = agora,
-        };
-        var payloadJson = JsonSerializer.Serialize(payload);
-        var hashPayload = Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(payloadJson)));
-
-        // Credencial #6 (Quadro 14): armazenamento.
-        var credencialId = await ledger.EmitirCredencialCoCAsync(
-            new CredencialCoCDto(vestigio.Id.ToString(), "GUARDA", recebedor.Did, hashPayload));
-
-        db.Credenciais.Add(new Credencial
+            ModelState.AddModelError(exception.Campo ?? string.Empty, exception.Message);
+            await CarregarOpcoesAsync(modelo);
+            return View(modelo);
+        }
+        catch (RecursoEntradaArquivoNaoEncontradoException exception)
         {
-            Tipo = TipoCredencial.COC,
-            Identificador = credencialId,
-            TitularId = recebedorId,
-            EmissorId = recebedorId,
-            VestigioId = vestigio.Id,
-            EmitidaEm = agora,
-            Situacao = SituacaoCredencial.VIGENTE,
-        });
-
-        db.RegistrosLedger.Add(new RegistroLedger
+            ModelState.AddModelError(nameof(modelo.VestigioId), exception.Message);
+            await CarregarOpcoesAsync(modelo);
+            return View(modelo);
+        }
+        catch (ConflitoEntradaArquivoException exception)
         {
-            EntidadeOrigem = "VESTIGIO",
-            RegistroOrigemId = vestigio.Id,
-            VestigioId = vestigio.Id,
-            Evento = "GUARDA",
-            PayloadJson = payloadJson,
-            Estado = EstadoRegistroLedger.PENDENTE,
-            Tentativas = 0,
-            CriadoEm = agora,
-        });
+            TempData["MensagemErro"] = exception.Message;
+        }
 
-        await db.SaveChangesAsync();
-
-        TempData["MensagemSucesso"] = $"Vestígio {vestigio.RotuloEvidencia} arquivado.";
         return RedirectToAction(nameof(Entrada));
     }
 
@@ -182,4 +136,7 @@ public class ArquivoController(CustodyChainDbContext db, IServicoLedger ledger) 
             .Select(v => new OpcaoVestigioViewModel(v.Id, v.RotuloEvidencia, v.Descricao))
             .ToListAsync();
     }
+
+    private bool TryObterIntervenienteId(out long intervenienteId) =>
+        long.TryParse(User.FindFirstValue(ClaimTypes.NameIdentifier), out intervenienteId) && intervenienteId > 0;
 }

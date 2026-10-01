@@ -1,5 +1,6 @@
 using System.Reflection;
 using CustodyChain.Web.Application.CadastroVestigio;
+using CustodyChain.Web.Application.Arquivo;
 using CustodyChain.Web.Application.Common;
 using CustodyChain.Web.Application.Remessa;
 using CustodyChain.Web.Application.Recebimento;
@@ -39,6 +40,8 @@ builder.Services.AddDbContext<CustodyChainDbContext>(options =>
 builder.Services.AddScoped<ICadastrarVestigio, CadastrarVestigioUseCase>();
 builder.Services.AddScoped<ICadastroVestigioStore, CadastroVestigioStore>();
 builder.Services.AddScoped<ICadastroVestigioOpcoesQuery, CadastroVestigioOpcoesQuery>();
+builder.Services.AddScoped<IDarEntradaArquivo, DarEntradaArquivoUseCase>();
+builder.Services.AddScoped<IEntradaArquivoStore, EntradaArquivoStore>();
 builder.Services.AddScoped<ICriarRemessa, CriarRemessaUseCase>();
 builder.Services.AddScoped<ICriarRemessaStore, RemessaStore>();
 builder.Services.AddScoped<IRemessaOpcoesQuery, RemessaOpcoesQuery>();
