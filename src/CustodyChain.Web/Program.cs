@@ -52,6 +52,8 @@ builder.Services.AddScoped<IRecebimentoStore, RecebimentoStore>();
 builder.Services.AddScoped<IRecebimentoPendentesQuery, RecebimentoPendentesQuery>();
 builder.Services.AddScoped<IRomperLacre, RomperLacreUseCase>();
 builder.Services.AddScoped<IRompimentoLacreStore, RompimentoLacreStore>();
+builder.Services.AddScoped<IEmitirLaudo, EmitirLaudoUseCase>();
+builder.Services.AddScoped<IEmissaoLaudoStore, EmissaoLaudoStore>();
 builder.Services.AddSingleton<IClock, SystemClock>();
 builder.Services.AddSingleton<IGeradorIdentificadorCredencial, GeradorIdentificadorCredencial>();
 

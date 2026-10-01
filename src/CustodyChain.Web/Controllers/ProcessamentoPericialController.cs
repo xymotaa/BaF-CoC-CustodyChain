@@ -17,7 +17,8 @@ namespace CustodyChain.Web.Controllers;
 public class ProcessamentoPericialController(
     CustodyChainDbContext db,
     IServicoLedger ledger,
-    IRomperLacre romperLacre) : Controller
+    IRomperLacre romperLacre,
+    IEmitirLaudo emitirLaudo) : Controller
 {
     [HttpGet("/processamento-pericial")]
     public async Task<IActionResult> Index()
@@ -114,109 +115,26 @@ public class ProcessamentoPericialController(
 
     [HttpPost("/processamento-pericial/emitir-laudo")]
     [ValidateAntiForgeryToken]
-    public async Task<IActionResult> EmitirLaudo(EmitirLaudoViewModel modelo)
+    public async Task<IActionResult> EmitirLaudo(EmitirLaudoViewModel modelo, CancellationToken cancellationToken)
     {
-        var peritoId = long.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);
+        if (!TryObterIntervenienteId(out var peritoId))
+            return Forbid();
 
-        // RN08: só peritos emitem laudos — garantido aqui porque a ação só
-        // é alcançável por uma perícia designada ao perito autenticado.
-        var pericia = await db.Pericias
-            .Include(p => p.Vestigio)
-            .FirstOrDefaultAsync(p => p.Id == modelo.PericiaId && p.PeritoId == peritoId && p.Situacao == SituacaoPericia.EM_EXECUCAO);
-
-        if (pericia is null || string.IsNullOrWhiteSpace(modelo.Conteudo))
+        try
         {
-            TempData["MensagemErro"] = "Perícia não encontrada, lacre ainda não rompido, ou conteúdo do laudo não informado.";
-            return RedirectToAction(nameof(Index));
+            var resultado = await emitirLaudo.ExecutarAsync(
+                new EmitirLaudoCommand(peritoId, modelo.PericiaId, modelo.Conteudo), cancellationToken);
+            TempData["MensagemSucesso"] =
+                $"Laudo {resultado.NumeroLaudo} emitido para o vestígio {resultado.RotuloEvidencia}. A ancoragem da credencial está pendente.";
+        }
+        catch (Exception exception) when (exception is ValidacaoEmissaoLaudoException
+            or RecursoEmissaoLaudoNaoEncontradoException
+            or HashVestigioAusenteException
+            or ConflitoEmissaoLaudoException)
+        {
+            TempData["MensagemErro"] = exception.Message;
         }
 
-        var agora = DateTime.UtcNow;
-        var vestigio = pericia.Vestigio;
-
-        if (string.IsNullOrEmpty(vestigio.HashSha256))
-        {
-            TempData["MensagemErro"] = "Vestígio sem hash SHA-256 registrado (RN13) — não é possível vincular o laudo.";
-            return RedirectToAction(nameof(Index));
-        }
-
-        // RN13: o laudo se vincula ao hash dos vestígios que fundamentaram
-        // a análise. Esta perícia cobre um único vestígio, então o vínculo
-        // é o próprio hash gravado na coleta (T-03).
-        var hashVestigios = vestigio.HashSha256;
-
-        var conteudo = modelo.Conteudo.Trim();
-        var hashLaudo = Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(conteudo + hashVestigios)));
-
-        var numero = $"LAUDO-{agora:yyyy}-{pericia.Id:D6}";
-
-        var laudo = new Laudo
-        {
-            PericiaId = pericia.Id,
-            Numero = numero,
-            Versao = 1,
-            Conteudo = conteudo,
-            HashVestigios = hashVestigios,
-            HashLaudo = hashLaudo,
-            // Assinatura Ed25519 real depende da wallet do titular, ainda
-            // não implementada (pendência P-02 do documento de contexto,
-            // classificada como evolução do MVP). Fica nula por ora.
-            AssinaturaEd25519 = null,
-            AssinadoPorId = peritoId,
-            AssinadoEm = agora,
-        };
-        db.Laudos.Add(laudo);
-
-        pericia.Situacao = SituacaoPericia.CONCLUIDA;
-        pericia.ConcluidaEm = agora;
-        vestigio.Estado = EstadoVestigio.Periciado;
-        vestigio.AtualizadoEm = agora;
-
-        await db.SaveChangesAsync();
-
-        var perito = await db.Intervenientes.FindAsync(peritoId);
-        var payload = new
-        {
-            RE = vestigio.RotuloEvidencia,
-            NumeroLaudo = laudo.Numero,
-            Versao = laudo.Versao,
-            HashVestigios = hashVestigios,
-            HashLaudo = hashLaudo,
-            EmitidoPor = perito!.Did,
-            EmitidoEm = agora,
-        };
-        var payloadJson = JsonSerializer.Serialize(payload);
-        var hashPayload = Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(payloadJson)));
-
-        // Credencial #5 (Quadro 14): laudo.
-        var credencialId = await ledger.EmitirCredencialCoCAsync(
-            new CredencialCoCDto(vestigio.Id.ToString(), "LAUDO", perito.Did, hashPayload));
-
-        db.Credenciais.Add(new Credencial
-        {
-            Tipo = TipoCredencial.COC,
-            Identificador = credencialId,
-            TitularId = peritoId,
-            EmissorId = peritoId,
-            VestigioId = vestigio.Id,
-            EmitidaEm = agora,
-            Situacao = SituacaoCredencial.VIGENTE,
-        });
-
-        db.RegistrosLedger.Add(new RegistroLedger
-        {
-            EntidadeOrigem = "LAUDO",
-            RegistroOrigemId = laudo.Id,
-            VestigioId = vestigio.Id,
-            Evento = "LAUDO",
-            PayloadJson = payloadJson,
-            Estado = EstadoRegistroLedger.PENDENTE,
-            Tentativas = 0,
-            CriadoEm = agora,
-        });
-
-        await db.SaveChangesAsync();
-
-        TempData["MensagemSucesso"] = $"Laudo {laudo.Numero} emitido para o vestígio {vestigio.RotuloEvidencia}.";
         return RedirectToAction(nameof(Index));
     }
 
