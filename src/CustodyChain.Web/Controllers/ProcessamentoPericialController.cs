@@ -18,7 +18,8 @@ public class ProcessamentoPericialController(
     CustodyChainDbContext db,
     IServicoLedger ledger,
     IRomperLacre romperLacre,
-    IEmitirLaudo emitirLaudo) : Controller
+    IEmitirLaudo emitirLaudo,
+    IFracionarAmostra fracionarAmostra) : Controller
 {
     [HttpGet("/processamento-pericial")]
     public async Task<IActionResult> Index()
@@ -140,76 +141,30 @@ public class ProcessamentoPericialController(
 
     [HttpPost("/processamento-pericial/fracionar")]
     [ValidateAntiForgeryToken]
-    public async Task<IActionResult> Fracionar(FracionarViewModel modelo)
+    public async Task<IActionResult> Fracionar(FracionarViewModel modelo, CancellationToken cancellationToken)
     {
-        var peritoId = long.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);
+        if (!TryObterIntervenienteId(out var peritoId))
+            return Forbid();
 
-        var pericia = await db.Pericias
-            .Include(p => p.Vestigio)
-            .FirstOrDefaultAsync(p => p.Id == modelo.PericiaId && p.PeritoId == peritoId && p.Situacao == SituacaoPericia.EM_EXECUCAO);
-
-        if (pericia is null
-            || string.IsNullOrWhiteSpace(modelo.RotuloEvidenciaResultante)
-            || string.IsNullOrWhiteSpace(modelo.DescricaoResultante)
-            || string.IsNullOrWhiteSpace(modelo.Justificativa))
+        try
         {
-            TempData["MensagemErro"] = "Perícia não encontrada, lacre ainda não rompido, ou campos obrigatórios não informados.";
-            return RedirectToAction(nameof(Index));
+            var resultado = await fracionarAmostra.ExecutarAsync(new FracionarAmostraCommand(
+                peritoId,
+                modelo.PericiaId,
+                modelo.RotuloEvidenciaResultante,
+                modelo.DescricaoResultante,
+                modelo.QuantidadeDescrita,
+                modelo.Justificativa), cancellationToken);
+            TempData["MensagemSucesso"] =
+                $"Vestígio {resultado.RotuloEvidenciaOrigem} fracionado. Novo item: {resultado.RotuloEvidenciaResultante}. A ancoragem da credencial está pendente.";
+        }
+        catch (Exception exception) when (exception is ValidacaoFracionamentoAmostraException
+            or RecursoFracionamentoAmostraNaoEncontradoException
+            or ConflitoFracionamentoAmostraException)
+        {
+            TempData["MensagemErro"] = exception.Message;
         }
 
-        if (await db.Vestigios.AnyAsync(v => v.RotuloEvidencia == modelo.RotuloEvidenciaResultante))
-        {
-            TempData["MensagemErro"] = "Já existe um vestígio com este rótulo de evidência.";
-            return RedirectToAction(nameof(Index));
-        }
-
-        var agora = DateTime.UtcNow;
-        var origem = pericia.Vestigio;
-
-        // RN18: o fracionamento preserva o rótulo de conjunto de origem —
-        // o item resultante entra sob o mesmo RC, com um RE próprio.
-        var resultante = new Vestigio
-        {
-            RotuloEvidencia = modelo.RotuloEvidenciaResultante.Trim(),
-            RotuloConjunto = origem.RotuloConjunto,
-            ProcessoId = origem.ProcessoId,
-            TipoVestigioId = origem.TipoVestigioId,
-            Descricao = modelo.DescricaoResultante.Trim(),
-            CriadorId = peritoId,
-            CustodianteAtualId = peritoId,
-            HashSha256 = origem.HashSha256,
-            EtapaAtual = 8,
-            FaseAtual = FaseVestigio.INTERNA,
-            Estado = EstadoVestigio.EmPericia,
-            CriadoEm = agora,
-        };
-        db.Vestigios.Add(resultante);
-        await db.SaveChangesAsync();
-
-        var operacao = new OperacaoAmostra
-        {
-            PericiaId = pericia.Id,
-            Tipo = TipoOperacaoAmostra.FRACIONAMENTO,
-            VestigioOrigemId = origem.Id,
-            VestigioResultanteId = resultante.Id,
-            QuantidadeDescrita = modelo.QuantidadeDescrita,
-            Justificativa = modelo.Justificativa.Trim(),
-            ExecutadoPorId = peritoId,
-            ExecutadoEm = agora,
-        };
-        db.OperacoesAmostra.Add(operacao);
-
-        await db.SaveChangesAsync();
-
-        await RegistrarEventoOperacaoAsync(operacao.Id, origem.Id, "FRACIONAMENTO", peritoId, new
-        {
-            REOrigem = origem.RotuloEvidencia,
-            REResultante = resultante.RotuloEvidencia,
-            RC = origem.RotuloConjunto,
-            Justificativa = modelo.Justificativa,
-        });
-
-        TempData["MensagemSucesso"] = $"Vestígio {origem.RotuloEvidencia} fracionado. Novo item: {resultante.RotuloEvidencia}.";
         return RedirectToAction(nameof(Index));
     }
 

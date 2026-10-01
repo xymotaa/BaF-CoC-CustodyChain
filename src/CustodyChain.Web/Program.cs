@@ -54,6 +54,8 @@ builder.Services.AddScoped<IRomperLacre, RomperLacreUseCase>();
 builder.Services.AddScoped<IRompimentoLacreStore, RompimentoLacreStore>();
 builder.Services.AddScoped<IEmitirLaudo, EmitirLaudoUseCase>();
 builder.Services.AddScoped<IEmissaoLaudoStore, EmissaoLaudoStore>();
+builder.Services.AddScoped<IFracionarAmostra, FracionarAmostraUseCase>();
+builder.Services.AddScoped<IFracionamentoAmostraStore, FracionamentoAmostraStore>();
 builder.Services.AddSingleton<IClock, SystemClock>();
 builder.Services.AddSingleton<IGeradorIdentificadorCredencial, GeradorIdentificadorCredencial>();
 
