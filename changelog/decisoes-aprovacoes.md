@@ -226,6 +226,49 @@ adicionado em `Verificador.cshtml` e `LinhaDoTempo.cshtml`.
 
 ---
 
+## v0.16.0 — Autorização de reuso do repositório `leandroloffi/CustodyChain`
+
+**A regra D-16 (`v0.1.0`) proibia abrir ou reutilizar código do
+repositório `leandroloffi/CustodyChain` por falta de licença declarada —
+a implementação deveria vir só da leitura da tese. O usuário informou que
+o Leandro Loffi autorizou diretamente a reutilização do código dele neste
+TCC. Isso muda a regra?**
+✅ Aprovado pelo usuário: a partir de agora está liberado abrir e
+reutilizar/adaptar código daquele repositório para a implementação do
+chaincode e demais componentes do Fabric. Autorização dada de forma
+verbal/direta ao usuário, sem registro escrito externo (sem `LICENSE` no
+repositório do Loffi, sem e-mail/mensagem documentando). Recomendação não
+bloqueante: guardar um registro mínimo por escrito dessa autorização para
+a defesa do TCC, caso a banca questione a procedência do código. Detalhes
+em `changelog/v0.16.0-autorizacao-reuso-repositorio-loffi.md`.
+
+---
+
+## v0.17.0 e v0.18.0 — Rede Fabric local e chaincode (fatias 1 e 2 de 4)
+
+**Como fatiar a implementação do Fabric real (substituindo o
+LedgerFake)?**
+✅ Aprovado: 4 fatias testáveis incrementalmente — 1) rede local, 2)
+chaincode, 3) gateway, 4) trocar `LedgerFake`. Fatias 1 e 2 concluídas
+nesta sessão; detalhes em `changelog/v0.17.0-rede-fabric-local.md` e
+`changelog/v0.18.0-chaincode-custodychain.md`.
+
+**O repositório do Leandro só tem o tutorial genérico `asset-transfer-basic`
+(sem lógica de hash, credenciais ou wallet) — o que reaproveitar dele?**
+✅ Aprovado: só a infraestrutura genérica do Fabric (scripts de rede,
+padrão de conexão do gateway). O chaincode de domínio (DIDs, credenciais
+de permissão e de cadeia de custódia, histórico) foi desenhado do zero
+com base no documento técnico do TCC.
+
+**Onde colocar a infraestrutura Fabric no repositório?**
+✅ Aprovado: pasta `fabric/` na raiz (paralela a `src/`), separando
+claramente a aplicação .NET da infraestrutura blockchain.
+
+**Rede Fabric local testada com sucesso em CachyOS (Arch Linux) —
+resolve o risco R-04 do documento técnico**, antes só teórico.
+
+---
+
 ## Resumo rápido
 
 | Decisão | Resultado |
@@ -266,5 +309,9 @@ adicionado em `Verificador.cshtml` e `LinhaDoTempo.cshtml`.
 | Verificador busca hash por Rótulo de Evidência | ✅ Aprovado |
 | Trocar PayloadJson de `json` para `longtext` | ✅ Aprovado |
 | Registrar limitação do verificador (banco contra banco) sem implementar Fabric agora | ✅ Instruído diretamente pelo usuário |
+| Liberar reuso do repositório `leandroloffi/CustodyChain` (revoga D-16) | ✅ Aprovado — autorização verbal do autor, sem registro escrito |
+| Fatiar implementação do Fabric em 4 etapas testáveis | ✅ Aprovado |
+| Reaproveitar só infraestrutura genérica do Fabric, chaincode de domínio do zero | ✅ Aprovado |
+| Infraestrutura Fabric em pasta `fabric/` na raiz | ✅ Aprovado |
 
 Nenhuma extensão ou proposta foi reprovada até o momento.

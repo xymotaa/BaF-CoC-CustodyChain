@@ -13,6 +13,16 @@ appsettings.*.local.json
 # Node (gateway/wallet, quando entrarem)
 node_modules/
 
+# Rede Hyperledger Fabric local (test-network adaptada do repositório
+# leandroloffi/CustodyChain, v0.16.0): bin/ já cai na regra bin/ acima.
+# organizations/ contém MSPs gerados pelo cryptogen (certificados e
+# chaves privadas da rede de teste) — nunca versionar material
+# criptográfico, mesmo sendo só para desenvolvimento local.
+fabric/network/organizations/
+fabric/network/channel-artifacts/
+fabric/network/system-genesis-block/
+
+
 # IDE
 .vs/
 .idea/
