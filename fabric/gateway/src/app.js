@@ -154,6 +154,17 @@ app.get('/credenciais/:credencialId/verificar', async (req, res) => {
     }
 });
 
+app.get('/credenciais/:credencialId', async (req, res) => {
+    try {
+        const { credencialId } = req.params;
+        const contrato = obterContrato();
+        const resultado = await contrato.evaluateTransaction('ObterCredencial', credencialId);
+        res.json(JSON.parse(decodificar(resultado)));
+    } catch (erro) {
+        tratarErro(res, erro);
+    }
+});
+
 app.post('/credenciais/:credencialId/revogar', async (req, res) => {
     try {
         const { credencialId } = req.params;

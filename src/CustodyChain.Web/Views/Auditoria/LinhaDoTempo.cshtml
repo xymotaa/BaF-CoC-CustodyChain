@@ -11,11 +11,6 @@
     <a href="/verificador" target="_blank" class="botao botao-secundario">Verificador independente</a>
 </div>
 
-<div class="alerta alerta-aviso" role="note">
-    <span class="alerta-icone"><svg><use href="#icone-alerta" /></svg></span>
-    <span>Nesta versão os eventos vêm do registro local do sistema (fila de ancoragem). A leitura direta da rede blockchain será habilitada quando o ledger entrar em operação.</span>
-</div>
-
 <form asp-controller="Auditoria" asp-action="LinhaDoTempo" method="get" class="formulario-busca">
     <div class="campo campo-busca">
         <label for="busca" class="campo-rotulo sr-only">Rótulo de evidência</label>
@@ -69,18 +64,9 @@ else if (Model.VestigioId is not null)
                     <div class="linha-tempo-conteudo">
                         <div class="linha-tempo-cabecalho">
                             <span class="linha-tempo-evento">@evento.Evento</span>
-                            <span class="selo @(evento.Estado == "ANCORADO" ? "selo-sucesso" : evento.Estado == "FALHA" ? "selo-alerta" : "")">@evento.Estado</span>
                         </div>
-                        <p class="linha-tempo-data">@evento.CriadoEm.ToString("dd/MM/yyyy HH:mm:ss") UTC</p>
-                        <p class="linha-tempo-origem">Origem: <span class="mono">@evento.EntidadeOrigem #@evento.RegistroId</span></p>
-                        @if (evento.AncoradoEm is not null)
-                        {
-                            <p class="linha-tempo-ancorado">Ancorado em @evento.AncoradoEm.Value.ToString("dd/MM/yyyy HH:mm:ss") UTC</p>
-                        }
-                        @if (!string.IsNullOrEmpty(evento.TxHash))
-                        {
-                            <p class="linha-tempo-tx mono">Tx: @evento.TxHash</p>
-                        }
+                        <p class="linha-tempo-data">@evento.OcorridoEm.ToString("dd/MM/yyyy HH:mm:ss") UTC</p>
+                        <p class="linha-tempo-origem">Responsável: <span class="mono">@evento.DidResponsavel</span></p>
                     </div>
                 </li>
             }

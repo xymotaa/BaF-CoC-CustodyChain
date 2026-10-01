@@ -21,6 +21,8 @@ public record ResultadoVerificacao(bool Valido, string? Motivo);
 
 public record EstadoRegistro(string Estado, DateTime OcorridoEm, string DidResponsavel);
 
+public record CredencialCoCRegistrada(string CredencialId, string AssetId, string Evento, string Did, string PayloadHashSha256, bool Revogada);
+
 public interface IServicoLedger
 {
     Task<string> GerarDidAsync(TipoAtor tipo);
@@ -30,4 +32,5 @@ public interface IServicoLedger
     Task<string> EmitirCredencialCoCAsync(CredencialCoCDto dto);
     Task<ResultadoVerificacao> VerificarCredencialAsync(string credencialJson);
     Task<IReadOnlyList<EstadoRegistro>> HistoricoRegistroAsync(string assetId);
+    Task<CredencialCoCRegistrada> ObterCredencialCoCAsync(string credencialId);
 }

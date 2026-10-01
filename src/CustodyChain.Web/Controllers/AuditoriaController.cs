@@ -1,13 +1,14 @@
 using System.Security.Cryptography;
 using CustodyChain.Web.Data;
 using CustodyChain.Web.Models.ViewModels;
+using CustodyChain.Web.Services.Ledger;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 
 namespace CustodyChain.Web.Controllers;
 
-public class AuditoriaController(CustodyChainDbContext db) : Controller
+public class AuditoriaController(CustodyChainDbContext db, IServicoLedger ledger) : Controller
 {
     // Linha do tempo: dentro do sistema, exige autenticação (é onde os
     // intervenientes consultam o histórico de um vestígio).
@@ -37,17 +38,16 @@ public class AuditoriaController(CustodyChainDbContext db) : Controller
         modelo.EstadoAtual = vestigio.Estado.ToString();
         modelo.HashSha256 = vestigio.HashSha256;
 
-        // RF15: consultar o histórico completo do vestígio a partir do
-        // registro de estados do ledger. REGISTRO_LEDGER é a fonte —
-        // cada linha é um evento imutável, nunca alterado nem excluído
-        // (RN03, RN11).
-        modelo.Eventos = await db.RegistrosLedger
-            .Where(r => r.VestigioId == vestigio.Id)
-            .OrderBy(r => r.CriadoEm)
-            .Select(r => new EventoLinhaDoTempoViewModel(
-                r.Id, r.EntidadeOrigem, r.Evento, r.Estado.ToString(),
-                r.CriadoEm, r.AncoradoEm, r.TxHash))
-            .ToListAsync();
+        // RF15: histórico lido diretamente do ledger Hyperledger Fabric —
+        // cada evento é uma transação imutável gravada pelo chaincode
+        // CustodyChain (HistoricoRegistro), não uma fila de ancoragem
+        // local. Resolve a limitação registrada em
+        // v0.15.1-limitacao-verificador-le-do-banco.md: a linha do tempo
+        // passa a depender do ledger real, não do MySQL.
+        var eventos = await ledger.HistoricoRegistroAsync(vestigio.Id.ToString());
+        modelo.Eventos = eventos
+            .Select(e => new EventoLinhaDoTempoViewModel(e.Estado, e.OcorridoEm, e.DidResponsavel))
+            .ToList();
 
         return View(modelo);
     }
@@ -81,6 +81,39 @@ public class AuditoriaController(CustodyChainDbContext db) : Controller
             return View(modelo);
         }
 
+        // A credencial CoC mais recente vinculada ao vestígio é a fonte
+        // do hash a conferir — o MySQL só localiza o identificador da
+        // credencial no ledger (Identificador), nunca o hash em si.
+        var identificadorCredencial = await db.Credenciais
+            .Where(c => c.VestigioId == vestigio.Id && c.Tipo == Models.Entities.TipoCredencial.COC)
+            .OrderByDescending(c => c.EmitidaEm)
+            .Select(c => c.Identificador)
+            .FirstOrDefaultAsync();
+
+        if (identificadorCredencial is null)
+        {
+            modelo.Conferido = false;
+            modelo.MensagemResultado = "Este vestígio não tem credencial de cadeia de custódia registrada no ledger para conferência.";
+            return View(modelo);
+        }
+
+        // RF (verificador independente): o hash a comparar vem direto do
+        // ledger Hyperledger Fabric (ObterCredencialCoC), não mais de
+        // VESTIGIO.HashSha256 no MySQL. Resolve a limitação registrada em
+        // v0.15.1-limitacao-verificador-le-do-banco.md — quem administra
+        // o banco não pode mais forjar essa conferência sozinho.
+        CredencialCoCRegistrada credencial;
+        try
+        {
+            credencial = await ledger.ObterCredencialCoCAsync(identificadorCredencial);
+        }
+        catch (Exception)
+        {
+            modelo.Conferido = false;
+            modelo.MensagemResultado = "Não foi possível consultar o ledger para conferir este vestígio. Tente novamente mais tarde.";
+            return View(modelo);
+        }
+
         byte[] bytesArquivo;
         using (var memoria = new MemoryStream())
         {
@@ -90,22 +123,27 @@ public class AuditoriaController(CustodyChainDbContext db) : Controller
         var hashCalculado = Convert.ToHexStringLower(SHA256.HashData(bytesArquivo));
 
         modelo.HashCalculado = hashCalculado;
-        modelo.HashRegistrado = vestigio.HashSha256;
+        modelo.HashRegistrado = credencial.PayloadHashSha256;
 
-        if (string.IsNullOrEmpty(vestigio.HashSha256))
+        if (credencial.Revogada)
         {
             modelo.Conferido = false;
-            modelo.MensagemResultado = "Este vestígio não tem hash registrado para conferência.";
+            modelo.MensagemResultado = "A credencial de cadeia de custódia deste vestígio foi revogada no ledger. A integridade não pode ser comprovada.";
         }
-        else if (hashCalculado == vestigio.HashSha256)
+        else if (string.IsNullOrEmpty(credencial.PayloadHashSha256))
+        {
+            modelo.Conferido = false;
+            modelo.MensagemResultado = "Este vestígio não tem hash registrado no ledger para conferência.";
+        }
+        else if (hashCalculado == credencial.PayloadHashSha256)
         {
             modelo.Conferido = true;
-            modelo.MensagemResultado = "O hash do arquivo confere com o hash registrado para este vestígio.";
+            modelo.MensagemResultado = "O hash do arquivo confere com o hash registrado no ledger para este vestígio.";
         }
         else
         {
             modelo.Conferido = false;
-            modelo.MensagemResultado = "O hash do arquivo NÃO confere com o hash registrado. A integridade não pode ser comprovada.";
+            modelo.MensagemResultado = "O hash do arquivo NÃO confere com o hash registrado no ledger. A integridade não pode ser comprovada.";
         }
 
         return View(modelo);

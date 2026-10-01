@@ -4,13 +4,9 @@ using Microsoft.AspNetCore.Http;
 namespace CustodyChain.Web.Models.ViewModels;
 
 public record EventoLinhaDoTempoViewModel(
-    long RegistroId,
-    string EntidadeOrigem,
     string Evento,
-    string Estado,
-    DateTime CriadoEm,
-    DateTime? AncoradoEm,
-    string? TxHash);
+    DateTime OcorridoEm,
+    string DidResponsavel);
 
 public class LinhaDoTempoViewModel
 {

@@ -290,6 +290,27 @@ documento e passa a ser observada de verdade neste TCC. Detalhes em
 
 ---
 
+## v0.21.0 — Verificador independente contra o ledger real (fatia 5)
+
+**Usuário pediu diretamente: "tem solução? Se tiver pode resolver" para
+a limitação do verificador. Prossegue com a fatia 5?**
+✅ Instruído diretamente pelo usuário — implementada e testada na mesma
+sessão. `AuditoriaController` (`LinhaDoTempo` e `Verificador`) reescrito
+para consultar `IServicoLedger` em vez do `CustodyChainDbContext` direto.
+Exigiu um método novo no chaincode (`ObterCredencial`, deploy v1.2) e na
+interface `IServicoLedger` (`ObterCredencialCoCAsync`), já que
+`VerificarCredencial` sozinho não expõe o hash da credencial.
+
+**Teste de ponta a ponta**: cadastro de vestígio via UI emitiu credencial
+CoC real no Fabric; o hash exibido pelo Verificador para um rótulo de
+evidência bateu, caractere por caractere, com o hash consultado
+diretamente no ledger via `GET /credenciais/<id>` do gateway — prova de
+que a comparação deixou de depender do MySQL. Resolve de vez a limitação
+de `v0.15.1`. Detalhes em
+`changelog/v0.21.0-verificador-contra-ledger-real.md`.
+
+---
+
 ## Resumo rápido
 
 | Decisão | Resultado |
@@ -335,5 +356,6 @@ documento e passa a ser observada de verdade neste TCC. Detalhes em
 | Reaproveitar só infraestrutura genérica do Fabric, chaincode de domínio do zero | ✅ Aprovado |
 | Infraestrutura Fabric em pasta `fabric/` na raiz | ✅ Aprovado |
 | Fatia 4a: trocar LedgerFake agora, deixar correção do verificador para fatia 5 | ✅ Aprovado |
+| Fatia 5: AuditoriaController consulta IServicoLedger, resolve limitação v0.15.1 | ✅ Instruído diretamente pelo usuário |
 
 Nenhuma extensão ou proposta foi reprovada até o momento.

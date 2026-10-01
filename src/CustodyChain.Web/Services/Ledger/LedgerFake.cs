@@ -10,6 +10,7 @@ public class LedgerFake : IServicoLedger
 {
     private readonly ConcurrentDictionary<string, DidDocument> _dids = new();
     private readonly ConcurrentDictionary<string, List<EstadoRegistro>> _historico = new();
+    private readonly ConcurrentDictionary<string, CredencialCoCRegistrada> _credenciaisCoC = new();
     private int _sequencial;
 
     public Task<string> GerarDidAsync(TipoAtor tipo)
@@ -52,6 +53,9 @@ public class LedgerFake : IServicoLedger
             lista.Add(new EstadoRegistro(dto.Evento, DateTime.UtcNow, dto.Did));
         }
 
+        _credenciaisCoC[credencialId] = new CredencialCoCRegistrada(
+            credencialId, dto.AssetId, dto.Evento, dto.Did, dto.PayloadHashSha256, Revogada: false);
+
         return Task.FromResult(credencialId);
     }
 
@@ -70,5 +74,13 @@ public class LedgerFake : IServicoLedger
         }
 
         return Task.FromResult(copia);
+    }
+
+    public Task<CredencialCoCRegistrada> ObterCredencialCoCAsync(string credencialId)
+    {
+        if (!_credenciaisCoC.TryGetValue(credencialId, out var credencial))
+            throw new InvalidOperationException($"Credencial não encontrada: {credencialId}");
+
+        return Task.FromResult(credencial);
     }
 }

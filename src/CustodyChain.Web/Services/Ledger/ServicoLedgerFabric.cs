@@ -100,6 +100,17 @@ public class ServicoLedgerFabric(HttpClient httpClient) : IServicoLedger
             .ToList();
     }
 
+    public async Task<CredencialCoCRegistrada> ObterCredencialCoCAsync(string credencialId)
+    {
+        var resposta = await httpClient.GetAsync($"/credenciais/{Uri.EscapeDataString(credencialId)}");
+        await LancarSeFalhaAsync(resposta);
+
+        var dto = await resposta.Content.ReadFromJsonAsync<CredencialCoCGatewayDto>(OpcoesJson)
+            ?? throw new InvalidOperationException("Resposta vazia do gateway ao obter credencial CoC.");
+
+        return new CredencialCoCRegistrada(dto.CredencialId, dto.AssetId, dto.Evento, dto.Did, dto.PayloadHashSha256, dto.Revogada);
+    }
+
     private static async Task LancarSeFalhaAsync(HttpResponseMessage resposta)
     {
         if (resposta.IsSuccessStatusCode)
@@ -127,4 +138,12 @@ public class ServicoLedgerFabric(HttpClient httpClient) : IServicoLedger
         [property: JsonPropertyName("ocorridoEm")] DateTime OcorridoEm,
         [property: JsonPropertyName("didResponsavel")] string DidResponsavel,
         [property: JsonPropertyName("credencialId")] string CredencialId);
+
+    private record CredencialCoCGatewayDto(
+        [property: JsonPropertyName("credencialId")] string CredencialId,
+        [property: JsonPropertyName("assetId")] string AssetId,
+        string Evento,
+        string Did,
+        [property: JsonPropertyName("payloadHashSha256")] string PayloadHashSha256,
+        bool Revogada);
 }

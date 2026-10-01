@@ -128,6 +128,15 @@ class CustodyChainContract extends Contract {
         return JSON.stringify({ valido: true, motivo: null });
     }
 
+    async ObterCredencial(ctx, credencialId) {
+        const chave = ctx.stub.createCompositeKey(PREFIXO_CREDENCIAL, [credencialId]);
+        const bytes = await ctx.stub.getState(chave);
+        if (!bytes || bytes.length === 0) {
+            throw new Error(`Credencial não encontrada: ${credencialId}`);
+        }
+        return bytes.toString();
+    }
+
     async RevogarCredencial(ctx, credencialId) {
         const chave = ctx.stub.createCompositeKey(PREFIXO_CREDENCIAL, [credencialId]);
         const bytes = await ctx.stub.getState(chave);
