@@ -31,9 +31,16 @@ var connectionString = builder.Configuration.GetConnectionString("CustodyChainDb
 builder.Services.AddDbContext<CustodyChainDbContext>(options =>
     options.UseMySql(connectionString, new MySqlServerVersion(new Version(8, 0, 0))));
 
-// LedgerFake destrava o desenvolvimento das telas sem depender do Fabric.
-// Trocar por um IServicoLedger real (gateway) sem alterar controllers.
-builder.Services.AddSingleton<IServicoLedger, LedgerFake>();
+// Ledger real: chama o gateway HTTP (fabric/gateway/), que fala com o
+// chaincode CustodyChain via Fabric Gateway (fabric/chaincode/). Troca o
+// LedgerFake usado durante o desenvolvimento das telas, sem alterar
+// nenhum controller — ambos implementam o mesmo IServicoLedger.
+var ledgerGatewayUrl = builder.Configuration["Ledger:GatewayUrl"] ?? "http://127.0.0.1:3000";
+builder.Services.AddHttpClient<IServicoLedger, ServicoLedgerFabric>(client =>
+{
+    client.BaseAddress = new Uri(ledgerGatewayUrl);
+    client.Timeout = TimeSpan.FromSeconds(30);
+});
 
 // Armazenamento off-chain de anexos (P-01): IPFS privado local via
 // docker-compose. A API HTTP roda em 127.0.0.1:5001, não exposta fora

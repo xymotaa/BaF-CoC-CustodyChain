@@ -269,6 +269,27 @@ resolve o risco R-04 do documento técnico**, antes só teórico.
 
 ---
 
+## v0.19.0 e v0.20.0 — Gateway e troca do LedgerFake (fatias 3 e 4a de 4)
+
+**Fatia 4 original era "trocar LedgerFake sem alterar controllers" — mas
+resolver de vez a limitação do verificador (T-11, v0.15.1) exige também
+mudar o AuditoriaController. Fazer tudo agora ou separar?**
+✅ Aprovado: fatia 4a agora — só `ServicoLedgerFabric` + troca da injeção
+de dependência, sem mexer no `AuditoriaController`. A correção do
+verificador fica para uma fatia 5 futura, por mudar lógica de negócio do
+controller, não só a injeção.
+
+**Teste de ponta a ponta no sistema real** (não só chamada direta ao
+gateway): cadastro de interveniente via UI gerou um DID real no Fabric,
+persistido no MySQL e confirmado por consulta direta ao ledger. Latência
+observada (~2,2s) bate com a "latência conhecida de ~2,3s" já citada no
+documento técnico (medida por Loffi) — deixa de ser uma cifra do
+documento e passa a ser observada de verdade neste TCC. Detalhes em
+`changelog/v0.19.0-gateway-custodychain.md` e
+`changelog/v0.20.0-ledger-fabric-real.md`.
+
+---
+
 ## Resumo rápido
 
 | Decisão | Resultado |
@@ -313,5 +334,6 @@ resolve o risco R-04 do documento técnico**, antes só teórico.
 | Fatiar implementação do Fabric em 4 etapas testáveis | ✅ Aprovado |
 | Reaproveitar só infraestrutura genérica do Fabric, chaincode de domínio do zero | ✅ Aprovado |
 | Infraestrutura Fabric em pasta `fabric/` na raiz | ✅ Aprovado |
+| Fatia 4a: trocar LedgerFake agora, deixar correção do verificador para fatia 5 | ✅ Aprovado |
 
 Nenhuma extensão ou proposta foi reprovada até o momento.
