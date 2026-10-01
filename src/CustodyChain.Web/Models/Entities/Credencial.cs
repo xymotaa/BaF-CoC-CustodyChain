@@ -8,6 +8,7 @@ public enum TipoCredencial
 
 public enum SituacaoCredencial
 {
+    PENDENTE,
     VIGENTE,
     REVOGADA,
     EXPIRADA

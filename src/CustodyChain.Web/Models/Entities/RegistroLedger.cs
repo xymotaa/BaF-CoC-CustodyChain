@@ -3,6 +3,7 @@ namespace CustodyChain.Web.Models.Entities;
 public enum EstadoRegistroLedger
 {
     PENDENTE,
+    PROCESSANDO,
     ANCORADO,
     FALHA
 }
@@ -21,12 +22,18 @@ public class RegistroLedger
     public long? VestigioId { get; set; }
     public required string Evento { get; set; }
     public string? PayloadJson { get; set; }
+    public string? PayloadHashSha256 { get; set; }
+    public string? CredencialId { get; set; }
+    public string? DidResponsavel { get; set; }
+    public string? ChaveIdempotencia { get; set; }
     public EstadoRegistroLedger Estado { get; set; }
     public byte Tentativas { get; set; }
     public string? TxHash { get; set; }
     public long? Bloco { get; set; }
     public string? Erro { get; set; }
     public DateTime CriadoEm { get; set; }
+    public DateTime? ProcessandoEm { get; set; }
+    public DateTime? ProximaTentativaEm { get; set; }
     public DateTime? AncoradoEm { get; set; }
 
     public Vestigio? Vestigio { get; set; }

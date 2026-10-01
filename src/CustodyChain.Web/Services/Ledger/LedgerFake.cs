@@ -43,9 +43,24 @@ public class LedgerFake : IServicoLedger
         return Task.FromResult(credencialId);
     }
 
-    public Task<string> EmitirCredencialCoCAsync(CredencialCoCDto dto)
+    public Task<string> EmitirCredencialCoCAsync(CredencialCoCDto dto, CancellationToken cancellationToken = default)
     {
-        var credencialId = $"cred-coc-{Guid.NewGuid():N}";
+        var credencialId = dto.CredencialId ?? $"cred-coc-{Guid.NewGuid():N}";
+
+        if (_credenciaisCoC.TryGetValue(credencialId, out var existente))
+        {
+            var mesmaOperacao = existente.AssetId == dto.AssetId
+                && existente.Evento == dto.Evento
+                && existente.Did == dto.Did
+                && existente.PayloadHashSha256 == dto.PayloadHashSha256;
+
+            if (!mesmaOperacao)
+            {
+                throw new InvalidOperationException($"Conflito de idempotência para a credencial: {credencialId}");
+            }
+
+            return Task.FromResult(credencialId);
+        }
 
         var lista = _historico.GetOrAdd(dto.AssetId, _ => []);
         lock (lista)
@@ -61,7 +76,14 @@ public class LedgerFake : IServicoLedger
 
     public Task<ResultadoVerificacao> VerificarCredencialAsync(string credencialJson)
     {
-        return Task.FromResult(new ResultadoVerificacao(Valido: true, Motivo: null));
+        if (!_credenciaisCoC.TryGetValue(credencialJson, out var credencial))
+        {
+            return Task.FromResult(new ResultadoVerificacao(Valido: false, Motivo: "Credencial não encontrada no ledger."));
+        }
+
+        return Task.FromResult(credencial.Revogada
+            ? new ResultadoVerificacao(Valido: false, Motivo: "Credencial revogada.")
+            : new ResultadoVerificacao(Valido: true, Motivo: null));
     }
 
     public Task<IReadOnlyList<EstadoRegistro>> HistoricoRegistroAsync(string assetId)

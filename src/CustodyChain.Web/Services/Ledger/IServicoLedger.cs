@@ -15,7 +15,12 @@ public record DidDocument(string Did, string MetodoDid, bool Ativo);
 
 public record CredencialPermissaoDto(string Did, string DidEmissor, string Perfil);
 
-public record CredencialCoCDto(string AssetId, string Evento, string Did, string PayloadHashSha256);
+public record CredencialCoCDto(
+    string AssetId,
+    string Evento,
+    string Did,
+    string PayloadHashSha256,
+    string? CredencialId = null);
 
 public record ResultadoVerificacao(bool Valido, string? Motivo);
 
@@ -29,7 +34,7 @@ public interface IServicoLedger
     Task AtivarDidAsync(string did, string didEmissor, string senhaEmissor);
     Task<DidDocument> ResolverDidAsync(string did);
     Task<string> EmitirCredencialPermissaoAsync(CredencialPermissaoDto dto);
-    Task<string> EmitirCredencialCoCAsync(CredencialCoCDto dto);
+    Task<string> EmitirCredencialCoCAsync(CredencialCoCDto dto, CancellationToken cancellationToken = default);
     Task<ResultadoVerificacao> VerificarCredencialAsync(string credencialJson);
     Task<IReadOnlyList<EstadoRegistro>> HistoricoRegistroAsync(string assetId);
     Task<CredencialCoCRegistrada> ObterCredencialCoCAsync(string credencialId);

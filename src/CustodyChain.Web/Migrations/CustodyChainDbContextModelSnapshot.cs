@@ -719,6 +719,14 @@ namespace CustodyChain.Web.Migrations
                     b.Property<long?>("Bloco")
                         .HasColumnType("bigint");
 
+                    b.Property<string>("ChaveIdempotencia")
+                        .HasMaxLength(120)
+                        .HasColumnType("varchar(120)");
+
+                    b.Property<string>("CredencialId")
+                        .HasMaxLength(120)
+                        .HasColumnType("varchar(120)");
+
                     b.Property<DateTime>("CriadoEm")
                         .HasColumnType("datetime(6)");
 
@@ -727,13 +735,17 @@ namespace CustodyChain.Web.Migrations
                         .HasMaxLength(30)
                         .HasColumnType("varchar(30)");
 
+                    b.Property<string>("DidResponsavel")
+                        .HasMaxLength(200)
+                        .HasColumnType("varchar(200)");
+
                     b.Property<string>("Erro")
                         .HasColumnType("text");
 
                     b.Property<string>("Estado")
                         .IsRequired()
-                        .HasMaxLength(15)
-                        .HasColumnType("varchar(15)");
+                        .HasMaxLength(20)
+                        .HasColumnType("varchar(20)");
 
                     b.Property<string>("Evento")
                         .IsRequired()
@@ -743,10 +755,20 @@ namespace CustodyChain.Web.Migrations
                     b.Property<string>("PayloadJson")
                         .HasColumnType("longtext");
 
+                    b.Property<string>("PayloadHashSha256")
+                        .HasColumnType("char(64)");
+
+                    b.Property<DateTime?>("ProcessandoEm")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<DateTime?>("ProximaTentativaEm")
+                        .HasColumnType("datetime(6)");
+
                     b.Property<long>("RegistroOrigemId")
                         .HasColumnType("bigint");
 
                     b.Property<byte>("Tentativas")
+                        .IsConcurrencyToken()
                         .HasColumnType("tinyint unsigned");
 
                     b.Property<string>("TxHash")
@@ -760,7 +782,12 @@ namespace CustodyChain.Web.Migrations
 
                     b.HasIndex("VestigioId");
 
+                    b.HasIndex("ChaveIdempotencia")
+                        .IsUnique();
+
                     b.HasIndex("Estado", "CriadoEm");
+
+                    b.HasIndex("Estado", "ProximaTentativaEm");
 
                     b.HasIndex("EntidadeOrigem", "RegistroOrigemId", "Evento")
                         .IsUnique();

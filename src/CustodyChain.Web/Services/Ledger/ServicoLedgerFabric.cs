@@ -58,9 +58,9 @@ public class ServicoLedgerFabric(HttpClient httpClient) : IServicoLedger
         return credencialId;
     }
 
-    public async Task<string> EmitirCredencialCoCAsync(CredencialCoCDto dto)
+    public async Task<string> EmitirCredencialCoCAsync(CredencialCoCDto dto, CancellationToken cancellationToken = default)
     {
-        var credencialId = $"cred-coc-{Guid.NewGuid():N}";
+        var credencialId = dto.CredencialId ?? $"cred-coc-{Guid.NewGuid():N}";
         var corpo = new
         {
             credencialId,
@@ -70,7 +70,7 @@ public class ServicoLedgerFabric(HttpClient httpClient) : IServicoLedger
             dto.PayloadHashSha256
         };
 
-        var resposta = await httpClient.PostAsJsonAsync("/credenciais/coc", corpo, OpcoesJson);
+        var resposta = await httpClient.PostAsJsonAsync("/credenciais/coc", corpo, OpcoesJson, cancellationToken);
         await LancarSeFalhaAsync(resposta);
 
         return credencialId;

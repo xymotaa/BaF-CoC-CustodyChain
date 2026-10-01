@@ -412,15 +412,22 @@ public class CustodyChainDbContext(DbContextOptions<CustodyChainDbContext> optio
             e.HasKey(r => r.Id);
             e.Property(r => r.EntidadeOrigem).HasMaxLength(30).IsRequired();
             e.Property(r => r.Evento).HasMaxLength(40).IsRequired();
+            e.Property(r => r.PayloadHashSha256).HasColumnType("char(64)");
+            e.Property(r => r.CredencialId).HasMaxLength(120);
+            e.Property(r => r.DidResponsavel).HasMaxLength(200);
+            e.Property(r => r.ChaveIdempotencia).HasMaxLength(120);
             // LONGTEXT, não JSON: a coluna nativa `json` do MySQL
             // reformata o texto ao armazenar (reordena chaves, normaliza
             // espaços), o que quebra a reprodutibilidade byte a byte do
             // hash calculado sobre o payload original antes da gravação.
             e.Property(r => r.PayloadJson).HasColumnType("longtext");
-            e.Property(r => r.Estado).HasConversion<string>().HasMaxLength(15);
+            e.Property(r => r.Estado).HasConversion<string>().HasMaxLength(20);
+            e.Property(r => r.Tentativas).IsConcurrencyToken();
             e.Property(r => r.TxHash).HasMaxLength(128);
             e.Property(r => r.Erro).HasColumnType("text");
             e.Property(r => r.CriadoEm).HasColumnType("datetime(6)").IsRequired();
+            e.Property(r => r.ProcessandoEm).HasColumnType("datetime(6)");
+            e.Property(r => r.ProximaTentativaEm).HasColumnType("datetime(6)");
             e.Property(r => r.AncoradoEm).HasColumnType("datetime(6)");
 
             // FK polimórfica (entidade_origem + registro_origem_id): não é
@@ -430,6 +437,8 @@ public class CustodyChainDbContext(DbContextOptions<CustodyChainDbContext> optio
 
             // Sustenta a fila de reprocessamento assíncrono (D-10).
             e.HasIndex(r => new { r.Estado, r.CriadoEm });
+            e.HasIndex(r => r.ChaveIdempotencia).IsUnique();
+            e.HasIndex(r => new { r.Estado, r.ProximaTentativaEm });
 
             e.HasOne(r => r.Vestigio)
                 .WithMany()

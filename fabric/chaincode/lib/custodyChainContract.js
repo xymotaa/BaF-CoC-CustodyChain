@@ -77,6 +77,24 @@ class CustodyChainContract extends Contract {
     }
 
     async EmitirCredencialCoC(ctx, credencialId, assetId, evento, did, payloadHashSha256) {
+        const chaveCredencial = ctx.stub.createCompositeKey(PREFIXO_CREDENCIAL, [credencialId]);
+        const credencialExistente = await ctx.stub.getState(chaveCredencial);
+
+        if (credencialExistente && credencialExistente.length > 0) {
+            const existente = JSON.parse(credencialExistente.toString());
+            const mesmaOperacao = existente.tipo === 'COC'
+                && existente.assetId === assetId
+                && existente.evento === evento
+                && existente.did === did
+                && existente.payloadHashSha256 === payloadHashSha256;
+
+            if (!mesmaOperacao) {
+                throw new Error(`Conflito de idempotência para a credencial: ${credencialId}`);
+            }
+
+            return credencialId;
+        }
+
         const credencial = {
             credencialId,
             tipo: 'COC',
@@ -88,7 +106,6 @@ class CustodyChainContract extends Contract {
             revogada: false
         };
 
-        const chaveCredencial = ctx.stub.createCompositeKey(PREFIXO_CREDENCIAL, [credencialId]);
         await ctx.stub.putState(chaveCredencial, Buffer.from(JSON.stringify(credencial)));
 
         const ocorridoEm = this._agora(ctx);

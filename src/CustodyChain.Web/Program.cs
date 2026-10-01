@@ -1,5 +1,8 @@
 using System.Reflection;
+using CustodyChain.Web.Application.CadastroVestigio;
+using CustodyChain.Web.Application.Common;
 using CustodyChain.Web.Data;
+using CustodyChain.Web.Security;
 using CustodyChain.Web.Services.Armazenamento;
 using CustodyChain.Web.Services.Ledger;
 using Microsoft.AspNetCore.Authentication.Cookies;
@@ -31,6 +34,12 @@ var connectionString = builder.Configuration.GetConnectionString("CustodyChainDb
 builder.Services.AddDbContext<CustodyChainDbContext>(options =>
     options.UseMySql(connectionString, new MySqlServerVersion(new Version(8, 0, 0))));
 
+builder.Services.AddScoped<ICadastrarVestigio, CadastrarVestigioUseCase>();
+builder.Services.AddScoped<ICadastroVestigioStore, CadastroVestigioStore>();
+builder.Services.AddScoped<ICadastroVestigioOpcoesQuery, CadastroVestigioOpcoesQuery>();
+builder.Services.AddSingleton<IClock, SystemClock>();
+builder.Services.AddSingleton<IGeradorIdentificadorCredencial, GeradorIdentificadorCredencial>();
+
 // Ledger real: chama o gateway HTTP (fabric/gateway/), que fala com o
 // chaincode CustodyChain via Fabric Gateway (fabric/chaincode/). Troca o
 // LedgerFake usado durante o desenvolvimento das telas, sem alterar
@@ -41,6 +50,8 @@ builder.Services.AddHttpClient<IServicoLedger, ServicoLedgerFabric>(client =>
     client.BaseAddress = new Uri(ledgerGatewayUrl);
     client.Timeout = TimeSpan.FromSeconds(30);
 });
+builder.Services.AddScoped<IProcessadorOutboxLedger, ProcessadorOutboxLedger>();
+builder.Services.AddHostedService<PublicadorOutboxLedgerService>();
 
 // Armazenamento off-chain de anexos (P-01): IPFS privado local via
 // docker-compose. A API HTTP roda em 127.0.0.1:5001, não exposta fora
@@ -63,6 +74,12 @@ builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationSc
         options.ExpireTimeSpan = TimeSpan.FromHours(8);
         options.SlidingExpiration = true;
     });
+
+builder.Services.AddAuthorization(options =>
+{
+    options.AddPolicy(PoliticasAutorizacao.CadastrarVestigio, policy =>
+        policy.RequireRole("COLETOR"));
+});
 
 var app = builder.Build();
 
