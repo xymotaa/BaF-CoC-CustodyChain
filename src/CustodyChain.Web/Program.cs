@@ -56,6 +56,8 @@ builder.Services.AddScoped<IEmitirLaudo, EmitirLaudoUseCase>();
 builder.Services.AddScoped<IEmissaoLaudoStore, EmissaoLaudoStore>();
 builder.Services.AddScoped<IFracionarAmostra, FracionarAmostraUseCase>();
 builder.Services.AddScoped<IFracionamentoAmostraStore, FracionamentoAmostraStore>();
+builder.Services.AddScoped<IUnificarAmostras, UnificarAmostrasUseCase>();
+builder.Services.AddScoped<IUnificacaoAmostrasStore, UnificacaoAmostrasStore>();
 builder.Services.AddSingleton<IClock, SystemClock>();
 builder.Services.AddSingleton<IGeradorIdentificadorCredencial, GeradorIdentificadorCredencial>();
 
