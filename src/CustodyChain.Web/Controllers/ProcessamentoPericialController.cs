@@ -2,6 +2,7 @@ using System.Security.Claims;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using CustodyChain.Web.Application.ProcessamentoPericial;
 using CustodyChain.Web.Data;
 using CustodyChain.Web.Models.Entities;
 using CustodyChain.Web.Models.ViewModels;
@@ -13,7 +14,10 @@ using Microsoft.EntityFrameworkCore;
 namespace CustodyChain.Web.Controllers;
 
 [Authorize]
-public class ProcessamentoPericialController(CustodyChainDbContext db, IServicoLedger ledger) : Controller
+public class ProcessamentoPericialController(
+    CustodyChainDbContext db,
+    IServicoLedger ledger,
+    IRomperLacre romperLacre) : Controller
 {
     [HttpGet("/processamento-pericial")]
     public async Task<IActionResult> Index()
@@ -84,102 +88,27 @@ public class ProcessamentoPericialController(CustodyChainDbContext db, IServicoL
 
     [HttpPost("/processamento-pericial/romper-lacre")]
     [ValidateAntiForgeryToken]
-    public async Task<IActionResult> RomperLacre(RomperLacreViewModel modelo)
+    public async Task<IActionResult> RomperLacre(RomperLacreViewModel modelo, CancellationToken cancellationToken)
     {
-        var peritoId = long.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);
+        if (!TryObterIntervenienteId(out var peritoId))
+            return Forbid();
 
-        var pericia = await db.Pericias
-            .Include(p => p.Vestigio)
-            .Include(p => p.Credencial)
-            .FirstOrDefaultAsync(p => p.Id == modelo.PericiaId && p.PeritoId == peritoId && p.Situacao == SituacaoPericia.RECEBIDA);
-
-        if (pericia is null || string.IsNullOrWhiteSpace(modelo.Justificativa))
+        try
         {
-            TempData["MensagemErro"] = "Perícia não encontrada, vestígio ainda não recebido, ou justificativa não informada.";
-            return RedirectToAction(nameof(Index));
+            var resultado = await romperLacre.ExecutarAsync(
+                new RomperLacreCommand(peritoId, modelo.PericiaId, modelo.Justificativa), cancellationToken);
+            TempData["MensagemSucesso"] =
+                $"Lacre {resultado.NumeroLacre} rompido. Vestígio {resultado.RotuloEvidencia} liberado para exame. A ancoragem da credencial está pendente.";
+        }
+        catch (Exception exception) when (exception is ValidacaoRompimentoLacreException
+            or RecursoRompimentoLacreNaoEncontradoException
+            or CredencialPermissaoInvalidaException
+            or LacreIntactoNaoEncontradoException
+            or ConflitoRompimentoLacreException)
+        {
+            TempData["MensagemErro"] = exception.Message;
         }
 
-        var agora = DateTime.UtcNow;
-
-        // RN10: só executa com credencial de permissão vigente para aquele
-        // vestígio específico. Checagem repetida aqui (não só na listagem)
-        // porque a situação da credencial pode ter mudado entre o GET e o
-        // POST (ex: revogada nesse intervalo).
-        var credencialValida = pericia.Credencial is not null
-            && pericia.Credencial.Situacao == SituacaoCredencial.VIGENTE
-            && pericia.Credencial.VestigioId == pericia.VestigioId
-            && (pericia.Credencial.ValidaAte is null || pericia.Credencial.ValidaAte > agora);
-
-        if (!credencialValida)
-        {
-            TempData["MensagemErro"] = "Credencial de permissão inválida, revogada ou expirada para este vestígio (RN10).";
-            return RedirectToAction(nameof(Index));
-        }
-
-        var lacreAtual = await db.Lacres
-            .Where(l => l.VestigioId == pericia.VestigioId && l.Situacao == SituacaoLacre.INTACTO)
-            .OrderByDescending(l => l.AplicadoEm)
-            .FirstOrDefaultAsync();
-
-        if (lacreAtual is null)
-        {
-            TempData["MensagemErro"] = "Nenhum lacre intacto encontrado para este vestígio.";
-            return RedirectToAction(nameof(Index));
-        }
-
-        lacreAtual.Situacao = SituacaoLacre.ROMPIDO;
-        lacreAtual.RompidoPorId = peritoId;
-        lacreAtual.RompidoEm = agora;
-        lacreAtual.JustificativaRompimento = modelo.Justificativa.Trim();
-
-        pericia.Situacao = SituacaoPericia.EM_EXECUCAO;
-        pericia.Vestigio.Estado = EstadoVestigio.EmPericia;
-        pericia.Vestigio.AtualizadoEm = agora;
-
-        await db.SaveChangesAsync();
-
-        var perito = await db.Intervenientes.FindAsync(peritoId);
-        var payload = new
-        {
-            RE = pericia.Vestigio.RotuloEvidencia,
-            NumeroLacreRompido = lacreAtual.Numero,
-            Justificativa = lacreAtual.JustificativaRompimento,
-            RompidoPor = perito!.Did,
-            RompidoEm = agora,
-        };
-        var payloadJson = JsonSerializer.Serialize(payload);
-        var hashPayload = Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(payloadJson)));
-
-        // Credencial #4 (Quadro 14): rompimento.
-        var credencialId = await ledger.EmitirCredencialCoCAsync(
-            new CredencialCoCDto(pericia.VestigioId.ToString(), "ROMPIMENTO", perito.Did, hashPayload));
-
-        db.Credenciais.Add(new Credencial
-        {
-            Tipo = TipoCredencial.COC,
-            Identificador = credencialId,
-            TitularId = peritoId,
-            EmissorId = peritoId,
-            VestigioId = pericia.VestigioId,
-            EmitidaEm = agora,
-            Situacao = SituacaoCredencial.VIGENTE,
-        });
-
-        db.RegistrosLedger.Add(new RegistroLedger
-        {
-            EntidadeOrigem = "LACRE",
-            RegistroOrigemId = lacreAtual.Id,
-            VestigioId = pericia.VestigioId,
-            Evento = "ROMPIMENTO",
-            PayloadJson = payloadJson,
-            Estado = EstadoRegistroLedger.PENDENTE,
-            Tentativas = 0,
-            CriadoEm = agora,
-        });
-
-        await db.SaveChangesAsync();
-
-        TempData["MensagemSucesso"] = $"Lacre {lacreAtual.Numero} rompido. Vestígio {pericia.Vestigio.RotuloEvidencia} liberado para exame.";
         return RedirectToAction(nameof(Index));
     }
 
@@ -574,4 +503,7 @@ public class ProcessamentoPericialController(CustodyChainDbContext db, IServicoL
 
         await db.SaveChangesAsync();
     }
+
+    private bool TryObterIntervenienteId(out long intervenienteId) =>
+        long.TryParse(User.FindFirstValue(ClaimTypes.NameIdentifier), out intervenienteId) && intervenienteId > 0;
 }

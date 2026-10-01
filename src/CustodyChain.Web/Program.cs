@@ -4,6 +4,7 @@ using CustodyChain.Web.Application.Arquivo;
 using CustodyChain.Web.Application.Common;
 using CustodyChain.Web.Application.Remessa;
 using CustodyChain.Web.Application.Recebimento;
+using CustodyChain.Web.Application.ProcessamentoPericial;
 using CustodyChain.Web.Data;
 using CustodyChain.Web.Security;
 using CustodyChain.Web.Services.Armazenamento;
@@ -49,6 +50,8 @@ builder.Services.AddScoped<IConfirmarRecebimento, ConfirmarRecebimentoUseCase>()
 builder.Services.AddScoped<IRecusarRecebimento, RecusarRecebimentoUseCase>();
 builder.Services.AddScoped<IRecebimentoStore, RecebimentoStore>();
 builder.Services.AddScoped<IRecebimentoPendentesQuery, RecebimentoPendentesQuery>();
+builder.Services.AddScoped<IRomperLacre, RomperLacreUseCase>();
+builder.Services.AddScoped<IRompimentoLacreStore, RompimentoLacreStore>();
 builder.Services.AddSingleton<IClock, SystemClock>();
 builder.Services.AddSingleton<IGeradorIdentificadorCredencial, GeradorIdentificadorCredencial>();
 
