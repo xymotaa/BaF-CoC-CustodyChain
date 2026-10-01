@@ -1,0 +1,19 @@
+{
+    "name": "custodychain-gateway",
+    "version": "1.0.0",
+    "description": "Gateway HTTP entre o ASP.NET Core (IServicoLedger) e o chaincode CustodyChain no Hyperledger Fabric",
+    "engines": {
+        "node": ">=18"
+    },
+    "scripts": {
+        "start": "node src/app.js"
+    },
+    "engineStrict": true,
+    "license": "UNLICENSED",
+    "dependencies": {
+        "@grpc/grpc-js": "^1.12.2",
+        "@hyperledger/fabric-gateway": "^1.7.0",
+        "cors": "^2.8.5",
+        "express": "^4.21.1"
+    }
+}
