@@ -1,12 +1,8 @@
 using System.Security.Claims;
-using System.Security.Cryptography;
-using System.Text;
-using System.Text.Json;
 using CustodyChain.Web.Application.ProcessamentoPericial;
 using CustodyChain.Web.Data;
 using CustodyChain.Web.Models.Entities;
 using CustodyChain.Web.Models.ViewModels;
-using CustodyChain.Web.Services.Ledger;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -16,11 +12,11 @@ namespace CustodyChain.Web.Controllers;
 [Authorize]
 public class ProcessamentoPericialController(
     CustodyChainDbContext db,
-    IServicoLedger ledger,
     IRomperLacre romperLacre,
     IEmitirLaudo emitirLaudo,
     IFracionarAmostra fracionarAmostra,
-    IUnificarAmostras unificarAmostras) : Controller
+    IUnificarAmostras unificarAmostras,
+    IRegistrarConsumoOuExaurimento registrarConsumoOuExaurimento) : Controller
 {
     [HttpGet("/processamento-pericial")]
     public async Task<IActionResult> Index()
@@ -189,94 +185,34 @@ public class ProcessamentoPericialController(
 
     [HttpPost("/processamento-pericial/consumir-exaurir")]
     [ValidateAntiForgeryToken]
-    public async Task<IActionResult> ConsumirOuExaurir(ConsumirOuExaurirViewModel modelo)
+    public async Task<IActionResult> ConsumirOuExaurir(
+        ConsumirOuExaurirViewModel modelo,
+        CancellationToken cancellationToken)
     {
-        var peritoId = long.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);
+        if (!TryObterIntervenienteId(out var peritoId))
+            return Forbid();
 
-        var pericia = await db.Pericias
-            .Include(p => p.Vestigio)
-            .FirstOrDefaultAsync(p => p.Id == modelo.PericiaId && p.PeritoId == peritoId && p.Situacao == SituacaoPericia.EM_EXECUCAO);
-
-        if (pericia is null
-            || !Enum.TryParse<TipoOperacaoAmostra>(modelo.Tipo, out var tipo)
-            || (tipo != TipoOperacaoAmostra.CONSUMO && tipo != TipoOperacaoAmostra.EXAURIMENTO)
-            || string.IsNullOrWhiteSpace(modelo.Justificativa))
+        try
         {
-            TempData["MensagemErro"] = "Perícia não encontrada, lacre ainda não rompido, ou justificativa não informada.";
-            return RedirectToAction(nameof(Index));
+            var resultado = await registrarConsumoOuExaurimento.ExecutarAsync(
+                new RegistrarConsumoOuExaurimentoCommand(
+                    peritoId,
+                    modelo.PericiaId,
+                    modelo.Tipo,
+                    modelo.QuantidadeDescrita,
+                    modelo.Justificativa), cancellationToken);
+            var nomeOperacao = resultado.Tipo == "CONSUMO" ? "Consumo" : "Exaurimento";
+            TempData["MensagemSucesso"] =
+                $"{nomeOperacao} registrado para o vestígio {resultado.RotuloEvidencia}. A ancoragem da credencial está pendente.";
+        }
+        catch (Exception exception) when (exception is ValidacaoConsumoOuExaurimentoException
+            or RecursoConsumoOuExaurimentoNaoEncontradoException
+            or ConflitoConsumoOuExaurimentoException)
+        {
+            TempData["MensagemErro"] = exception.Message;
         }
 
-        var agora = DateTime.UtcNow;
-        var vestigio = pericia.Vestigio;
-
-        var operacao = new OperacaoAmostra
-        {
-            PericiaId = pericia.Id,
-            Tipo = tipo,
-            VestigioOrigemId = vestigio.Id,
-            VestigioResultanteId = null,
-            QuantidadeDescrita = modelo.QuantidadeDescrita,
-            Justificativa = modelo.Justificativa.Trim(),
-            ExecutadoPorId = peritoId,
-            ExecutadoEm = agora,
-        };
-        db.OperacoesAmostra.Add(operacao);
-
-        await db.SaveChangesAsync();
-
-        await RegistrarEventoOperacaoAsync(operacao.Id, vestigio.Id, tipo.ToString(), peritoId, new
-        {
-            RE = vestigio.RotuloEvidencia,
-            QuantidadeDescrita = modelo.QuantidadeDescrita,
-            Justificativa = modelo.Justificativa,
-        });
-
-        TempData["MensagemSucesso"] = $"{(tipo == TipoOperacaoAmostra.CONSUMO ? "Consumo" : "Exaurimento")} registrado para o vestígio {vestigio.RotuloEvidencia}.";
         return RedirectToAction(nameof(Index));
-    }
-
-    /// <summary>
-    /// A origem do registro no ledger é a própria OPERACAO_AMOSTRA (não o
-    /// vestígio): um mesmo vestígio pode ser fracionado, unificado,
-    /// consumido ou exaurido mais de uma vez ao longo da perícia, e a
-    /// unicidade (entidade_origem, registro_origem_id, evento) do
-    /// REGISTRO_LEDGER rejeitaria a segunda ocorrência se a origem fosse
-    /// o vestígio em si.
-    /// </summary>
-    private async Task RegistrarEventoOperacaoAsync(long operacaoAmostraId, long vestigioId, string evento, long executorId, object payloadDados)
-    {
-        var agora = DateTime.UtcNow;
-        var executor = await db.Intervenientes.FindAsync(executorId);
-        var payloadJson = JsonSerializer.Serialize(payloadDados);
-        var hashPayload = Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(payloadJson)));
-
-        var credencialId = await ledger.EmitirCredencialCoCAsync(
-            new CredencialCoCDto(vestigioId.ToString(), evento, executor!.Did, hashPayload));
-
-        db.Credenciais.Add(new Credencial
-        {
-            Tipo = TipoCredencial.COC,
-            Identificador = credencialId,
-            TitularId = executorId,
-            EmissorId = executorId,
-            VestigioId = vestigioId,
-            EmitidaEm = agora,
-            Situacao = SituacaoCredencial.VIGENTE,
-        });
-
-        db.RegistrosLedger.Add(new RegistroLedger
-        {
-            EntidadeOrigem = "OPERACAO_AMOSTRA",
-            RegistroOrigemId = operacaoAmostraId,
-            VestigioId = vestigioId,
-            Evento = evento,
-            PayloadJson = payloadJson,
-            Estado = EstadoRegistroLedger.PENDENTE,
-            Tentativas = 0,
-            CriadoEm = agora,
-        });
-
-        await db.SaveChangesAsync();
     }
 
     private bool TryObterIntervenienteId(out long intervenienteId) =>
