@@ -5,6 +5,7 @@ using CustodyChain.Web.Application.Common;
 using CustodyChain.Web.Application.Remessa;
 using CustodyChain.Web.Application.Recebimento;
 using CustodyChain.Web.Application.ProcessamentoPericial;
+using CustodyChain.Web.Application.DestinacaoFinal;
 using CustodyChain.Web.Data;
 using CustodyChain.Web.Security;
 using CustodyChain.Web.Services.Armazenamento;
@@ -60,6 +61,10 @@ builder.Services.AddScoped<IUnificarAmostras, UnificarAmostrasUseCase>();
 builder.Services.AddScoped<IUnificacaoAmostrasStore, UnificacaoAmostrasStore>();
 builder.Services.AddScoped<IRegistrarConsumoOuExaurimento, RegistrarConsumoOuExaurimentoUseCase>();
 builder.Services.AddScoped<IConsumoOuExaurimentoStore, ConsumoOuExaurimentoStore>();
+builder.Services.AddScoped<ISolicitarDestinacao, SolicitarDestinacaoUseCase>();
+builder.Services.AddScoped<IAprovarDestinacao, AprovarDestinacaoUseCase>();
+builder.Services.AddScoped<IDestinacaoFinalStore, DestinacaoFinalStore>();
+builder.Services.AddScoped<IArmazenamentoAutorizacao, ArmazenamentoAutorizacaoIpfs>();
 builder.Services.AddSingleton<IClock, SystemClock>();
 builder.Services.AddSingleton<IGeradorIdentificadorCredencial, GeradorIdentificadorCredencial>();
 

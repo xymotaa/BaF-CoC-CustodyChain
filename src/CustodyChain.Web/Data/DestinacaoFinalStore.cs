@@ -1,0 +1,197 @@
+using System.Security.Cryptography;
+using System.Text;
+using CustodyChain.Web.Application.DestinacaoFinal;
+using CustodyChain.Web.Models.Entities;
+using Microsoft.EntityFrameworkCore;
+
+namespace CustodyChain.Web.Data;
+
+public sealed class DestinacaoFinalStore(CustodyChainDbContext db) : IDestinacaoFinalStore
+{
+    public Task<ContextoSolicitacaoDestinacao?> ObterContextoSolicitacaoAsync(
+        long vestigioId,
+        long solicitanteId,
+        CancellationToken cancellationToken) =>
+        (from vestigio in db.Vestigios
+         join solicitante in db.Intervenientes on solicitanteId equals solicitante.Id
+         where vestigio.Id == vestigioId
+             && (vestigio.Estado == EstadoVestigio.Armazenado || vestigio.Estado == EstadoVestigio.Periciado)
+             && solicitante.Situacao == SituacaoInterveniente.ATIVO
+         select new ContextoSolicitacaoDestinacao(vestigio.Id, vestigio.RotuloEvidencia))
+        .SingleOrDefaultAsync(cancellationToken);
+
+    public async Task PersistirSolicitacaoAsync(
+        SolicitacaoDestinacaoPendente solicitacao,
+        CancellationToken cancellationToken)
+    {
+        await using var transacao = await db.Database.BeginTransactionAsync(cancellationToken);
+        try
+        {
+            var vestigioElegivel = await db.Vestigios.AnyAsync(v => v.Id == solicitacao.VestigioId
+                && (v.Estado == EstadoVestigio.Armazenado || v.Estado == EstadoVestigio.Periciado), cancellationToken);
+            var solicitanteAtivo = await db.Intervenientes.AnyAsync(i => i.Id == solicitacao.SolicitanteId
+                && i.Situacao == SituacaoInterveniente.ATIVO, cancellationToken);
+            if (!vestigioElegivel || !solicitanteAtivo)
+                throw new ConflitoDestinacaoFinalException(
+                    "O vestígio ou o solicitante mudou enquanto a destinação era preparada. Atualize a página e tente novamente.");
+
+            var anexo = new Anexo
+            {
+                VestigioId = solicitacao.VestigioId,
+                Tipo = TipoAnexo.AUTORIZACAO,
+                NomeArquivo = solicitacao.NomeArquivoAutorizacao,
+                CaminhoRelativo = solicitacao.CidAutorizacao,
+                TamanhoBytes = solicitacao.TamanhoBytesAutorizacao,
+                HashSha256 = solicitacao.HashAutorizacao,
+                Algoritmo = "SHA-256",
+                EnviadoPorId = solicitacao.SolicitanteId,
+                EnviadoEm = solicitacao.SolicitadoEm,
+            };
+            db.Anexos.Add(anexo);
+            await db.SaveChangesAsync(cancellationToken);
+
+            var descarte = new Descarte
+            {
+                VestigioId = solicitacao.VestigioId,
+                Tipo = TipoDescarte(solicitacao.Tipo),
+                AutorizacaoAnexoId = anexo.Id,
+                DidMagistrado = solicitacao.DidMagistrado,
+                SolicitadoPorId = solicitacao.SolicitanteId,
+                Observacao = solicitacao.Observacao,
+            };
+            db.Descartes.Add(descarte);
+            await db.SaveChangesAsync(cancellationToken);
+
+            db.LogsAuditoria.Add(CriarLog(
+                "SOLICITACAO_DESTINACAO",
+                descarte.Id,
+                solicitacao.SolicitanteId,
+                solicitacao.SolicitadoEm));
+            await db.SaveChangesAsync(cancellationToken);
+            await transacao.CommitAsync(cancellationToken);
+        }
+        catch (DbUpdateException)
+        {
+            await transacao.RollbackAsync(cancellationToken);
+            throw new ConflitoDestinacaoFinalException(
+                "Não foi possível registrar a solicitação de destinação final.");
+        }
+    }
+
+    public Task<ContextoAprovacaoDestinacao?> ObterContextoAprovacaoAsync(
+        long descarteId,
+        long aprovadorId,
+        CancellationToken cancellationToken) =>
+        (from descarte in db.Descartes
+         join aprovador in db.Intervenientes on aprovadorId equals aprovador.Id
+         where descarte.Id == descarteId
+             && descarte.AprovadoPorId == null
+             && descarte.ExecutadoEm == null
+             && descarte.SolicitadoPorId != aprovadorId
+             && aprovador.Situacao == SituacaoInterveniente.ATIVO
+         select new ContextoAprovacaoDestinacao(
+             descarte.Id,
+             descarte.VestigioId,
+             descarte.Vestigio.RotuloEvidencia,
+             descarte.Tipo.ToString(),
+             descarte.DidMagistrado,
+             aprovador.Did))
+        .SingleOrDefaultAsync(cancellationToken);
+
+    public async Task PersistirAprovacaoAsync(
+        AprovacaoDestinacaoPendente aprovacao,
+        CancellationToken cancellationToken)
+    {
+        await using var transacao = await db.Database.BeginTransactionAsync(cancellationToken);
+        try
+        {
+            var descarte = await db.Descartes
+                .Include(d => d.Vestigio)
+                .SingleOrDefaultAsync(d => d.Id == aprovacao.DescarteId
+                    && d.AprovadoPorId == null
+                    && d.ExecutadoEm == null
+                    && d.SolicitadoPorId != aprovacao.AprovadorId, cancellationToken);
+            var aprovadorAtivo = await db.Intervenientes.AnyAsync(i => i.Id == aprovacao.AprovadorId
+                && i.Situacao == SituacaoInterveniente.ATIVO, cancellationToken);
+
+            if (descarte is null || !aprovadorAtivo || descarte.VestigioId != aprovacao.VestigioId
+                || descarte.Tipo.ToString() != aprovacao.Tipo
+                || (descarte.Vestigio.Estado != EstadoVestigio.Armazenado
+                    && descarte.Vestigio.Estado != EstadoVestigio.Periciado))
+                throw new ConflitoDestinacaoFinalException(
+                    "A destinação, o aprovador ou o vestígio mudou enquanto a aprovação era preparada. Atualize a página e tente novamente.");
+
+            descarte.AprovadoPorId = aprovacao.AprovadorId;
+            descarte.ExecutadoEm = aprovacao.ExecutadoEm;
+            descarte.Vestigio.Estado = EstadoVestigio.Descartado;
+            descarte.Vestigio.EtapaAtual = 10;
+            descarte.Vestigio.AtualizadoEm = aprovacao.ExecutadoEm;
+
+            db.Credenciais.Add(new Credencial
+            {
+                Tipo = TipoCredencial.COC,
+                Identificador = aprovacao.CredencialId,
+                TitularId = aprovacao.AprovadorId,
+                EmissorId = aprovacao.AprovadorId,
+                VestigioId = aprovacao.VestigioId,
+                EmitidaEm = aprovacao.ExecutadoEm,
+                Situacao = SituacaoCredencial.PENDENTE,
+            });
+            db.RegistrosLedger.Add(new RegistroLedger
+            {
+                EntidadeOrigem = "DESCARTE",
+                RegistroOrigemId = descarte.Id,
+                VestigioId = aprovacao.VestigioId,
+                Evento = "ENCERRAMENTO",
+                PayloadJson = aprovacao.PayloadJson,
+                PayloadHashSha256 = aprovacao.PayloadHashSha256,
+                CredencialId = aprovacao.CredencialId,
+                DidResponsavel = aprovacao.DidResponsavel,
+                ChaveIdempotencia = aprovacao.CredencialId,
+                Estado = EstadoRegistroLedger.PENDENTE,
+                Tentativas = 0,
+                CriadoEm = aprovacao.ExecutadoEm,
+                ProximaTentativaEm = aprovacao.ExecutadoEm,
+            });
+            db.LogsAuditoria.Add(CriarLog(
+                "ENCERRAMENTO",
+                descarte.Id,
+                aprovacao.AprovadorId,
+                aprovacao.ExecutadoEm));
+
+            await db.SaveChangesAsync(cancellationToken);
+            await transacao.CommitAsync(cancellationToken);
+        }
+        catch (DbUpdateException)
+        {
+            await transacao.RollbackAsync(cancellationToken);
+            throw new ConflitoDestinacaoFinalException(
+                "Não foi possível concluir a destinação porque a credencial ou o evento já existe.");
+        }
+    }
+
+    private static TipoDescarte TipoDescarte(string tipo) => tipo switch
+    {
+        "DESCARTE" => Models.Entities.TipoDescarte.DESCARTE,
+        "RESTITUICAO" => Models.Entities.TipoDescarte.RESTITUICAO,
+        _ => throw new InvalidOperationException("Tipo de destinação inválido."),
+    };
+
+    private LogAuditoria CriarLog(string acao, long descarteId, long responsavelId, DateTime ocorridoEm)
+    {
+        var hashAnterior = db.LogsAuditoria.OrderByDescending(log => log.Id)
+            .Select(log => log.HashRegistro).FirstOrDefault() ?? new string('0', 64);
+        var conteudo = string.Join('|', hashAnterior, acao, "DESCARTE", descarteId, responsavelId, ocorridoEm.Ticks);
+
+        return new LogAuditoria
+        {
+            IntervenienteId = responsavelId,
+            Acao = acao,
+            Entidade = "DESCARTE",
+            RegistroId = descarteId,
+            DataHora = ocorridoEm,
+            HashAnterior = hashAnterior,
+            HashRegistro = Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(conteudo))),
+        };
+    }
+}
