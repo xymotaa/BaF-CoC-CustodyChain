@@ -1,66 +1,108 @@
 using System.Security.Claims;
-using CustodyChain.Web.Data;
-using CustodyChain.Web.Models.Entities;
+using CustodyChain.Web.Application.Autenticacao;
 using CustodyChain.Web.Models.ViewModels;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.EntityFrameworkCore;
+using Microsoft.AspNetCore.RateLimiting;
 
 namespace CustodyChain.Web.Controllers;
 
-public class AutenticacaoController(CustodyChainDbContext db) : Controller
+public class AutenticacaoController(
+    CriarDesafioAutenticacaoUseCase criarDesafio,
+    ConcluirAutenticacaoUseCase concluirAutenticacao,
+    IConfiguration configuration,
+    ILogger<AutenticacaoController> logger) : Controller
 {
     [HttpGet("/entrar")]
     [AllowAnonymous]
-    public async Task<IActionResult> Entrar()
+    public IActionResult Entrar()
     {
-        var modelo = new LoginViewModel
+        return View(new LoginViewModel
         {
-            CredenciaisDisponiveis = await CarregarCredenciaisAtivasAsync()
-        };
-        return View(modelo);
+            WalletEndpoint = configuration["AuthenticationDid:WalletEndpoint"]
+                ?? "http://127.0.0.1:43123"
+        });
     }
 
-    [HttpPost("/entrar")]
+    [HttpPost("/autenticacao/desafios")]
     [AllowAnonymous]
     [ValidateAntiForgeryToken]
-    public async Task<IActionResult> Entrar(LoginViewModel modelo)
+    [EnableRateLimiting("AutenticacaoDid")]
+    public async Task<IActionResult> CriarDesafio(
+        [FromBody] CriarDesafioLoginRequest? request,
+        CancellationToken cancellationToken)
     {
-        if (!ModelState.IsValid)
+        try
         {
-            modelo.CredenciaisDisponiveis = await CarregarCredenciaisAtivasAsync();
-            return View(modelo);
+            var desafio = await criarDesafio.ExecutarAsync(request?.Did ?? string.Empty, cancellationToken);
+            return Ok(desafio);
         }
-
-        var interveniente = await db.Intervenientes
-            .Include(i => i.Perfil)
-            .FirstOrDefaultAsync(i => i.Did == modelo.Did && i.Situacao == SituacaoInterveniente.ATIVO);
-
-        // Sem wallet real nesta fase: qualquer senha não vazia é aceita para
-        // a credencial selecionada. A validação de senha de fato acontece no
-        // dispositivo do titular contra a wallet cifrada (fora do servidor).
-        if (interveniente is null)
+        catch (AutenticacaoException erro)
         {
-            ModelState.AddModelError(string.Empty, "Credencial não encontrada ou não ativa.");
-            modelo.CredenciaisDisponiveis = await CarregarCredenciaisAtivasAsync();
-            return View(modelo);
+            return Unauthorized(new { code = erro.Codigo, message = erro.Message });
         }
-
-        var claims = new List<Claim>
+        catch (Exception erro)
         {
-            new(ClaimTypes.NameIdentifier, interveniente.Id.ToString()),
-            new(ClaimTypes.Name, interveniente.Nome),
-            new("did", interveniente.Did),
-            new(ClaimTypes.Role, interveniente.Perfil.Codigo),
-            new("perfil_nome", interveniente.Perfil.Nome),
-        };
+            logger.LogError(erro, "Falha ao criar desafio de autenticação DID.");
+            return StatusCode(StatusCodes.Status503ServiceUnavailable, new
+            {
+                code = "servico_did_indisponivel",
+                message = "Não foi possível consultar o registro DID. Tente novamente."
+            });
+        }
+    }
 
-        var identidade = new ClaimsIdentity(claims, CookieAuthenticationDefaults.AuthenticationScheme);
-        await HttpContext.SignInAsync(CookieAuthenticationDefaults.AuthenticationScheme, new ClaimsPrincipal(identidade));
+    [HttpPost("/autenticacao/provas")]
+    [AllowAnonymous]
+    [ValidateAntiForgeryToken]
+    [EnableRateLimiting("AutenticacaoDid")]
+    public async Task<IActionResult> Concluir(
+        [FromBody] ConcluirLoginRequest? request,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var identidade = await concluirAutenticacao.ExecutarAsync(
+                new ProvaAutenticacao(
+                    request?.ChallengeId ?? string.Empty,
+                    request?.Did ?? string.Empty,
+                    request?.KeyId ?? string.Empty,
+                    request?.Signature ?? string.Empty),
+                cancellationToken);
 
-        return RedirectToAction("Index", "Home");
+            var claims = new List<Claim>
+            {
+                new(ClaimTypes.NameIdentifier, identidade.Id.ToString()),
+                new(ClaimTypes.Name, identidade.Nome),
+                new("did", identidade.Did),
+                new(ClaimTypes.Role, identidade.PerfilCodigo),
+                new("perfil_nome", identidade.PerfilNome),
+            };
+
+            var identidadeCookie = new ClaimsIdentity(
+                claims,
+                CookieAuthenticationDefaults.AuthenticationScheme);
+            await HttpContext.SignInAsync(
+                CookieAuthenticationDefaults.AuthenticationScheme,
+                new ClaimsPrincipal(identidadeCookie));
+
+            return Ok(new { redirectUrl = Url.Action("Index", "Home") ?? "/" });
+        }
+        catch (AutenticacaoException erro)
+        {
+            return Unauthorized(new { code = erro.Codigo, message = erro.Message });
+        }
+        catch (Exception erro)
+        {
+            logger.LogError(erro, "Falha ao concluir autenticação DID.");
+            return StatusCode(StatusCodes.Status503ServiceUnavailable, new
+            {
+                code = "servico_did_indisponivel",
+                message = "Não foi possível validar a prova DID. Tente novamente."
+            });
+        }
     }
 
     [HttpPost("/sair")]
@@ -71,11 +113,4 @@ public class AutenticacaoController(CustodyChainDbContext db) : Controller
         return RedirectToAction(nameof(Entrar));
     }
 
-    private async Task<List<OpcaoDidViewModel>> CarregarCredenciaisAtivasAsync() =>
-        await db.Intervenientes
-            .Include(i => i.Perfil)
-            .Where(i => i.Situacao == SituacaoInterveniente.ATIVO)
-            .OrderBy(i => i.Perfil.Nome)
-            .Select(i => new OpcaoDidViewModel(i.Did, i.Nome, i.Perfil.Nome))
-            .ToListAsync();
 }

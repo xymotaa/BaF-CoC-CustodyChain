@@ -13,12 +13,15 @@ que propõe o framework BaF-CoC.
 | Aplicação | ASP.NET Core MVC, .NET 10, Razor |
 | ORM | Entity Framework Core 9.0.x (provider `Pomelo.EntityFrameworkCore.MySql`) |
 | Banco | MySQL 8 (container Docker) |
-| Ledger (planejado) | Hyperledger Fabric — hoje substituído por `LedgerFake` em memória |
+| Ledger | Hyperledger Fabric + chaincode JavaScript + gateway HTTP Node.js |
 | Anexos off-chain | IPFS privado local (`ipfs/kubo`, container Docker) |
+| Identidade | DID v2 + wallet local Ed25519 (SQLite cifrado) |
 
 ## Pré-requisitos
 
 - .NET 10 SDK
+- Node.js 22.5 ou superior
+- `libsodium` disponível para a aplicação .NET validar assinaturas Ed25519
 - Docker + Docker Compose
 - Ferramenta `dotnet-ef` instalada globalmente:
   ```
@@ -51,7 +54,59 @@ Repita até aparecer `healthy` nos dois. A API do IPFS fica em
 `127.0.0.1:8899` (só para inspecionar arquivos manualmente por CID, se
 precisar: `http://127.0.0.1:8899/ipfs/<cid>`).
 
-### 2. Rodar a aplicação
+### 2. Preparar Fabric, gateway e wallet para autenticação
+
+O login não aceita mais uma senha simbólica. A aplicação cria um desafio
+descartável, a wallet local o assina com Ed25519 e o .NET valida a assinatura
+contra a chave pública do DID v2 armazenado no Fabric.
+
+Defina um segredo de serviço forte, igual no gateway e na aplicação (não o
+grave no repositório):
+
+```bash
+export GATEWAY_SERVICE_TOKEN='<segredo-local-forte>'
+export Ledger__ServiceToken="$GATEWAY_SERVICE_TOKEN"
+```
+
+Depois de subir a rede e instalar a versão atual do chaincode, inicie o
+gateway em outro terminal:
+
+```bash
+cd fabric/gateway
+npm start
+```
+
+Crie uma única identidade administrativa na wallet. O comando solicita e
+confirma a senha sem exibi-la:
+
+```bash
+cd wallet
+npm run create-admin -- --did did:legal:admin:teste-001
+```
+
+O comando imprime somente `did`, `keyId`, algoritmo e chave pública. Use esses
+três valores públicos para executar uma vez o bootstrap pelo gateway:
+
+```bash
+curl -X POST http://127.0.0.1:3000/v2/bootstrap/admin \
+  -H "Authorization: Bearer $GATEWAY_SERVICE_TOKEN" \
+  -H 'Content-Type: application/json' \
+  -d '{"did":"did:legal:admin:teste-001","verificationMethodId":"did:legal:admin:teste-001#auth-1","publicKeyMultibase":"<chave-publica-impressa>"}'
+```
+
+Por fim, inicie a wallet. Ela escuta somente em `127.0.0.1` e mostra um código
+de pareamento novo no terminal:
+
+```bash
+cd wallet
+npm start
+```
+
+O bootstrap é deliberadamente único e aceito apenas pela MSP administrativa
+`Org1MSP`. Para outra organização, configure `MSP_ID`, `MSP_PATH` e
+`TLS_CERT_PATH` no processo do gateway correspondente.
+
+### 3. Rodar a aplicação
 
 Em `src/CustodyChain.Web`:
 
@@ -79,17 +134,17 @@ Rodar sem `dotnet run` sozinho — passando `--urls` manualmente ou uma
 variável de ambiente diferente — também funciona, mas não é necessário
 no dia a dia.
 
-### 3. Abrir no navegador
+### 4. Abrir no navegador
 
 A URL exata é a que apareceu em **"Now listening on"** no terminal —
 normalmente **http://localhost:5143/entrar**. Com o perfil padrão o
 navegador abre sozinho (`launchBrowser: true`); se não abrir, cole o
 endereço manualmente.
 
-A tela de login lista as credenciais DID disponíveis (populadas pelo
-seed). Selecione uma, digite qualquer senha não vazia — não há wallet
-real implementada ainda, então a senha não é validada nesta fase — e
-clique **Entrar**.
+A tela de login solicita o DID, a senha da wallet e o código de pareamento.
+A senha é enviada pelo navegador apenas ao serviço local da wallet e nunca à
+aplicação .NET. Nesta primeira fatia, somente o DID administrativo provisionado
+acima possui uma chave pública v2 e pode entrar por prova de posse real.
 
 Usuários de teste disponíveis (um por perfil):
 
@@ -105,7 +160,7 @@ Após o login você cai no dashboard (`/`), com sidebar retrátil, navbar
 mostrando seu nome/perfil reais e métricas lidas do banco (zeradas até
 que existam vestígios cadastrados).
 
-### 4. Encerrar
+### 5. Encerrar
 
 No terminal onde a aplicação está rodando: `Ctrl+C`.
 

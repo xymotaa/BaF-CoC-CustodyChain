@@ -14,11 +14,18 @@ const MSP_ID = process.env.MSP_ID || 'Org1MSP';
 const PEER_ENDPOINT = process.env.PEER_ENDPOINT || 'localhost:7051';
 const PEER_HOST_ALIAS = process.env.PEER_HOST_ALIAS || 'peer0.org1.example.com';
 const PORT = process.env.PORT || 3000;
+const SERVICE_TOKEN = process.env.GATEWAY_SERVICE_TOKEN || '';
+const ALLOWED_ORIGINS = (process.env.ALLOWED_ORIGINS || 'http://localhost:5143')
+    .split(',')
+    .map((origin) => origin.trim())
+    .filter(Boolean);
 
 const CRYPTO_PATH = process.env.CRYPTO_PATH
     || path.resolve(__dirname, '..', '..', 'network', 'organizations', 'peerOrganizations', 'org1.example.com');
-const TLS_CERT_PATH = path.resolve(CRYPTO_PATH, 'peers', 'peer0.org1.example.com', 'tls', 'ca.crt');
-const MSP_PATH = path.resolve(CRYPTO_PATH, 'users', 'User1@org1.example.com', 'msp');
+const TLS_CERT_PATH = process.env.TLS_CERT_PATH
+    || path.resolve(CRYPTO_PATH, 'peers', 'peer0.org1.example.com', 'tls', 'ca.crt');
+const MSP_PATH = process.env.MSP_PATH
+    || path.resolve(CRYPTO_PATH, 'users', 'User1@org1.example.com', 'msp');
 
 let gateway;
 let client;
@@ -70,7 +77,31 @@ function obterContrato() {
 
 function tratarErro(res, erro) {
     const mensagem = erro && erro.details ? erro.details : (erro && erro.message) || 'Erro desconhecido no gateway.';
-    res.status(500).json({ error: mensagem });
+    const status = mensagem.includes('não encontrado') ? 404
+        : mensagem.includes('já existe') || mensagem.includes('já foi concluído') ? 409
+            : mensagem.includes('inválid') || mensagem.includes('não autorizado') ? 400
+                : 500;
+    res.status(status).json({ error: mensagem });
+}
+
+function autenticarServico(req, res, next) {
+    const authorization = req.get('authorization') || '';
+    const recebido = authorization.startsWith('Bearer ') ? authorization.slice(7) : '';
+    const esperado = Buffer.from(SERVICE_TOKEN);
+    const informado = Buffer.from(recebido);
+    if (!SERVICE_TOKEN || esperado.length !== informado.length
+        || !crypto.timingSafeEqual(esperado, informado)) {
+        return res.status(401).json({ error: 'Credencial de serviço inválida.' });
+    }
+    return next();
+}
+
+function corpoObrigatorio(req, campos) {
+    for (const campo of campos) {
+        if (typeof req.body[campo] !== 'string' || !req.body[campo].trim()) {
+            throw new Error(`Campo obrigatório inválido: ${campo}`);
+        }
+    }
 }
 
 // evaluateTransaction/submitTransaction retornam Uint8Array, não Buffer —
@@ -80,8 +111,55 @@ function decodificar(resultadoBruto) {
 }
 
 const app = express();
-app.use(cors());
+app.use(cors({
+    origin(origin, callback) {
+        if (!origin || ALLOWED_ORIGINS.includes(origin)) {
+            return callback(null, true);
+        }
+        return callback(new Error('Origem não autorizada pelo gateway.'));
+    }
+}));
 app.use(express.json());
+
+app.get('/saude', (_req, res) => {
+    res.json({ status: gateway ? 'conectado' : 'desconectado' });
+});
+
+app.use(autenticarServico);
+
+app.post('/v2/bootstrap/admin', async (req, res) => {
+    try {
+        corpoObrigatorio(req, ['did', 'verificationMethodId', 'publicKeyMultibase']);
+        const { did, verificationMethodId, publicKeyMultibase } = req.body;
+        const contrato = obterContrato();
+        const resultado = await contrato.submitTransaction(
+            'BootstrapAdminDid', did, verificationMethodId, publicKeyMultibase
+        );
+        res.status(201).json(JSON.parse(decodificar(resultado)));
+    } catch (erro) {
+        tratarErro(res, erro);
+    }
+});
+
+app.get('/v2/dids/:did', async (req, res) => {
+    try {
+        const contrato = obterContrato();
+        const resultado = await contrato.evaluateTransaction('ResolverDid', req.params.did);
+        res.json(JSON.parse(decodificar(resultado)));
+    } catch (erro) {
+        tratarErro(res, erro);
+    }
+});
+
+app.post('/v2/dids/:did/revogar', async (req, res) => {
+    try {
+        const contrato = obterContrato();
+        const resultado = await contrato.submitTransaction('RevogarDidV2', req.params.did);
+        res.json(JSON.parse(decodificar(resultado)));
+    } catch (erro) {
+        tratarErro(res, erro);
+    }
+});
 
 app.post('/dids', async (req, res) => {
     try {
@@ -187,23 +265,26 @@ app.get('/ativos/:assetId/historico', async (req, res) => {
     }
 });
 
-app.get('/saude', (_req, res) => {
-    res.json({ status: gateway ? 'conectado' : 'desconectado' });
-});
-
 async function iniciar() {
+    if (!SERVICE_TOKEN) {
+        throw new Error('GATEWAY_SERVICE_TOKEN é obrigatório.');
+    }
     await inicializarGateway();
     app.listen(PORT, () => {
         console.log(`Gateway CustodyChain ouvindo na porta ${PORT} (canal=${CHANNEL_NAME}, chaincode=${CHAINCODE_NAME})`);
     });
 }
 
-iniciar().catch((erro) => {
-    console.error('Falha ao iniciar o gateway:', erro);
-    process.exit(1);
-});
+if (require.main === module) {
+    iniciar().catch((erro) => {
+        console.error('Falha ao iniciar o gateway:', erro);
+        process.exit(1);
+    });
+}
 
 process.on('SIGINT', () => {
     if (client) client.close();
     process.exit(0);
 });
+
+module.exports = { app, autenticarServico, decodificar };

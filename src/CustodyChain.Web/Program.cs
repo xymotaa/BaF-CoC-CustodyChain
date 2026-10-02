@@ -1,4 +1,6 @@
 using System.Reflection;
+using System.Threading.RateLimiting;
+using CustodyChain.Web.Application.Autenticacao;
 using CustodyChain.Web.Application.CadastroVestigio;
 using CustodyChain.Web.Application.Arquivo;
 using CustodyChain.Web.Application.Common;
@@ -9,8 +11,10 @@ using CustodyChain.Web.Application.DestinacaoFinal;
 using CustodyChain.Web.Data;
 using CustodyChain.Web.Security;
 using CustodyChain.Web.Services.Armazenamento;
+using CustodyChain.Web.Services.Autenticacao;
 using CustodyChain.Web.Services.Ledger;
 using Microsoft.AspNetCore.Authentication.Cookies;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using QuestPDF.Drawing;
 using QuestPDF.Infrastructure;
@@ -67,17 +71,36 @@ builder.Services.AddScoped<IDestinacaoFinalStore, DestinacaoFinalStore>();
 builder.Services.AddScoped<IArmazenamentoAutorizacao, ArmazenamentoAutorizacaoIpfs>();
 builder.Services.AddSingleton<IClock, SystemClock>();
 builder.Services.AddSingleton<IGeradorIdentificadorCredencial, GeradorIdentificadorCredencial>();
+builder.Services.AddScoped<CriarDesafioAutenticacaoUseCase>();
+builder.Services.AddScoped<ConcluirAutenticacaoUseCase>();
+builder.Services.AddSingleton<IDesafioAutenticacaoStore, MemoryDesafioAutenticacaoStore>();
+builder.Services.AddSingleton<IVerificadorAssinaturaDid, VerificadorAssinaturaEd25519>();
+builder.Services.AddSingleton<IGeradorNonce, GeradorNonceCriptografico>();
+builder.Services.AddScoped<IIdentidadeAutenticacaoStore, IdentidadeAutenticacaoStore>();
+builder.Services.AddScoped<RevalidacaoCookieEvents>();
+builder.Services.AddSingleton(new ConfiguracaoAutenticacaoDid(
+    builder.Configuration["AuthenticationDid:Audience"] ?? "custodychain-web",
+    TimeSpan.FromMinutes(2)));
 
 // Ledger real: chama o gateway HTTP (fabric/gateway/), que fala com o
 // chaincode CustodyChain via Fabric Gateway (fabric/chaincode/). Troca o
 // LedgerFake usado durante o desenvolvimento das telas, sem alterar
 // nenhum controller — ambos implementam o mesmo IServicoLedger.
 var ledgerGatewayUrl = builder.Configuration["Ledger:GatewayUrl"] ?? "http://127.0.0.1:3000";
+var ledgerServiceToken = builder.Configuration["Ledger:ServiceToken"];
 builder.Services.AddHttpClient<IServicoLedger, ServicoLedgerFabric>(client =>
 {
     client.BaseAddress = new Uri(ledgerGatewayUrl);
     client.Timeout = TimeSpan.FromSeconds(30);
+    DidRegistryFabric.ConfigurarAutorizacao(client, ledgerServiceToken);
 });
+builder.Services.AddHttpClient<DidRegistryFabric>(client =>
+{
+    client.BaseAddress = new Uri(ledgerGatewayUrl);
+    client.Timeout = TimeSpan.FromSeconds(10);
+    DidRegistryFabric.ConfigurarAutorizacao(client, ledgerServiceToken);
+});
+builder.Services.AddScoped<IDidRegistry>(services => services.GetRequiredService<DidRegistryFabric>());
 builder.Services.AddScoped<IProcessadorOutboxLedger, ProcessadorOutboxLedger>();
 builder.Services.AddHostedService<PublicadorOutboxLedgerService>();
 
@@ -101,7 +124,20 @@ builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationSc
         options.AccessDeniedPath = "/acesso-negado";
         options.ExpireTimeSpan = TimeSpan.FromHours(8);
         options.SlidingExpiration = true;
+        options.EventsType = typeof(RevalidacaoCookieEvents);
     });
+
+builder.Services.AddRateLimiter(options =>
+{
+    options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+    options.AddFixedWindowLimiter("AutenticacaoDid", limiter =>
+    {
+        limiter.PermitLimit = 10;
+        limiter.Window = TimeSpan.FromMinutes(1);
+        limiter.QueueLimit = 0;
+        limiter.AutoReplenishment = true;
+    });
+});
 
 builder.Services.AddAuthorization(options =>
 {
@@ -129,6 +165,7 @@ if (!app.Environment.IsDevelopment())
 
 app.UseHttpsRedirection();
 app.UseRouting();
+app.UseRateLimiter();
 
 app.UseAuthentication();
 app.UseAuthorization();

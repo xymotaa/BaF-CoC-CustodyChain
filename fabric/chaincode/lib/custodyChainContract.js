@@ -5,6 +5,8 @@ const { Contract } = require('fabric-contract-api');
 const PREFIXO_DID = 'DID';
 const PREFIXO_CREDENCIAL = 'CRED';
 const PREFIXO_HISTORICO = 'HIST';
+const PREFIXO_GOVERNANCA = 'GOV';
+const MSP_ADMINISTRADOR = 'Org1MSP';
 
 class CustodyChainContract extends Contract {
 
@@ -30,6 +32,72 @@ class CustodyChainContract extends Contract {
         };
 
         await ctx.stub.putState(chave, Buffer.from(JSON.stringify(documento)));
+        return JSON.stringify(documento);
+    }
+
+    async BootstrapAdminDid(ctx, did, verificationMethodId, publicKeyMultibase) {
+        this._garantirOrganizacaoAdministradora(ctx);
+        this._validarDocumentoDidV2(did, verificationMethodId, publicKeyMultibase);
+
+        const chaveBootstrap = ctx.stub.createCompositeKey(PREFIXO_GOVERNANCA, ['admin-bootstrap']);
+        const bootstrapExistente = await ctx.stub.getState(chaveBootstrap);
+        if (bootstrapExistente && bootstrapExistente.length > 0) {
+            throw new Error('O bootstrap do DID administrador já foi concluído.');
+        }
+
+        const chaveDid = ctx.stub.createCompositeKey(PREFIXO_DID, [did]);
+        const didExistente = await ctx.stub.getState(chaveDid);
+        if (didExistente && didExistente.length > 0) {
+            throw new Error(`DID já existe: ${did}`);
+        }
+
+        const agora = this._agora(ctx);
+        const documento = {
+            id: did,
+            did,
+            metodoDid: 'did:legal:admin',
+            version: 2,
+            status: 'ATIVO',
+            ativo: true,
+            controller: did,
+            verificationMethod: [{
+                id: verificationMethodId,
+                type: 'Multikey',
+                controller: did,
+                publicKeyMultibase
+            }],
+            authentication: [verificationMethodId],
+            assertionMethod: [verificationMethodId],
+            didEmissor: null,
+            criadoEm: agora,
+            ativadoEm: agora
+        };
+
+        await ctx.stub.putState(chaveDid, Buffer.from(JSON.stringify(documento)));
+        await ctx.stub.putState(chaveBootstrap, Buffer.from(JSON.stringify({ did, criadoEm: agora })));
+        return JSON.stringify(documento);
+    }
+
+    async RevogarDidV2(ctx, did) {
+        this._garantirOrganizacaoAdministradora(ctx);
+        const chave = ctx.stub.createCompositeKey(PREFIXO_DID, [did]);
+        const bytes = await ctx.stub.getState(chave);
+        if (!bytes || bytes.length === 0) {
+            throw new Error(`DID não encontrado: ${did}`);
+        }
+
+        const documento = JSON.parse(bytes.toString());
+        if (documento.version !== 2) {
+            throw new Error('Somente documentos DID v2 podem ser revogados por esta operação.');
+        }
+
+        if (documento.status !== 'REVOGADO') {
+            documento.status = 'REVOGADO';
+            documento.ativo = false;
+            documento.revogadoEm = this._agora(ctx);
+            await ctx.stub.putState(chave, Buffer.from(JSON.stringify(documento)));
+        }
+
         return JSON.stringify(documento);
     }
 
@@ -200,6 +268,25 @@ class CustodyChainContract extends Contract {
         const ativo = await this._didEstaAtivo(ctx, did);
         if (!ativo) {
             throw new Error(`DID emissor não está ativo: ${did}`);
+        }
+    }
+
+    _garantirOrganizacaoAdministradora(ctx) {
+        const mspId = ctx.clientIdentity.getMSPID();
+        if (mspId !== MSP_ADMINISTRADOR) {
+            throw new Error(`MSP não autorizado para governança de identidade: ${mspId}`);
+        }
+    }
+
+    _validarDocumentoDidV2(did, verificationMethodId, publicKeyMultibase) {
+        if (!/^did:legal:admin:[a-zA-Z0-9._-]{3,128}$/.test(did)) {
+            throw new Error('DID administrador inválido.');
+        }
+        if (verificationMethodId !== `${did}#auth-1`) {
+            throw new Error('Identificador do método de verificação inválido.');
+        }
+        if (!/^z[1-9A-HJ-NP-Za-km-z]{40,64}$/.test(publicKeyMultibase)) {
+            throw new Error('Chave pública Multikey inválida.');
         }
     }
 }

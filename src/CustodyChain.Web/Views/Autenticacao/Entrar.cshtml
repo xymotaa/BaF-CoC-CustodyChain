@@ -7,42 +7,47 @@
 <div class="tela-login">
     <div class="tela-login-cartao cartao">
         <div class="tela-login-cabecalho">
-            <span class="tela-login-selo">CoC</span>
+            <span class="tela-login-selo" aria-hidden="true">CoC</span>
             <h1>CustodyChain</h1>
-            <p class="tela-login-subtitulo">Cadeia de custódia de evidências periciais</p>
+            <p class="tela-login-subtitulo">Autenticação por prova de posse da identidade DID</p>
         </div>
 
-        @if (!ViewData.ModelState.IsValid && ViewData.ModelState[string.Empty]?.Errors.Count > 0)
-        {
-            <div class="alerta alerta-erro" role="alert">
-                <span class="alerta-icone"><svg><use href="#icone-alerta" /></svg></span>
-                <span>@ViewData.ModelState[string.Empty]!.Errors[0].ErrorMessage</span>
-            </div>
-        }
+        <div id="login-erro" class="alerta alerta-erro" role="alert" tabindex="-1" hidden>
+            <span class="alerta-icone" aria-hidden="true"><svg><use href="#icone-alerta" /></svg></span>
+            <span id="login-erro-texto"></span>
+        </div>
 
-        <form asp-controller="Autenticacao" asp-action="Entrar" method="post" novalidate>
+        <form id="login-form" data-wallet-endpoint="@Model.WalletEndpoint" novalidate>
             @Html.AntiForgeryToken()
 
             <div class="campo">
-                <label asp-for="Did" class="campo-rotulo">Credencial DID</label>
-                <select asp-for="Did" class="campo-entrada @(ViewData.ModelState["Did"]?.Errors.Count > 0 ? "campo-invalido" : "")">
-                    <option value="">Selecione sua credencial</option>
-                    @foreach (var opcao in Model.CredenciaisDisponiveis)
-                    {
-                        <option value="@opcao.Did">@opcao.Nome — @opcao.Perfil</option>
-                    }
-                </select>
-                <span asp-validation-for="Did" class="campo-erro"></span>
+                <label for="did" class="campo-rotulo">Identidade DID</label>
+                <input id="did" class="campo-entrada campo-entrada-did" type="text"
+                       required autocomplete="username" spellcheck="false"
+                       placeholder="did:legal:admin:..."
+                       aria-describedby="did-ajuda" />
+                <span id="did-ajuda" class="campo-ajuda">Informe o DID existente nesta wallet e ativo no ledger.</span>
             </div>
 
             <div class="campo">
-                <label asp-for="Senha" class="campo-rotulo">Senha da wallet</label>
-                <input asp-for="Senha" type="password" class="campo-entrada @(ViewData.ModelState["Senha"]?.Errors.Count > 0 ? "campo-invalido" : "")" autocomplete="current-password" />
-                <span class="campo-ajuda">Protege sua wallet neste dispositivo. Não é enviada nem armazenada no servidor.</span>
-                <span asp-validation-for="Senha" class="campo-erro"></span>
+                <label for="wallet-password" class="campo-rotulo">Senha da wallet</label>
+                <input id="wallet-password" type="password" class="campo-entrada"
+                       required autocomplete="current-password"
+                       aria-describedby="senha-ajuda" />
+                <span id="senha-ajuda" class="campo-ajuda">A senha é enviada somente à wallet local neste dispositivo.</span>
             </div>
 
-            <button type="submit" class="botao botao-primario botao-largura-total">Entrar</button>
+            <div class="campo">
+                <label for="pairing-token" class="campo-rotulo">Código de pareamento</label>
+                <input id="pairing-token" type="password" class="campo-entrada"
+                       required autocomplete="off" aria-describedby="pareamento-ajuda" />
+                <span id="pareamento-ajuda" class="campo-ajuda">Use o código exibido ao iniciar a wallet local.</span>
+            </div>
+
+            <button id="login-submit" type="submit" class="botao botao-primario botao-largura-total">
+                <span id="login-submit-texto">Assinar desafio e entrar</span>
+            </button>
+            <p id="login-status" class="tela-login-status" role="status" aria-live="polite"></p>
         </form>
 
         <p class="tela-login-rodape">
@@ -63,7 +68,7 @@
 
         .tela-login-cartao {
             width: 100%;
-            max-width: 380px;
+            max-width: 420px;
             padding: 2rem;
         }
 
@@ -91,10 +96,17 @@
             margin-bottom: 0.25rem;
         }
 
-        .tela-login-subtitulo {
+        .tela-login-subtitulo,
+        .tela-login-status {
             color: var(--cor-texto-fraco);
             font-size: 0.875rem;
             margin: 0;
+        }
+
+        .tela-login-status {
+            min-height: 1.3125rem;
+            margin-top: 0.75rem;
+            text-align: center;
         }
 
         .tela-login-rodape {
@@ -102,5 +114,138 @@
             margin: 1.25rem 0 0;
             font-size: 0.8125rem;
         }
+
+        .campo-entrada-did {
+            font-family: var(--fonte-mono);
+            font-size: 0.8125rem;
+        }
+
+        .tela-login .campo-entrada,
+        .tela-login .botao {
+            min-height: 44px;
+        }
+
+        .tela-login .campo-entrada:focus-visible {
+            outline: 2px solid var(--cor-acento);
+            outline-offset: 2px;
+        }
+
+        @@media (max-width: 480px) {
+            .tela-login {
+                align-items: flex-start;
+                padding: 1rem;
+            }
+
+            .tela-login-cartao {
+                padding: 1.5rem;
+            }
+        }
     </style>
+}
+
+@section Scripts {
+    <script>
+        (() => {
+            const form = document.getElementById('login-form');
+            const submit = document.getElementById('login-submit');
+            const submitTexto = document.getElementById('login-submit-texto');
+            const status = document.getElementById('login-status');
+            const alerta = document.getElementById('login-erro');
+            const alertaTexto = document.getElementById('login-erro-texto');
+            const antiforgery = form.querySelector('input[name="__RequestVerificationToken"]').value;
+
+            const postAplicacao = async (url, body) => {
+                const response = await fetch(url, {
+                    method: 'POST',
+                    credentials: 'same-origin',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'RequestVerificationToken': antiforgery
+                    },
+                    body: JSON.stringify(body)
+                });
+                const payload = await response.json().catch(() => ({}));
+                if (!response.ok) {
+                    throw new Error(payload.message || 'Não foi possível concluir a autenticação.');
+                }
+                return payload;
+            };
+
+            const assinarNaWallet = async (desafio, did, password, pairingToken) => {
+                let response;
+                try {
+                    response = await fetch(`${form.dataset.walletEndpoint}/v1/signatures`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-Wallet-Pairing-Token': pairingToken
+                        },
+                        body: JSON.stringify({
+                            did,
+                            password,
+                            signingInput: desafio.signingInput,
+                            purpose: 'authentication'
+                        })
+                    });
+                } catch {
+                    throw new Error('A wallet local não respondeu. Inicie-a e tente novamente.');
+                }
+
+                const payload = await response.json().catch(() => ({}));
+                if (!response.ok) {
+                    throw new Error(payload.message || 'A wallet recusou a assinatura. Confira a senha e o pareamento.');
+                }
+                return payload;
+            };
+
+            form.addEventListener('submit', async (event) => {
+                event.preventDefault();
+                alerta.hidden = true;
+
+                if (!form.reportValidity()) {
+                    return;
+                }
+
+                const did = document.getElementById('did').value.trim();
+                const passwordInput = document.getElementById('wallet-password');
+                const pairingInput = document.getElementById('pairing-token');
+
+                submit.disabled = true;
+                form.setAttribute('aria-busy', 'true');
+                submitTexto.textContent = 'Validando identidade…';
+                status.textContent = 'Solicitando um desafio único ao CustodyChain.';
+
+                try {
+                    const desafio = await postAplicacao('/autenticacao/desafios', { did });
+                    status.textContent = 'Aguardando assinatura segura da wallet local.';
+                    const assinatura = await assinarNaWallet(
+                        desafio,
+                        did,
+                        passwordInput.value,
+                        pairingInput.value);
+
+                    passwordInput.value = '';
+                    const resultado = await postAplicacao('/autenticacao/provas', {
+                        challengeId: desafio.challengeId,
+                        did,
+                        keyId: assinatura.keyId,
+                        signature: assinatura.signature
+                    });
+
+                    status.textContent = 'Identidade comprovada. Redirecionando…';
+                    window.location.assign(resultado.redirectUrl);
+                } catch (error) {
+                    passwordInput.value = '';
+                    alertaTexto.textContent = error.message;
+                    alerta.hidden = false;
+                    alerta.focus();
+                    status.textContent = 'Revise os dados e solicite um novo desafio.';
+                } finally {
+                    submit.disabled = false;
+                    form.removeAttribute('aria-busy');
+                    submitTexto.textContent = 'Assinar desafio e entrar';
+                }
+            });
+        })();
+    </script>
 }

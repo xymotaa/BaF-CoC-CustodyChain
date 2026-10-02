@@ -6,7 +6,8 @@
         "node": ">=18"
     },
     "scripts": {
-        "start": "node src/app.js"
+        "start": "node src/app.js",
+        "test": "node --test"
     },
     "engineStrict": true,
     "license": "UNLICENSED",

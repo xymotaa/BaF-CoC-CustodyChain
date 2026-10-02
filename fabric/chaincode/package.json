@@ -7,7 +7,8 @@
         "node": ">=18"
     },
     "scripts": {
-        "start": "fabric-chaincode-node start"
+        "start": "fabric-chaincode-node start",
+        "test": "node --test"
     },
     "engineStrict": true,
     "license": "UNLICENSED",

@@ -32,3 +32,4 @@ fabric/network/system-genesis-block/
 # symlinks para .agents/skills/, então basta ignorar a origem.
 .agents/
 .claude/skills/
+wallet/data/

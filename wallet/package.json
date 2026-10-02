@@ -1,0 +1,14 @@
+{
+  "name": "custodychain-wallet",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Wallet local Ed25519 para prova de posse de identidades DID do CustodyChain",
+  "engines": {
+    "node": ">=22.5"
+  },
+  "scripts": {
+    "start": "node src/server.js",
+    "create-admin": "node src/cli.js create-admin",
+    "test": "node --test"
+  }
+}
