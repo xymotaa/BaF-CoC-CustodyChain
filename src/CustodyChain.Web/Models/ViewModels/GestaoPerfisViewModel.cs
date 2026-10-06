@@ -75,3 +75,14 @@ public class EmitirCredencialPermissaoViewModel
 }
 
 public record EnviarProvaVcPermissaoRequest(string EmissaoId, System.Text.Json.JsonElement Credential);
+
+public record ItemCredencialPermissaoViewModel(long Id, string Identificador, string TitularNome, string Situacao, DateTime EmitidaEm, DateTime? ValidaAte);
+
+public class GestaoCredenciaisViewModel
+{
+    public IReadOnlyList<ItemCredencialPermissaoViewModel> Credenciais { get; set; } = [];
+}
+
+public record RevogarCredencialViewModel(long Id, string Identificador, string TitularNome, string EmissorDid, string WalletEndpoint);
+
+public record EnviarProvaRevogacaoVcRequest(object Command, string KeyId, string Signature);

@@ -468,13 +468,35 @@ class CustodyChainContract extends Contract {
     }
 
     async RevogarCredencial(ctx, credencialId) {
-        const chave = ctx.stub.createCompositeKey(PREFIXO_CREDENCIAL, [credencialId]);
+        throw new Error('Revogação legada desabilitada; use RevogarCredencialV2 com prova assinada pelo emissor.');
+    }
+
+    async RevogarCredencialV2(ctx, comandoJson, keyId, assinatura) {
+        const comando = this._lerComando(comandoJson, 'CustodyChainCredentialRevocation');
+        this._validarJanelaComando(ctx, comando);
+        this._validarComandoRevogacao(comando, keyId);
+        const chave = ctx.stub.createCompositeKey(PREFIXO_CREDENCIAL, [comando.credentialId]);
         const bytes = await ctx.stub.getState(chave);
         if (!bytes || bytes.length === 0) {
-            throw new Error(`Credencial não encontrada: ${credencialId}`);
+            throw new Error(`Credencial não encontrada: ${comando.credentialId}`);
         }
 
         const credencial = JSON.parse(bytes.toString());
+        if (credencial.formato !== 'VC_V1' || credencial.didEmissor !== comando.issuerDid) {
+            throw new Error('A credencial não pode ser revogada por este emissor.');
+        }
+
+        const emissor = await this._obterDocumentoDid(ctx, comando.issuerDid);
+        const metodo = emissor.verificationMethod?.find((item) => item.id === keyId);
+        if (emissor.version !== 2 || emissor.status !== 'ATIVO' || emissor.ativo !== true
+            || !metodo || !emissor.assertionMethod?.includes(keyId)) {
+            throw new Error('A chave do emissor não possui capacidade assertionMethod para revogar VC.');
+        }
+        this._verificarAssinatura(comando, assinatura, metodo.publicKeyMultibase);
+
+        if (credencial.revogada) {
+            return JSON.stringify(credencial);
+        }
         credencial.revogada = true;
         credencial.status = 'REVOGADA';
         credencial.revogadaEm = this._agora(ctx);
@@ -617,6 +639,14 @@ class CustodyChainContract extends Contract {
             || typeof keyId !== 'string' || !keyId.startsWith(`${comando.actorDid}#`)
             || !Number.isInteger(comando.expectedDocumentVersion) || comando.expectedDocumentVersion < 1) {
             throw new Error('Conteúdo do comando de ativação DID inválido.');
+        }
+    }
+
+    _validarComandoRevogacao(comando, keyId) {
+        if (!this._identificadorValido(comando.credentialId)
+            || !/^did:legal:admin:[a-zA-Z0-9._-]{3,128}$/.test(comando.issuerDid)
+            || typeof keyId !== 'string' || !keyId.startsWith(`${comando.issuerDid}#`)) {
+            throw new Error('Conteúdo do comando de revogação de VC inválido.');
         }
     }
 

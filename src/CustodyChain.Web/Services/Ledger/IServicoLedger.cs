@@ -21,6 +21,8 @@ public record CredencialPermissaoDto(string Did, string DidEmissor, string Perfi
 
 public record CredencialPermissaoV2Dto(System.Text.Json.JsonElement Credential);
 
+public record RevogacaoCredencialV2Dto(object Command, string KeyId, string Signature);
+
 public record CredencialCoCDto(
     string AssetId,
     string Evento,
@@ -43,6 +45,7 @@ public interface IServicoLedger
     Task<DidDocument> ResolverDidAsync(string did);
     Task<string> EmitirCredencialPermissaoAsync(CredencialPermissaoDto dto);
     Task<string> EmitirCredencialPermissaoV2Async(CredencialPermissaoV2Dto dto, CancellationToken cancellationToken = default);
+    Task RevogarCredencialV2Async(string credencialId, RevogacaoCredencialV2Dto dto, CancellationToken cancellationToken = default);
     Task<string> EmitirCredencialCoCAsync(CredencialCoCDto dto, CancellationToken cancellationToken = default);
     Task<ResultadoVerificacao> VerificarCredencialAsync(string credencialJson);
     Task<IReadOnlyList<EstadoRegistro>> HistoricoRegistroAsync(string assetId);

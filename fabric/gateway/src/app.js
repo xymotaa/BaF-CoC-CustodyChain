@@ -391,10 +391,26 @@ app.get('/credenciais/:credencialId', async (req, res) => {
 });
 
 app.post('/credenciais/:credencialId/revogar', async (req, res) => {
+    return res.status(410).json({ error: 'Revogação centralizada desabilitada; use a prova assinada pelo emissor.' });
+});
+
+app.post('/v2/credenciais/:credencialId/revogar', async (req, res) => {
     try {
-        const { credencialId } = req.params;
+        const { command, keyId, signature } = req.body;
+        validarComandoDid(command, 'CustodyChainCredentialRevocation');
+        if (command.credentialId !== req.params.credencialId || typeof keyId !== 'string' || typeof signature !== 'string') {
+            throw new Error('Prova de revogação de VC inválida.');
+        }
         const contrato = obterContrato();
-        const resultado = await contrato.submitTransaction('RevogarCredencial', credencialId);
+        const emissor = JSON.parse(decodificar(await contrato.evaluateTransaction('ResolverDid', command.issuerDid)));
+        const metodo = emissor.verificationMethod?.find((item) => item.id === keyId);
+        if (!emissor.assertionMethod?.includes(keyId) || !metodo) {
+            throw new Error('A chave do emissor não possui capacidade assertionMethod para revogar VC.');
+        }
+        verificarProvaDid(command, signature, metodo.publicKeyMultibase);
+        const resultado = await contrato.submitTransaction(
+            'RevogarCredencialV2', JSON.stringify(command), keyId, signature
+        );
         res.json(JSON.parse(decodificar(resultado)));
     } catch (erro) {
         tratarErro(res, erro);

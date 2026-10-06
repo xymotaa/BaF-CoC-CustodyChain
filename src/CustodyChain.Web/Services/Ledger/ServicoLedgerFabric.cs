@@ -100,6 +100,21 @@ public class ServicoLedgerFabric(HttpClient httpClient) : IServicoLedger
         return resultado.CredencialId;
     }
 
+    public async Task RevogarCredencialV2Async(
+        string credencialId,
+        RevogacaoCredencialV2Dto dto,
+        CancellationToken cancellationToken = default)
+    {
+        var resposta = await httpClient.PostAsJsonAsync(
+            $"/v2/credenciais/{Uri.EscapeDataString(credencialId)}/revogar", new
+            {
+                command = dto.Command,
+                keyId = dto.KeyId,
+                signature = dto.Signature
+            }, OpcoesJson, cancellationToken);
+        await LancarSeFalhaAsync(resposta);
+    }
+
     public async Task<string> EmitirCredencialCoCAsync(CredencialCoCDto dto, CancellationToken cancellationToken = default)
     {
         var credencialId = dto.CredencialId ?? $"cred-coc-{Guid.NewGuid():N}";

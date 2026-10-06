@@ -132,6 +132,18 @@ const server = http.createServer(async (req, res) => {
             return json(res, 200, { verifiableCredential }, origin);
         }
 
+        if (req.method === 'POST' && req.url === '/v1/proofs/credential-revocation') {
+            const body = await readJson(req);
+            const proof = store.signDidCommand({
+                did: body.did,
+                password: body.password,
+                command: body.command,
+                expectedType: 'CustodyChainCredentialRevocation',
+                actorField: 'issuerDid'
+            });
+            return json(res, 200, proof, origin);
+        }
+
         return json(res, 404, { message: 'Rota não encontrada.' }, origin);
     } catch (error) {
         return json(res, 400, { message: error.message }, origin);

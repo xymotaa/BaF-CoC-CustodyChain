@@ -71,6 +71,9 @@ public class LedgerFake : IServicoLedger
         return Task.FromResult(credentialId);
     }
 
+    public Task RevogarCredencialV2Async(string credencialId, RevogacaoCredencialV2Dto dto, CancellationToken cancellationToken = default) =>
+        Task.CompletedTask;
+
     public Task<string> EmitirCredencialCoCAsync(CredencialCoCDto dto, CancellationToken cancellationToken = default)
     {
         var credencialId = dto.CredencialId ?? $"cred-coc-{Guid.NewGuid():N}";

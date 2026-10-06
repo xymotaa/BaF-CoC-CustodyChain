@@ -186,6 +186,28 @@ test('recusa VC de permissão com prova modificada ou chave sem assertionMethod'
     );
 });
 
+test('revoga VC somente com prova assinada pelo emissor e aceita repetição', async () => {
+    const contract = new CustodyChainContract();
+    const ctx = contexto('Org1MSP');
+    const admin = gerarIdentidade(did, keyId);
+    await contract.BootstrapAdminDid(ctx, did, keyId, admin.publicKeyMultibase);
+    const credential = criarVcPermissao(admin.privateKey);
+    await contract.EmitirCredencialPermissaoV2(ctx, JSON.stringify(credential));
+    const command = {
+        type: 'CustodyChainCredentialRevocation', version: 1,
+        commandId: 'urn:uuid:66666666-6666-6666-6666-666666666666',
+        credentialId: credential.id, issuerDid: did, audience: 'custodychain-ledger',
+        issuedAt: '2027-01-15T08:00:00.000Z', expiresAt: '2027-01-15T08:05:00.000Z'
+    };
+
+    const revoked = JSON.parse(await contract.RevogarCredencialV2(ctx, JSON.stringify(command), keyId, assinar(admin.privateKey, command)));
+    const repeated = JSON.parse(await contract.RevogarCredencialV2(ctx, JSON.stringify(command), keyId, assinar(admin.privateKey, command)));
+
+    assert.equal(revoked.status, 'REVOGADA');
+    assert.equal(repeated.revogada, true);
+    assert.equal(JSON.parse(await contract.VerificarCredencial(ctx, credential.id)).valido, false);
+});
+
 function criarVcPermissao(privateKey) {
     const credential = {
         '@context': ['https://www.w3.org/2018/credentials/v1'],

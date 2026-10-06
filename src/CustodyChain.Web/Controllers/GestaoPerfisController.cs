@@ -262,6 +262,78 @@ public class GestaoPerfisController(
         return View(modelo);
     }
 
+    [HttpGet("/gestao-perfis/credenciais")]
+    public async Task<IActionResult> Credenciais()
+    {
+        var credenciais = await db.Credenciais
+            .Include(c => c.Titular)
+            .Where(c => c.Tipo == TipoCredencial.PERMISSAO)
+            .OrderByDescending(c => c.EmitidaEm)
+            .Select(c => new ItemCredencialPermissaoViewModel(
+                c.Id, c.Identificador, c.Titular.Nome, c.Situacao.ToString(), c.EmitidaEm, c.ValidaAte))
+            .ToListAsync();
+        return View(new GestaoCredenciaisViewModel { Credenciais = credenciais });
+    }
+
+    [HttpGet("/gestao-perfis/credenciais/{credencialId:long}/revogar")]
+    public async Task<IActionResult> RevogarCredencial(long credencialId, CancellationToken cancellationToken)
+    {
+        var emissorId = long.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);
+        var credencial = await db.Credenciais.Include(c => c.Titular).Include(c => c.Emissor)
+            .FirstOrDefaultAsync(c => c.Id == credencialId && c.Tipo == TipoCredencial.PERMISSAO
+                && c.Situacao == SituacaoCredencial.VIGENTE && c.EmissorId == emissorId, cancellationToken);
+        if (credencial is null)
+        {
+            TempData["MensagemErro"] = "Credencial não disponível para revogação pelo emissor atual.";
+            return RedirectToAction(nameof(Credenciais));
+        }
+        return View(new RevogarCredencialViewModel(credencial.Id, credencial.Identificador,
+            credencial.Titular.Nome, credencial.Emissor.Did,
+            configuration["AuthenticationDid:WalletEndpoint"] ?? "http://127.0.0.1:43123"));
+    }
+
+    [HttpPost("/gestao-perfis/credenciais/{credencialId:long}/revogar/comando")]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> CriarComandoRevogacao(long credencialId, CancellationToken cancellationToken)
+    {
+        var emissorId = long.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);
+        var credencial = await db.Credenciais.Include(c => c.Emissor)
+            .FirstOrDefaultAsync(c => c.Id == credencialId && c.Tipo == TipoCredencial.PERMISSAO
+                && c.Situacao == SituacaoCredencial.VIGENTE && c.EmissorId == emissorId, cancellationToken);
+        if (credencial is null)
+        {
+            return BadRequest(new { message = "Credencial não disponível para revogação." });
+        }
+        var agora = DateTime.UtcNow;
+        return Ok(new
+        {
+            type = "CustodyChainCredentialRevocation", version = 1,
+            commandId = $"urn:uuid:{Guid.NewGuid()}", credentialId = credencial.Identificador,
+            issuerDid = credencial.Emissor.Did, audience = "custodychain-ledger",
+            issuedAt = agora.ToString("O"), expiresAt = agora.AddMinutes(5).ToString("O")
+        });
+    }
+
+    [HttpPost("/gestao-perfis/credenciais/{credencialId:long}/revogar/prova")]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> RevogarCredencialComProva(long credencialId,
+        [FromBody] EnviarProvaRevogacaoVcRequest? request, CancellationToken cancellationToken)
+    {
+        var emissorId = long.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);
+        var credencial = await db.Credenciais.Include(c => c.Emissor)
+            .FirstOrDefaultAsync(c => c.Id == credencialId && c.Tipo == TipoCredencial.PERMISSAO
+                && c.Situacao == SituacaoCredencial.VIGENTE && c.EmissorId == emissorId, cancellationToken);
+        if (credencial is null || !ComandoRevogacaoCorresponde(request?.Command, credencial.Identificador, credencial.Emissor.Did))
+        {
+            return BadRequest(new { message = "A prova não corresponde à credencial de permissão." });
+        }
+        await ledger.RevogarCredencialV2Async(credencial.Identificador,
+            new RevogacaoCredencialV2Dto(request!.Command, request.KeyId, request.Signature), cancellationToken);
+        credencial.Situacao = SituacaoCredencial.REVOGADA;
+        await db.SaveChangesAsync(cancellationToken);
+        return Ok(new { redirectUrl = Url.Action(nameof(Credenciais)), message = "VC revogada." });
+    }
+
     [HttpPost("/gestao-perfis/emitir-credencial/comando")]
     [ValidateAntiForgeryToken]
     public async Task<IActionResult> CriarComandoEmissaoCredencial(
@@ -459,6 +531,14 @@ public class GestaoPerfisController(
         recebida?.Remove("proof");
         var esperada = JsonNode.Parse(semAssinatura.GetRawText());
         return JsonNode.DeepEquals(esperada, recebida);
+    }
+
+    private static bool ComandoRevogacaoCorresponde(object? comando, string credentialId, string issuerDid)
+    {
+        var json = JsonSerializer.SerializeToElement(comando);
+        return json.TryGetProperty("type", out var type) && type.GetString() == "CustodyChainCredentialRevocation"
+            && json.TryGetProperty("credentialId", out var credential) && credential.GetString() == credentialId
+            && json.TryGetProperty("issuerDid", out var issuer) && issuer.GetString() == issuerDid;
     }
 
     private static string CalcularHash(string valor) =>
