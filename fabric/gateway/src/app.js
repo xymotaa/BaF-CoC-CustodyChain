@@ -15,6 +15,7 @@ const PEER_ENDPOINT = process.env.PEER_ENDPOINT || 'localhost:7051';
 const PEER_HOST_ALIAS = process.env.PEER_HOST_ALIAS || 'peer0.org1.example.com';
 const PORT = process.env.PORT || 3000;
 const SERVICE_TOKEN = process.env.GATEWAY_SERVICE_TOKEN || '';
+const LEGACY_IDENTITY_WRITES_ENABLED = process.env.ENABLE_LEGACY_IDENTITY_WRITES === 'true';
 const ALLOWED_ORIGINS = (process.env.ALLOWED_ORIGINS || 'http://localhost:5143')
     .split(',')
     .map((origin) => origin.trim())
@@ -104,6 +105,56 @@ function corpoObrigatorio(req, campos) {
     }
 }
 
+function validarComandoDid(command, tipoEsperado) {
+    if (!command || typeof command !== 'object' || Array.isArray(command)
+        || command.type !== tipoEsperado || command.version !== 1
+        || typeof command.commandId !== 'string' || typeof command.issuedAt !== 'string'
+        || typeof command.expiresAt !== 'string' || command.audience !== 'custodychain-ledger') {
+        throw new Error('Contrato do comando DID inválido.');
+    }
+}
+
+function verificarProvaDid(command, signature, publicKeyMultibase) {
+    if (typeof publicKeyMultibase !== 'string' || typeof signature !== 'string') {
+        throw new Error('Prova DID inválida.');
+    }
+    const multicodec = decodificarMultibaseEd25519(publicKeyMultibase);
+    const chave = crypto.createPublicKey({
+        key: Buffer.concat([Buffer.from('302a300506032b6570032100', 'hex'), multicodec.subarray(2)]),
+        format: 'der', type: 'spki'
+    });
+    const assinatura = Buffer.from(signature, 'base64url');
+    if (assinatura.length !== 64 || !crypto.verify(null, Buffer.from(canonicalizarJson(command)), chave, assinatura)) {
+        throw new Error('Assinatura DID inválida.');
+    }
+}
+
+function canonicalizarJson(valor) {
+    if (valor === null || typeof valor === 'string' || typeof valor === 'boolean' || typeof valor === 'number') return JSON.stringify(valor);
+    if (Array.isArray(valor)) return `[${valor.map(canonicalizarJson).join(',')}]`;
+    if (typeof valor === 'object') return `{${Object.keys(valor).sort().map((chave) => `${JSON.stringify(chave)}:${canonicalizarJson(valor[chave])}`).join(',')}}`;
+    throw new Error('Tipo inválido no comando DID.');
+}
+
+function decodificarMultibaseEd25519(valor) {
+    if (!valor.startsWith('z')) throw new Error('Chave pública Multikey inválida.');
+    const alfabeto = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';
+    const bytes = [0];
+    for (const caractere of valor.slice(1)) {
+        let transporte = alfabeto.indexOf(caractere);
+        if (transporte < 0) throw new Error('Chave pública Multikey inválida.');
+        for (let indice = 0; indice < bytes.length; indice += 1) {
+            transporte += bytes[indice] * 58;
+            bytes[indice] = transporte & 0xff;
+            transporte >>= 8;
+        }
+        while (transporte > 0) { bytes.push(transporte & 0xff); transporte >>= 8; }
+    }
+    const resultado = Buffer.from(bytes.reverse());
+    if (resultado.length !== 34 || resultado[0] !== 0xed || resultado[1] !== 0x01) throw new Error('Chave pública Ed25519 Multikey inválida.');
+    return resultado;
+}
+
 // evaluateTransaction/submitTransaction retornam Uint8Array, não Buffer —
 // .toString() direto produz a lista de códigos de byte, não o texto.
 function decodificar(resultadoBruto) {
@@ -161,7 +212,50 @@ app.post('/v2/dids/:did/revogar', async (req, res) => {
     }
 });
 
+app.post('/v2/dids/pending', async (req, res) => {
+    try {
+        const { command, signature } = req.body;
+        validarComandoDid(command, 'CustodyChainDidRegistration');
+        if (typeof signature !== 'string' || !signature) {
+            throw new Error('Assinatura do registro DID é obrigatória.');
+        }
+        verificarProvaDid(command, signature, command.publicKeyMultibase);
+        const resultado = await obterContrato().submitTransaction(
+            'RegistrarDidV2Pendente', JSON.stringify(command), signature
+        );
+        res.status(201).json(JSON.parse(decodificar(resultado)));
+    } catch (erro) {
+        tratarErro(res, erro);
+    }
+});
+
+app.post('/v2/dids/:did/activate', async (req, res) => {
+    try {
+        const { command, keyId, signature } = req.body;
+        validarComandoDid(command, 'CustodyChainDidActivation');
+        if (command.subjectDid !== req.params.did || typeof keyId !== 'string' || typeof signature !== 'string') {
+            throw new Error('Prova de ativação DID inválida.');
+        }
+        const contrato = obterContrato();
+        const administrador = JSON.parse(decodificar(await contrato.evaluateTransaction('ResolverDid', command.actorDid)));
+        const metodo = administrador.verificationMethod?.find((item) => item.id === keyId);
+        if (!administrador.capabilityInvocation?.includes(keyId) || !metodo) {
+            throw new Error('A chave não possui capacidade para ativar identidades.');
+        }
+        verificarProvaDid(command, signature, metodo.publicKeyMultibase);
+        const resultado = await contrato.submitTransaction(
+            'AtivarDidV2', JSON.stringify(command), keyId, signature
+        );
+        res.json(JSON.parse(decodificar(resultado)));
+    } catch (erro) {
+        tratarErro(res, erro);
+    }
+});
+
 app.post('/dids', async (req, res) => {
+    if (!LEGACY_IDENTITY_WRITES_ENABLED) {
+        return res.status(410).json({ error: 'Criação de DID v1 desabilitada; use o contrato v2 com prova de posse.' });
+    }
     try {
         const { did, metodoDid } = req.body;
         const contrato = obterContrato();
@@ -173,6 +267,9 @@ app.post('/dids', async (req, res) => {
 });
 
 app.post('/dids/:did/ativar', async (req, res) => {
+    if (!LEGACY_IDENTITY_WRITES_ENABLED) {
+        return res.status(410).json({ error: 'Ativação de DID v1 desabilitada; use o contrato v2 assinado.' });
+    }
     try {
         const { did } = req.params;
         const { didEmissor } = req.body;
@@ -287,4 +384,4 @@ process.on('SIGINT', () => {
     process.exit(0);
 });
 
-module.exports = { app, autenticarServico, decodificar };
+module.exports = { app, autenticarServico, decodificar, validarComandoDid, verificarProvaDid };

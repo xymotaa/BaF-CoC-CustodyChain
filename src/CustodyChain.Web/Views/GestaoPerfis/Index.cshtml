@@ -63,11 +63,7 @@ else
                         <td>
                             @if (item.Situacao == "GERADO")
                             {
-                                <form asp-controller="GestaoPerfis" asp-action="Ativar" method="post" class="formulario-acao-tabela">
-                                    @Html.AntiForgeryToken()
-                                    <input type="hidden" name="intervenienteId" value="@item.Id" />
-                                    <button type="submit" class="botao botao-primario">Ativar</button>
-                                </form>
+                                <a class="botao botao-primario" href="/gestao-perfis/@item.Id/ativar">Ativar com prova</a>
                             }
                             else if (item.Situacao == "ATIVO")
                             {

@@ -6,7 +6,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const test = require('node:test');
-const { WalletStore } = require('../src/walletStore');
+const { WalletStore, canonicalize } = require('../src/walletStore');
 
 test('cria chave cifrada e assina exatamente os bytes do desafio', () => {
     const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'custodychain-wallet-'));
@@ -41,6 +41,50 @@ test('cria chave cifrada e assina exatamente os bytes do desafio', () => {
             () => store.sign({ did, password: 'senha-incorreta', signingInput: message.toString('base64url') }),
             /Senha da wallet inválida/
         );
+    } finally {
+        store.close();
+        fs.rmSync(directory, { recursive: true, force: true });
+    }
+});
+
+test('cria identidade titular e assina somente comando de registro correspondente', () => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'custodychain-wallet-'));
+    const store = new WalletStore(path.join(directory, 'wallet.db'));
+    const did = 'did:legal:expert:teste-unitario';
+    const password = 'senha-local-forte';
+    const command = {
+        version: 1,
+        type: 'CustodyChainDidRegistration',
+        did,
+        enrollmentId: 'urn:uuid:11111111-1111-1111-1111-111111111111',
+        audience: 'custodychain-ledger'
+    };
+
+    try {
+        const identity = store.createIdentity({ did, password });
+        assert.equal(identity.keyId, `${did}#key-1`);
+        const proof = store.signDidCommand({
+            did,
+            password,
+            command,
+            expectedType: 'CustodyChainDidRegistration',
+            actorField: 'did'
+        });
+
+        const rawPublicKey = decodeMultikey(identity.publicKeyMultibase).subarray(2);
+        const publicKey = crypto.createPublicKey({
+            key: Buffer.concat([Buffer.from('302a300506032b6570032100', 'hex'), rawPublicKey]),
+            format: 'der', type: 'spki'
+        });
+        assert.equal(crypto.verify(null, Buffer.from(canonicalize(command)), publicKey,
+            Buffer.from(proof.signature, 'base64url')), true);
+        assert.throws(() => store.signDidCommand({
+            did,
+            password,
+            command: { ...command, did: 'did:legal:expert:outro' },
+            expectedType: 'CustodyChainDidRegistration',
+            actorField: 'did'
+        }), /não corresponde/);
     } finally {
         store.close();
         fs.rmSync(directory, { recursive: true, force: true });

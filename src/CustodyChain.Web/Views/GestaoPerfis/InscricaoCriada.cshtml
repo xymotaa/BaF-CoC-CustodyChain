@@ -1,0 +1,36 @@
+@model CustodyChain.Web.Models.ViewModels.InscricaoDidCriadaViewModel
+@{
+    ViewData["Title"] = "Inscrição DID criada";
+}
+
+<div class="pagina-cabecalho">
+    <h1>Inscrição DID criada</h1>
+    <p class="campo-ajuda">Entregue estes dados somente ao titular. O código não será exibido novamente.</p>
+</div>
+
+<section class="cartao painel-inscricao">
+    <dl>
+        <dt>DID reservado</dt>
+        <dd class="mono">@Model.Did</dd>
+        <dt>ID da inscrição</dt>
+        <dd class="mono">@Model.EnrollmentId</dd>
+        <dt>Código de inscrição</dt>
+        <dd class="mono codigo-inscricao">@Model.CodigoInscricao</dd>
+        <dt>Expira em</dt>
+        <dd>@Model.ExpiraEm.ToLocalTime().ToString("dd/MM/yyyy HH:mm")</dd>
+    </dl>
+    <p class="campo-ajuda">Na wallet do titular, crie a identidade com o DID reservado, solicite o comando de registro e assine-o localmente.</p>
+    <a class="botao botao-primario" href="/gestao-perfis">Voltar para gestão de perfis</a>
+</section>
+
+@section Styles {
+    <style>
+        .pagina-cabecalho { margin-bottom: 1.5rem; }
+        .painel-inscricao { max-width: 760px; padding: 1.5rem; }
+        .painel-inscricao dl { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: .65rem 1rem; margin: 0 0 1.5rem; }
+        .painel-inscricao dt { color: var(--cor-texto-fraco); }
+        .painel-inscricao dd { margin: 0; overflow-wrap: anywhere; }
+        .codigo-inscricao { user-select: all; font-weight: 700; }
+        @@media (max-width: 640px) { .painel-inscricao dl { grid-template-columns: 1fr; gap: .25rem; } }
+    </style>
+}

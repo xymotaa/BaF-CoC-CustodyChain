@@ -75,6 +75,16 @@ const server = http.createServer(async (req, res) => {
             return json(res, 200, { identities: store.listIdentities() }, origin);
         }
 
+        if (req.method === 'POST' && req.url === '/v1/identities') {
+            const body = await readJson(req);
+            const identity = store.createIdentity({
+                did: body.did,
+                password: body.password,
+                keyId: `${body.did}#key-1`
+            });
+            return json(res, 201, identity, origin);
+        }
+
         if (req.method === 'POST' && req.url === '/v1/signatures') {
             const body = await readJson(req);
             if (body.purpose !== 'authentication') {
@@ -86,6 +96,30 @@ const server = http.createServer(async (req, res) => {
                 signingInput: body.signingInput
             });
             return json(res, 200, signature, origin);
+        }
+
+        if (req.method === 'POST' && req.url === '/v1/proofs/did-registration') {
+            const body = await readJson(req);
+            const proof = store.signDidCommand({
+                did: body.did,
+                password: body.password,
+                command: body.command,
+                expectedType: 'CustodyChainDidRegistration',
+                actorField: 'did'
+            });
+            return json(res, 200, proof, origin);
+        }
+
+        if (req.method === 'POST' && req.url === '/v1/proofs/did-activation') {
+            const body = await readJson(req);
+            const proof = store.signDidCommand({
+                did: body.did,
+                password: body.password,
+                command: body.command,
+                expectedType: 'CustodyChainDidActivation',
+                actorField: 'actorDid'
+            });
+            return json(res, 200, proof, origin);
         }
 
         return json(res, 404, { message: 'Rota não encontrada.' }, origin);

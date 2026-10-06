@@ -17,6 +17,33 @@ public class ServicoLedgerFabric(HttpClient httpClient) : IServicoLedger
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase
     };
 
+    public async Task RegistrarDidV2PendenteAsync(
+        RegistroDidPendenteDto dto,
+        CancellationToken cancellationToken = default)
+    {
+        var resposta = await httpClient.PostAsJsonAsync("/v2/dids/pending", new
+        {
+            command = dto.Command,
+            signature = dto.Signature
+        }, OpcoesJson, cancellationToken);
+        await LancarSeFalhaAsync(resposta);
+    }
+
+    public async Task AtivarDidV2Async(
+        string did,
+        AtivacaoDidV2Dto dto,
+        CancellationToken cancellationToken = default)
+    {
+        var resposta = await httpClient.PostAsJsonAsync(
+            $"/v2/dids/{Uri.EscapeDataString(did)}/activate", new
+            {
+                command = dto.Command,
+                keyId = dto.KeyId,
+                signature = dto.Signature
+            }, OpcoesJson, cancellationToken);
+        await LancarSeFalhaAsync(resposta);
+    }
+
     public async Task<string> GerarDidAsync(TipoAtor tipo)
     {
         var metodoDid = $"did:legal:{tipo.ToString().ToLowerInvariant()}";

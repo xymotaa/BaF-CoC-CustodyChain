@@ -13,6 +13,25 @@ public class LedgerFake : IServicoLedger
     private readonly ConcurrentDictionary<string, CredencialCoCRegistrada> _credenciaisCoC = new();
     private int _sequencial;
 
+    public Task RegistrarDidV2PendenteAsync(RegistroDidPendenteDto dto, CancellationToken cancellationToken = default)
+    {
+        var command = System.Text.Json.JsonSerializer.SerializeToElement(dto.Command);
+        var did = command.GetProperty("did").GetString()
+            ?? throw new InvalidOperationException("DID inválido.");
+        var method = command.GetProperty("metodoDid").GetString()
+            ?? throw new InvalidOperationException("Método DID inválido.");
+        _dids[did] = new DidDocument(did, method, Ativo: false);
+        return Task.CompletedTask;
+    }
+
+    public Task AtivarDidV2Async(string did, AtivacaoDidV2Dto dto, CancellationToken cancellationToken = default)
+    {
+        if (!_dids.TryGetValue(did, out var doc))
+            throw new InvalidOperationException($"DID não encontrado: {did}");
+        _dids[did] = doc with { Ativo = true };
+        return Task.CompletedTask;
+    }
+
     public Task<string> GerarDidAsync(TipoAtor tipo)
     {
         var did = $"did:legal:{tipo.ToString().ToLowerInvariant()}:{Interlocked.Increment(ref _sequencial):D6}";

@@ -284,6 +284,47 @@ namespace CustodyChain.Web.Migrations
                     b.ToTable("INTERVENIENTE", (string)null);
                 });
 
+            modelBuilder.Entity("CustodyChain.Web.Models.Entities.InscricaoDid", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<long>("Id"));
+
+                    b.Property<string>("CodigoHash")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("varchar(64)");
+
+                    b.Property<DateTime>("CriadaEm")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<string>("EnrollmentId")
+                        .IsRequired()
+                        .HasMaxLength(45)
+                        .HasColumnType("varchar(45)");
+
+                    b.Property<DateTime>("ExpiraEm")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<long>("IntervenienteId")
+                        .HasColumnType("bigint");
+
+                    b.Property<DateTime?>("RegistradaEm")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<string>("Situacao")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("varchar(20)");
+
+                    b.HasKey("Id");
+                    b.HasIndex("EnrollmentId").IsUnique();
+                    b.HasIndex("IntervenienteId");
+                    b.ToTable("INSCRICAO_DID", (string)null);
+                });
+
             modelBuilder.Entity("CustodyChain.Web.Models.Entities.Lacre", b =>
                 {
                     b.Property<long>("Id")
@@ -530,6 +571,17 @@ namespace CustodyChain.Web.Migrations
                     b.HasIndex("VestigioId");
 
                     b.ToTable("MOVIMENTACAO", (string)null);
+                });
+
+            modelBuilder.Entity("CustodyChain.Web.Models.Entities.InscricaoDid", b =>
+                {
+                    b.HasOne("CustodyChain.Web.Models.Entities.Interveniente", "Interveniente")
+                        .WithMany()
+                        .HasForeignKey("IntervenienteId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Interveniente");
                 });
 
             modelBuilder.Entity("CustodyChain.Web.Models.Entities.OperacaoAmostra", b =>

@@ -36,14 +36,20 @@ class WalletStore {
     }
 
     createAdminIdentity({ did, password }) {
-        if (!/^did:legal:admin:[a-zA-Z0-9._-]{3,128}$/.test(did)) {
-            throw new Error('O DID deve seguir o formato did:legal:admin:<identificador>.');
+        return this.createIdentity({ did, password, keyId: `${did}#auth-1`, onlyAdmin: true });
+    }
+
+    createIdentity({ did, password, keyId = `${did}#key-1`, onlyAdmin = false }) {
+        const padraoDid = onlyAdmin
+            ? /^did:legal:admin:[a-zA-Z0-9._-]{3,128}$/
+            : /^did:legal:(admin|custodian|delegate|expert|judge):[a-zA-Z0-9._-]{3,128}$/;
+        if (!padraoDid.test(did) || keyId !== `${did}#key-1` && keyId !== `${did}#auth-1`) {
+            throw new Error('O DID ou o identificador de chave não segue o formato permitido.');
         }
         if (typeof password !== 'string' || password.length < 12) {
             throw new Error('A senha da wallet deve ter pelo menos 12 caracteres.');
         }
 
-        const keyId = `${did}#auth-1`;
         const { publicKey, privateKey } = crypto.generateKeyPairSync('ed25519');
         const publicDer = publicKey.export({ format: 'der', type: 'spki' });
         const publicKeyRaw = publicDer.subarray(SPKI_ED25519_PREFIX_LENGTH);
@@ -134,9 +140,39 @@ class WalletStore {
         }
     }
 
+    signDidCommand({ did, password, command, expectedType, actorField }) {
+        if (!command || typeof command !== 'object' || Array.isArray(command)
+            || command.type !== expectedType || command.version !== 1
+            || command[actorField] !== did) {
+            throw new Error('O comando DID não corresponde à identidade selecionada.');
+        }
+        const signingInput = Buffer.from(canonicalize(command), 'utf8').toString('base64url');
+        return this.sign({ did, password, signingInput });
+    }
+
     close() {
         this.database.close();
     }
+}
+
+function canonicalize(value) {
+    if (value === null || typeof value === 'string' || typeof value === 'boolean') {
+        return JSON.stringify(value);
+    }
+    if (typeof value === 'number') {
+        if (!Number.isFinite(value)) {
+            throw new Error('Números não finitos não podem ser assinados.');
+        }
+        return JSON.stringify(value);
+    }
+    if (Array.isArray(value)) {
+        return `[${value.map(canonicalize).join(',')}]`;
+    }
+    if (typeof value === 'object') {
+        return `{${Object.keys(value).sort().map((key) =>
+            `${JSON.stringify(key)}:${canonicalize(value[key])}`).join(',')}}`;
+    }
+    throw new Error('Tipo inválido no comando DID.');
 }
 
 function deriveKey(password, salt, n, r, p) {
@@ -150,4 +186,4 @@ function aad(did, keyId) {
     return Buffer.from(`custodychain-wallet-v1\0${did}\0${keyId}`, 'utf8');
 }
 
-module.exports = { WalletStore };
+module.exports = { WalletStore, canonicalize };

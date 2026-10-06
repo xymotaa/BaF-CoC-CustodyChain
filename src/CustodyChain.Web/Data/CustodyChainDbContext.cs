@@ -7,6 +7,7 @@ public class CustodyChainDbContext(DbContextOptions<CustodyChainDbContext> optio
 {
     public DbSet<Perfil> Perfis => Set<Perfil>();
     public DbSet<Interveniente> Intervenientes => Set<Interveniente>();
+    public DbSet<InscricaoDid> InscricoesDid => Set<InscricaoDid>();
     public DbSet<Processo> Processos => Set<Processo>();
     public DbSet<TipoVestigio> TiposVestigio => Set<TipoVestigio>();
     public DbSet<Vestigio> Vestigios => Set<Vestigio>();
@@ -55,6 +56,23 @@ public class CustodyChainDbContext(DbContextOptions<CustodyChainDbContext> optio
                 .WithMany(p => p.Intervenientes)
                 .HasForeignKey(i => i.PerfilId)
                 .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        modelBuilder.Entity<InscricaoDid>(e =>
+        {
+            e.ToTable("INSCRICAO_DID");
+            e.HasKey(i => i.Id);
+            e.Property(i => i.EnrollmentId).HasMaxLength(45).IsRequired();
+            e.HasIndex(i => i.EnrollmentId).IsUnique();
+            e.Property(i => i.CodigoHash).HasMaxLength(64).IsRequired();
+            e.Property(i => i.Situacao).HasConversion<string>().HasMaxLength(20);
+            e.Property(i => i.ExpiraEm).HasColumnType("datetime(6)").IsRequired();
+            e.Property(i => i.CriadaEm).HasColumnType("datetime(6)").IsRequired();
+            e.Property(i => i.RegistradaEm).HasColumnType("datetime(6)");
+            e.HasOne(i => i.Interveniente)
+                .WithMany()
+                .HasForeignKey(i => i.IntervenienteId)
+                .OnDelete(DeleteBehavior.Cascade);
         });
 
         // Processo e vestígio

@@ -13,6 +13,10 @@ public enum TipoAtor
 
 public record DidDocument(string Did, string MetodoDid, bool Ativo);
 
+public record RegistroDidPendenteDto(object Command, string Signature);
+
+public record AtivacaoDidV2Dto(object Command, string KeyId, string Signature);
+
 public record CredencialPermissaoDto(string Did, string DidEmissor, string Perfil);
 
 public record CredencialCoCDto(
@@ -30,6 +34,8 @@ public record CredencialCoCRegistrada(string CredencialId, string AssetId, strin
 
 public interface IServicoLedger
 {
+    Task RegistrarDidV2PendenteAsync(RegistroDidPendenteDto dto, CancellationToken cancellationToken = default);
+    Task AtivarDidV2Async(string did, AtivacaoDidV2Dto dto, CancellationToken cancellationToken = default);
     Task<string> GerarDidAsync(TipoAtor tipo);
     Task AtivarDidAsync(string did, string didEmissor, string senhaEmissor);
     Task<DidDocument> ResolverDidAsync(string did);

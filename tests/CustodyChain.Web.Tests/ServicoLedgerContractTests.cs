@@ -48,6 +48,31 @@ public sealed class ServicoLedgerContractTests
         Assert.Equal("42", corpo.RootElement.GetProperty("assetId").GetString());
     }
 
+    [Fact]
+    public async Task ServicoLedgerFabric_EnviaProvaDeRegistroAoContratoV2()
+    {
+        var handler = new HandlerCapturandoRequisicao();
+        using var httpClient = new HttpClient(handler) { BaseAddress = new Uri("http://ledger.local") };
+        var ledger = new ServicoLedgerFabric(httpClient);
+        var command = new
+        {
+            type = "CustodyChainDidRegistration",
+            version = 1,
+            commandId = "urn:uuid:11111111-1111-1111-1111-111111111111",
+            audience = "custodychain-ledger",
+            issuedAt = "2027-01-01T00:00:00.0000000Z",
+            expiresAt = "2027-01-01T00:05:00.0000000Z"
+        };
+
+        await ledger.RegistrarDidV2PendenteAsync(new RegistroDidPendenteDto(command, "assinatura"));
+
+        Assert.Equal(HttpMethod.Post, handler.Method);
+        Assert.Equal("/v2/dids/pending", handler.Path);
+        using var corpo = JsonDocument.Parse(handler.Body!);
+        Assert.Equal("CustodyChainDidRegistration", corpo.RootElement.GetProperty("command").GetProperty("type").GetString());
+        Assert.Equal("assinatura", corpo.RootElement.GetProperty("signature").GetString());
+    }
+
     private sealed class HandlerCapturandoRequisicao : HttpMessageHandler
     {
         public HttpMethod? Method { get; private set; }

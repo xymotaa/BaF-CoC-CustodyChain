@@ -44,6 +44,20 @@ public class GestaoPerfisListaViewModel
     public IReadOnlyList<ItemIntervenienteViewModel> Intervenientes { get; set; } = [];
 }
 
+public record InscricaoDidCriadaViewModel(
+    string Did,
+    string EnrollmentId,
+    string CodigoInscricao,
+    DateTime ExpiraEm);
+
+public record SolicitarComandoRegistroDidRequest(string CodigoInscricao, string VerificationMethodId, string PublicKeyMultibase);
+
+public record EnviarProvaRegistroDidRequest(object Command, string Signature);
+
+public record EnviarProvaAtivacaoDidRequest(object Command, string KeyId, string Signature);
+
+public record AtivarDidV2ViewModel(long IntervenienteId, string Did, string Nome, string DidAdministrador, string WalletEndpoint);
+
 public class EmitirCredencialPermissaoViewModel
 {
     [Required(ErrorMessage = "Selecione o titular.")]

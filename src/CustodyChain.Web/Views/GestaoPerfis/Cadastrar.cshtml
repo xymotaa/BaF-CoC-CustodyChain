@@ -5,7 +5,7 @@
 
 <div class="pagina-cabecalho">
     <h1>Cadastrar interveniente</h1>
-    <p class="campo-ajuda">Gera o DID do novo interveniente. A ativação (com assinatura do emissor) acontece na tela de Gestão de perfis.</p>
+    <p class="campo-ajuda">Reserva a identidade do interveniente e cria uma inscrição para que ele gere a própria chave na wallet.</p>
 </div>
 
 @if (!ViewData.ModelState.IsValid)
@@ -60,7 +60,7 @@
     </section>
 
     <div class="formulario-acoes">
-        <button type="submit" class="botao botao-primario">Cadastrar e gerar DID</button>
+        <button type="submit" class="botao botao-primario">Cadastrar e criar inscrição</button>
     </div>
 </form>
 
