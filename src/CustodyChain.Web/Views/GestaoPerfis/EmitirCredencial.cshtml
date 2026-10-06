@@ -33,7 +33,7 @@
 }
 else
 {
-    <form asp-controller="GestaoPerfis" asp-action="EmitirCredencial" method="post" novalidate class="formulario-vestigio">
+    <form id="credential-form" novalidate class="formulario-vestigio">
         @Html.AntiForgeryToken()
 
         <section class="cartao secao-formulario">
@@ -68,13 +68,91 @@ else
                     <span class="campo-ajuda">Deixe em branco para validade indeterminada.</span>
                     <span asp-validation-for="ValidaAte" class="campo-erro"></span>
                 </div>
+                <div class="campo">
+                    <label class="campo-rotulo" for="wallet-password">Senha da wallet emissora</label>
+                    <input id="wallet-password" class="campo-entrada" type="password" autocomplete="current-password" required />
+                    <span class="campo-ajuda">Usada somente pela wallet local para assinar a VC.</span>
+                </div>
+                <div class="campo">
+                    <label class="campo-rotulo" for="pairing-token">Código de pareamento da wallet</label>
+                    <input id="pairing-token" class="campo-entrada" type="password" autocomplete="off" required />
+                </div>
             </div>
         </section>
 
+        <div id="credential-error" class="alerta alerta-erro" role="alert" tabindex="-1" hidden></div>
+        <p id="credential-status" role="status" aria-live="polite" class="campo-ajuda"></p>
+
         <div class="formulario-acoes">
-            <button type="submit" class="botao botao-primario">Emitir credencial</button>
+            <button id="issue-credential" type="submit" class="botao botao-primario">Assinar e emitir VC</button>
         </div>
     </form>
+}
+
+@section Scripts {
+    <script>
+        (() => {
+            const form = document.getElementById('credential-form');
+            const button = document.getElementById('issue-credential');
+            const password = document.getElementById('wallet-password');
+            const pairing = document.getElementById('pairing-token');
+            const error = document.getElementById('credential-error');
+            const status = document.getElementById('credential-status');
+            const antiForgery = form.querySelector('input[name="__RequestVerificationToken"]').value;
+            const postApplication = async (url, body) => {
+                const response = await fetch(url, {
+                    method: 'POST', credentials: 'same-origin',
+                    headers: { 'Content-Type': 'application/json', 'RequestVerificationToken': antiForgery },
+                    body: JSON.stringify(body)
+                });
+                const payload = await response.json().catch(() => ({}));
+                if (!response.ok) throw new Error(payload.message || 'Não foi possível emitir a VC.');
+                return payload;
+            };
+            form.addEventListener('submit', async (event) => {
+                event.preventDefault();
+                error.hidden = true;
+                if (!password.value || !pairing.value) {
+                    error.textContent = 'Informe a senha e o código de pareamento da wallet.';
+                    error.hidden = false;
+                    error.focus();
+                    return;
+                }
+                button.disabled = true;
+                try {
+                    status.textContent = 'Preparando a VC de permissão.';
+                    const fields = new FormData(form);
+                    const command = await postApplication('/gestao-perfis/emitir-credencial/comando', {
+                        titularId: Number(fields.get('TitularId')) || null,
+                        processoId: Number(fields.get('ProcessoId')) || null,
+                        validaAte: fields.get('ValidaAte') || null
+                    });
+                    status.textContent = 'Aguardando assinatura da wallet emissora.';
+                    const walletResponse = await fetch(`${command.walletEndpoint}/v1/proofs/verifiable-credential`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json', 'X-Wallet-Pairing-Token': pairing.value },
+                        body: JSON.stringify({ did: command.issuerDid, password: password.value, credential: command.credential })
+                    });
+                    const wallet = await walletResponse.json().catch(() => ({}));
+                    if (!walletResponse.ok) throw new Error(wallet.message || 'A wallet recusou a assinatura da VC.');
+                    password.value = '';
+                    status.textContent = 'Registrando a VC assinada no ledger.';
+                    const result = await postApplication('/gestao-perfis/emitir-credencial/prova', {
+                        emissaoId: command.emissaoId,
+                        credential: wallet.verifiableCredential
+                    });
+                    window.location.assign(result.redirectUrl);
+                } catch (exception) {
+                    password.value = '';
+                    error.textContent = exception.message;
+                    error.hidden = false;
+                    error.focus();
+                } finally {
+                    button.disabled = false;
+                }
+            });
+        })();
+    </script>
 }
 
 @section Styles {
@@ -98,6 +176,7 @@ else
         }
 
         .formulario-acoes { display: flex; justify-content: flex-end; }
+        .formulario-acoes .botao { min-height: 44px; }
 
         .painel-vazio {
             border: 1px dashed var(--cor-borda-forte);

@@ -73,3 +73,5 @@ public class EmitirCredencialPermissaoViewModel
     public IReadOnlyList<ItemIntervenienteViewModel> TitularesDisponiveis { get; set; } = [];
     public IReadOnlyList<OpcaoProcessoViewModel> ProcessosDisponiveis { get; set; } = [];
 }
+
+public record EnviarProvaVcPermissaoRequest(string EmissaoId, System.Text.Json.JsonElement Credential);

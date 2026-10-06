@@ -136,6 +136,83 @@ test('recusa ativação assinada por chave sem capabilityInvocation', async () =
     );
 });
 
+test('emite VC de permissão assinada pelo DID emissor e preserva idempotência', async () => {
+    const contract = new CustodyChainContract();
+    const ctx = contexto('Org1MSP');
+    const admin = gerarIdentidade(did, keyId);
+    await contract.BootstrapAdminDid(ctx, did, keyId, admin.publicKeyMultibase);
+    const credential = criarVcPermissao(admin.privateKey);
+
+    const credentialId = await contract.EmitirCredencialPermissaoV2(ctx, JSON.stringify(credential));
+    const registrado = JSON.parse(await contract.ObterCredencial(ctx, credentialId));
+
+    assert.equal(credentialId, credential.id);
+    assert.equal(registrado.formato, 'VC_V1');
+    assert.equal(registrado.did, credential.credentialSubject.id);
+    assert.equal(registrado.verifiableCredential.proof.proofValue, credential.proof.proofValue);
+    assert.equal(await contract.EmitirCredencialPermissaoV2(ctx, JSON.stringify(credential)), credential.id);
+});
+
+test('recusa emissão de permissão pelo contrato legado sem prova', async () => {
+    const contract = new CustodyChainContract();
+    await assert.rejects(
+        contract.EmitirCredencialPermissao(contexto('Org1MSP'), 'cred-perm-legada', did, did, 'ADMIN'),
+        /legada.*desabilitada/
+    );
+});
+
+test('recusa VC de permissão com prova modificada ou chave sem assertionMethod', async () => {
+    const contract = new CustodyChainContract();
+    const ctx = contexto('Org1MSP');
+    const admin = gerarIdentidade(did, keyId);
+    await contract.BootstrapAdminDid(ctx, did, keyId, admin.publicKeyMultibase);
+    const credential = criarVcPermissao(admin.privateKey);
+
+    await assert.rejects(
+        contract.EmitirCredencialPermissaoV2(ctx, JSON.stringify({
+            ...credential,
+            credentialSubject: { ...credential.credentialSubject, perfil: 'CUSTODIA' }
+        })),
+        /assinatura/
+    );
+
+    const stateKey = ctx.stub.createCompositeKey('DID', [did]);
+    const document = JSON.parse((await ctx.stub.getState(stateKey)).toString());
+    document.assertionMethod = [];
+    await ctx.stub.putState(stateKey, Buffer.from(JSON.stringify(document)));
+    await assert.rejects(
+        contract.EmitirCredencialPermissaoV2(ctx, JSON.stringify(credential)),
+        /assertionMethod/
+    );
+});
+
+function criarVcPermissao(privateKey) {
+    const credential = {
+        '@context': ['https://www.w3.org/2018/credentials/v1'],
+        id: 'urn:uuid:55555555-5555-5555-5555-555555555555',
+        type: ['VerifiableCredential', 'CustodyChainPermissionCredential'],
+        issuer: did,
+        issuanceDate: '2027-01-15T08:00:00.000Z',
+        expirationDate: '2027-01-16T08:00:00.000Z',
+        credentialSubject: { id: 'did:legal:expert:teste-vc', perfil: 'PERITO' },
+        credentialStatus: {
+            id: 'urn:uuid:55555555-5555-5555-5555-555555555555#status',
+            type: 'CustodyChainLedgerStatusV1'
+        }
+    };
+    return {
+        ...credential,
+        proof: {
+            type: 'CustodyChainEd25519Signature2026',
+            created: credential.issuanceDate,
+            proofPurpose: 'assertionMethod',
+            verificationMethod: keyId,
+            canonicalization: 'custodychain-json-c14n-v1',
+            proofValue: assinar(privateKey, credential)
+        }
+    };
+}
+
 function gerarIdentidade(identityDid, identityKeyId) {
     const { publicKey, privateKey } = crypto.generateKeyPairSync('ed25519');
     const raw = publicKey.export({ format: 'der', type: 'spki' }).subarray(12);

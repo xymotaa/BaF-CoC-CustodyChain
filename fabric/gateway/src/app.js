@@ -132,6 +132,29 @@ function verificarProvaDid(command, signature, publicKeyMultibase) {
     }
 }
 
+function verificarVcPermissao(credential, publicKeyMultibase) {
+    if (!credential || typeof credential !== 'object' || Array.isArray(credential)
+        || credential.proof?.type !== 'CustodyChainEd25519Signature2026'
+        || credential.proof.proofPurpose !== 'assertionMethod'
+        || credential.proof.canonicalization !== 'custodychain-json-c14n-v1'
+        || typeof credential.proof.proofValue !== 'string') {
+        throw new Error('Prova da VC de permissão inválida.');
+    }
+    const { proof, ...credentialWithoutProof } = credential;
+    verificarProvaDid(credentialWithoutProof, proof.proofValue, publicKeyMultibase);
+}
+
+function validarVcPermissao(credential) {
+    if (!credential || typeof credential !== 'object' || Array.isArray(credential)
+        || !Array.isArray(credential.type)
+        || !credential.type.includes('VerifiableCredential')
+        || !credential.type.includes('CustodyChainPermissionCredential')
+        || typeof credential.id !== 'string' || typeof credential.issuer !== 'string'
+        || credential.proof?.verificationMethod?.startsWith(`${credential.issuer}#`) !== true) {
+        throw new Error('Envelope da VC de permissão inválido.');
+    }
+}
+
 function canonicalizarJson(valor) {
     if (valor === null || typeof valor === 'string' || typeof valor === 'boolean' || typeof valor === 'number') return JSON.stringify(valor);
     if (Array.isArray(valor)) return `[${valor.map(canonicalizarJson).join(',')}]`;
@@ -309,11 +332,22 @@ app.get('/dids/:did', async (req, res) => {
 });
 
 app.post('/credenciais/permissao', async (req, res) => {
+    return res.status(410).json({ error: 'Emissão centralizada desabilitada; use a VC v2 assinada pela wallet do emissor.' });
+});
+
+app.post('/v2/credenciais/permissao', async (req, res) => {
     try {
-        const { credencialId, did, didEmissor, perfil } = req.body;
+        const { credential } = req.body;
+        validarVcPermissao(credential);
         const contrato = obterContrato();
+        const emissor = JSON.parse(decodificar(await contrato.evaluateTransaction('ResolverDid', credential.issuer)));
+        const metodo = emissor.verificationMethod?.find((item) => item.id === credential.proof.verificationMethod);
+        if (!emissor.assertionMethod?.includes(credential.proof.verificationMethod) || !metodo) {
+            throw new Error('A chave do emissor não possui capacidade assertionMethod para emitir VC.');
+        }
+        verificarVcPermissao(credential, metodo.publicKeyMultibase);
         const resultado = await contrato.submitTransaction(
-            'EmitirCredencialPermissao', credencialId, did, didEmissor, perfil
+            'EmitirCredencialPermissaoV2', JSON.stringify(credential)
         );
         res.status(201).json({ credencialId: decodificar(resultado) });
     } catch (erro) {
@@ -400,4 +434,7 @@ process.on('SIGINT', () => {
     process.exit(0);
 });
 
-module.exports = { app, autenticarServico, decodificar, tratarErro, validarComandoDid, verificarProvaDid };
+module.exports = {
+    app, autenticarServico, decodificar, tratarErro, validarComandoDid,
+    verificarProvaDid, validarVcPermissao, verificarVcPermissao
+};

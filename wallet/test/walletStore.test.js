@@ -91,6 +91,50 @@ test('cria identidade titular e assina somente comando de registro correspondent
     }
 });
 
+test('assina VC de permissão somente para o DID emissor', () => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'custodychain-wallet-'));
+    const store = new WalletStore(path.join(directory, 'wallet.db'));
+    const did = 'did:legal:admin:teste-vc';
+    const password = 'senha-local-forte';
+    const credential = {
+        '@context': ['https://www.w3.org/2018/credentials/v1'],
+        id: 'urn:uuid:11111111-1111-1111-1111-111111111111',
+        type: ['VerifiableCredential', 'CustodyChainPermissionCredential'],
+        issuer: did,
+        issuanceDate: '2026-10-06T12:00:00.000Z',
+        credentialSubject: { id: 'did:legal:expert:teste-vc', perfil: 'PERITO' },
+        credentialStatus: {
+            id: 'urn:uuid:11111111-1111-1111-1111-111111111111#status',
+            type: 'CustodyChainLedgerStatusV1'
+        }
+    };
+
+    try {
+        const identity = store.createAdminIdentity({ did, password });
+        const signed = store.signVerifiableCredential({ did, password, credential });
+        const publicKey = crypto.createPublicKey({
+            key: Buffer.concat([
+                Buffer.from('302a300506032b6570032100', 'hex'),
+                decodeMultikey(identity.publicKeyMultibase).subarray(2)
+            ]),
+            format: 'der', type: 'spki'
+        });
+        const { proof, ...unsignedCredential } = signed;
+
+        assert.equal(proof.verificationMethod, `${did}#auth-1`);
+        assert.equal(crypto.verify(null, Buffer.from(canonicalize(unsignedCredential)), publicKey,
+            Buffer.from(proof.proofValue, 'base64url')), true);
+        assert.throws(() => store.signVerifiableCredential({
+            did,
+            password,
+            credential: { ...credential, issuer: 'did:legal:admin:outro' }
+        }), /não corresponde/);
+    } finally {
+        store.close();
+        fs.rmSync(directory, { recursive: true, force: true });
+    }
+});
+
 function decodeMultikey(value) {
     const alphabet = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';
     const bytes = [0];

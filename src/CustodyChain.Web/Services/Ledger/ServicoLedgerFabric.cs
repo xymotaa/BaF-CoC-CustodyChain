@@ -85,6 +85,21 @@ public class ServicoLedgerFabric(HttpClient httpClient) : IServicoLedger
         return credencialId;
     }
 
+    public async Task<string> EmitirCredencialPermissaoV2Async(
+        CredencialPermissaoV2Dto dto,
+        CancellationToken cancellationToken = default)
+    {
+        var resposta = await httpClient.PostAsJsonAsync("/v2/credenciais/permissao", new
+        {
+            credential = dto.Credential
+        }, OpcoesJson, cancellationToken);
+        await LancarSeFalhaAsync(resposta);
+
+        var resultado = await resposta.Content.ReadFromJsonAsync<CredencialEmitidaGatewayDto>(OpcoesJson, cancellationToken)
+            ?? throw new InvalidOperationException("Resposta vazia do gateway ao emitir VC de permissão.");
+        return resultado.CredencialId;
+    }
+
     public async Task<string> EmitirCredencialCoCAsync(CredencialCoCDto dto, CancellationToken cancellationToken = default)
     {
         var credencialId = dto.CredencialId ?? $"cred-coc-{Guid.NewGuid():N}";
@@ -158,6 +173,9 @@ public class ServicoLedgerFabric(HttpClient httpClient) : IServicoLedger
         [property: JsonPropertyName("ativadoEm")] DateTime? AtivadoEm);
 
     private record ResultadoVerificacaoGatewayDto(bool Valido, string? Motivo);
+
+    private record CredencialEmitidaGatewayDto(
+        [property: JsonPropertyName("credencialId")] string CredencialId);
 
     private record EventoHistoricoGatewayDto(
         [property: JsonPropertyName("assetId")] string AssetId,

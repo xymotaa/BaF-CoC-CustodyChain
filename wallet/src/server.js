@@ -122,6 +122,16 @@ const server = http.createServer(async (req, res) => {
             return json(res, 200, proof, origin);
         }
 
+        if (req.method === 'POST' && req.url === '/v1/proofs/verifiable-credential') {
+            const body = await readJson(req);
+            const verifiableCredential = store.signVerifiableCredential({
+                did: body.did,
+                password: body.password,
+                credential: body.credential
+            });
+            return json(res, 200, { verifiableCredential }, origin);
+        }
+
         return json(res, 404, { message: 'Rota não encontrada.' }, origin);
     } catch (error) {
         return json(res, 400, { message: error.message }, origin);

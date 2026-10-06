@@ -333,21 +333,56 @@ class CustodyChainContract extends Contract {
     }
 
     async EmitirCredencialPermissao(ctx, credencialId, did, didEmissor, perfil) {
-        await this._garantirDidAtivo(ctx, didEmissor);
+        throw new Error('Emissão legada de credencial de permissão desabilitada; use EmitirCredencialPermissaoV2 com VC assinada.');
+    }
 
-        const credencial = {
-            credencialId,
+    async EmitirCredencialPermissaoV2(ctx, credencialJson) {
+        const credencial = this._lerCredencialPermissaoV2(credencialJson);
+        this._validarCredencialPermissaoV2(credencial);
+
+        const chave = ctx.stub.createCompositeKey(PREFIXO_CREDENCIAL, [credencial.id]);
+        const existente = await ctx.stub.getState(chave);
+        if (existente && existente.length > 0) {
+            const registroExistente = JSON.parse(existente.toString());
+            if (registroExistente.vcHashSha256 === this._hashComando(credencial)) {
+                return credencial.id;
+            }
+            throw new Error(`Conflito de idempotência para a credencial: ${credencial.id}`);
+        }
+
+        const documentoEmissor = await this._obterDocumentoDid(ctx, credencial.issuer);
+        if (documentoEmissor.version !== 2 || documentoEmissor.status !== 'ATIVO' || documentoEmissor.ativo !== true) {
+            throw new Error('DID emissor não está ativo para emitir VC de permissão.');
+        }
+
+        const metodo = documentoEmissor.verificationMethod?.find(
+            (item) => item.id === credencial.proof.verificationMethod);
+        if (!metodo || !documentoEmissor.assertionMethod?.includes(metodo.id)) {
+            throw new Error('A chave do emissor não possui capacidade assertionMethod para emitir VC.');
+        }
+
+        const { proof, ...credencialSemProva } = credencial;
+        this._verificarAssinatura(credencialSemProva, proof.proofValue, metodo.publicKeyMultibase);
+
+        const agora = this._agora(ctx);
+        const registro = {
+            credencialId: credencial.id,
             tipo: 'PERMISSAO',
-            did,
-            didEmissor,
-            perfil,
-            emitidaEm: this._agora(ctx),
-            revogada: false
+            formato: 'VC_V1',
+            did: credencial.credentialSubject.id,
+            didEmissor: credencial.issuer,
+            perfil: credencial.credentialSubject.perfil,
+            processoId: credencial.credentialSubject.processoId || null,
+            emitidaEm: credencial.issuanceDate,
+            expiraEm: credencial.expirationDate || null,
+            vcHashSha256: this._hashComando(credencial),
+            verifiableCredential: credencial,
+            status: 'ATIVA',
+            revogada: false,
+            registradaEm: agora
         };
-
-        const chave = ctx.stub.createCompositeKey(PREFIXO_CREDENCIAL, [credencialId]);
-        await ctx.stub.putState(chave, Buffer.from(JSON.stringify(credencial)));
-        return credencialId;
+        await ctx.stub.putState(chave, Buffer.from(JSON.stringify(registro)));
+        return credencial.id;
     }
 
     async EmitirCredencialCoC(ctx, credencialId, assetId, evento, did, payloadHashSha256) {
@@ -409,6 +444,10 @@ class CustodyChainContract extends Contract {
             return JSON.stringify({ valido: false, motivo: 'Credencial revogada.' });
         }
 
+        if (credencial.expiraEm && Date.parse(credencial.expiraEm) <= Date.parse(this._agora(ctx))) {
+            return JSON.stringify({ valido: false, motivo: 'Credencial expirada.' });
+        }
+
         if (credencial.tipo === 'PERMISSAO') {
             const didAtivo = await this._didEstaAtivo(ctx, credencial.did);
             if (!didAtivo) {
@@ -437,6 +476,7 @@ class CustodyChainContract extends Contract {
 
         const credencial = JSON.parse(bytes.toString());
         credencial.revogada = true;
+        credencial.status = 'REVOGADA';
         credencial.revogadaEm = this._agora(ctx);
 
         await ctx.stub.putState(chave, Buffer.from(JSON.stringify(credencial)));
@@ -501,6 +541,49 @@ class CustodyChainContract extends Contract {
             throw new Error('Tipo ou versão do comando DID inválido.');
         }
         return comando;
+    }
+
+    _lerCredencialPermissaoV2(credencialJson) {
+        if (typeof credencialJson !== 'string' || credencialJson.length === 0 || credencialJson.length > 16384) {
+            throw new Error('VC de permissão inválida.');
+        }
+        try {
+            const credencial = JSON.parse(credencialJson);
+            if (!credencial || typeof credencial !== 'object' || Array.isArray(credencial)) {
+                throw new Error();
+            }
+            return credencial;
+        } catch {
+            throw new Error('VC de permissão não contém JSON válido.');
+        }
+    }
+
+    _validarCredencialPermissaoV2(credencial) {
+        const subject = credencial.credentialSubject;
+        const status = credencial.credentialStatus;
+        const proof = credencial.proof;
+        if (!this._identificadorValido(credencial.id)
+            || !Array.isArray(credencial['@context'])
+            || !credencial['@context'].includes('https://www.w3.org/2018/credentials/v1')
+            || !Array.isArray(credencial.type)
+            || !credencial.type.includes('VerifiableCredential')
+            || !credencial.type.includes('CustodyChainPermissionCredential')
+            || !/^did:legal:admin:[a-zA-Z0-9._-]{3,128}$/.test(credencial.issuer)
+            || !Number.isFinite(Date.parse(credencial.issuanceDate))
+            || (credencial.expirationDate && (!Number.isFinite(Date.parse(credencial.expirationDate))
+                || Date.parse(credencial.expirationDate) <= Date.parse(credencial.issuanceDate)))
+            || !subject || typeof subject !== 'object'
+            || !/^did:legal:(admin|custodian|delegate|expert|judge):[a-zA-Z0-9._-]{3,128}$/.test(subject.id)
+            || typeof subject.perfil !== 'string' || !/^[A-Z_]{3,20}$/.test(subject.perfil)
+            || !status || status.id !== `${credencial.id}#status` || status.type !== 'CustodyChainLedgerStatusV1'
+            || !proof || proof.type !== 'CustodyChainEd25519Signature2026'
+            || proof.proofPurpose !== 'assertionMethod'
+            || proof.canonicalization !== 'custodychain-json-c14n-v1'
+            || typeof proof.verificationMethod !== 'string' || !proof.verificationMethod.startsWith(`${credencial.issuer}#`)
+            || !Number.isFinite(Date.parse(proof.created))
+            || typeof proof.proofValue !== 'string') {
+            throw new Error('Envelope da VC de permissão inválido.');
+        }
     }
 
     _validarJanelaComando(ctx, comando) {

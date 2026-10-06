@@ -150,6 +150,34 @@ class WalletStore {
         return this.sign({ did, password, signingInput });
     }
 
+    signVerifiableCredential({ did, password, credential }) {
+        if (!credential || typeof credential !== 'object' || Array.isArray(credential)
+            || Object.hasOwn(credential, 'proof') || credential.issuer !== did
+            || !Array.isArray(credential.type)
+            || !credential.type.includes('VerifiableCredential')
+            || !credential.type.includes('CustodyChainPermissionCredential')) {
+            throw new Error('A credencial não corresponde à identidade emissora selecionada.');
+        }
+
+        const assinatura = this.sign({
+            did,
+            password,
+            signingInput: Buffer.from(canonicalize(credential), 'utf8').toString('base64url')
+        });
+
+        return {
+            ...credential,
+            proof: {
+                type: 'CustodyChainEd25519Signature2026',
+                created: new Date().toISOString(),
+                proofPurpose: 'assertionMethod',
+                verificationMethod: assinatura.keyId,
+                canonicalization: 'custodychain-json-c14n-v1',
+                proofValue: assinatura.signature
+            }
+        };
+    }
+
     close() {
         this.database.close();
     }

@@ -62,6 +62,15 @@ public class LedgerFake : IServicoLedger
         return Task.FromResult(credencialId);
     }
 
+    public Task<string> EmitirCredencialPermissaoV2Async(
+        CredencialPermissaoV2Dto dto,
+        CancellationToken cancellationToken = default)
+    {
+        var credentialId = dto.Credential.GetProperty("id").GetString()
+            ?? throw new InvalidOperationException("VC sem identificador.");
+        return Task.FromResult(credentialId);
+    }
+
     public Task<string> EmitirCredencialCoCAsync(CredencialCoCDto dto, CancellationToken cancellationToken = default)
     {
         var credencialId = dto.CredencialId ?? $"cred-coc-{Guid.NewGuid():N}";

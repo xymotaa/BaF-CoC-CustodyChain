@@ -73,6 +73,26 @@ public sealed class ServicoLedgerContractTests
         Assert.Equal("assinatura", corpo.RootElement.GetProperty("signature").GetString());
     }
 
+    [Fact]
+    public async Task ServicoLedgerFabric_EnviaVcAssinadaParaARotaV2()
+    {
+        var handler = new HandlerCapturandoRequisicao();
+        using var httpClient = new HttpClient(handler) { BaseAddress = new Uri("http://ledger.local") };
+        var ledger = new ServicoLedgerFabric(httpClient);
+        using var document = JsonDocument.Parse("""
+            {"id":"urn:uuid:11111111-1111-1111-1111-111111111111","issuer":"did:legal:admin:teste"}
+            """);
+
+        var identificador = await ledger.EmitirCredencialPermissaoV2Async(
+            new CredencialPermissaoV2Dto(document.RootElement.Clone()));
+
+        Assert.Equal("cred-coc-estavel", identificador);
+        Assert.Equal(HttpMethod.Post, handler.Method);
+        Assert.Equal("/v2/credenciais/permissao", handler.Path);
+        using var corpo = JsonDocument.Parse(handler.Body!);
+        Assert.Equal("urn:uuid:11111111-1111-1111-1111-111111111111", corpo.RootElement.GetProperty("credential").GetProperty("id").GetString());
+    }
+
     private sealed class HandlerCapturandoRequisicao : HttpMessageHandler
     {
         public HttpMethod? Method { get; private set; }

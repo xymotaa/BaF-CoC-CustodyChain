@@ -2,6 +2,8 @@ using System.Security.Claims;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Nodes;
+using CustodyChain.Web.Application.VerifiableCredentials;
 using CustodyChain.Web.Data;
 using CustodyChain.Web.Models.Entities;
 using CustodyChain.Web.Models.ViewModels;
@@ -15,7 +17,12 @@ namespace CustodyChain.Web.Controllers;
 // RN07: somente administradores cadastram intervenientes e emitem
 // credencial de permissão.
 [Authorize(Roles = "ADMIN")]
-public class GestaoPerfisController(CustodyChainDbContext db, IServicoLedger ledger, IConfiguration configuration) : Controller
+public class GestaoPerfisController(
+    CustodyChainDbContext db,
+    IServicoLedger ledger,
+    IConfiguration configuration,
+    CriarVcPermissao criarVcPermissao,
+    IEmissaoVcPendenteStore emissoesPendentes) : Controller
 {
     private static readonly Dictionary<string, TipoAtor> MapaPerfilParaAtor = new()
     {
@@ -255,9 +262,11 @@ public class GestaoPerfisController(CustodyChainDbContext db, IServicoLedger led
         return View(modelo);
     }
 
-    [HttpPost("/gestao-perfis/emitir-credencial")]
+    [HttpPost("/gestao-perfis/emitir-credencial/comando")]
     [ValidateAntiForgeryToken]
-    public async Task<IActionResult> EmitirCredencial(EmitirCredencialPermissaoViewModel modelo)
+    public async Task<IActionResult> CriarComandoEmissaoCredencial(
+        EmitirCredencialPermissaoViewModel modelo,
+        CancellationToken cancellationToken)
     {
         var emissorId = long.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);
 
@@ -273,32 +282,84 @@ public class GestaoPerfisController(CustodyChainDbContext db, IServicoLedger led
 
         if (!ModelState.IsValid || titular is null)
         {
-            await CarregarOpcoesCredencialAsync(modelo);
-            return View(modelo);
+            return ValidationProblem(ModelState);
         }
 
-        var emissor = await db.Intervenientes.FindAsync(emissorId);
-        var agora = DateTime.UtcNow;
+        var emissor = await db.Intervenientes.FindAsync([emissorId], cancellationToken);
+        if (emissor is null || emissor.Situacao != SituacaoInterveniente.ATIVO)
+        {
+            return BadRequest(new { message = "Emissor não está ativo para assinar a VC." });
+        }
 
-        var credencialId = await ledger.EmitirCredencialPermissaoAsync(
-            new CredencialPermissaoDto(titular.Did, emissor!.Did, titular.Perfil.Codigo));
+        VcPermissaoSemAssinatura vc;
+        try
+        {
+            vc = criarVcPermissao.Executar(new CriarVcPermissaoInput(
+                emissor.Did, titular.Did, titular.Perfil.Codigo, modelo.ProcessoId, modelo.ValidaAte));
+        }
+        catch (ArgumentException error)
+        {
+            return BadRequest(new { message = error.Message });
+        }
+
+        var emissaoId = Guid.NewGuid().ToString("N");
+        emissoesPendentes.Armazenar(new EmissaoVcPendente(
+            emissaoId, emissorId, titular.Id, modelo.ProcessoId, vc, DateTime.UtcNow.AddMinutes(2)));
+        return Ok(new
+        {
+            emissaoId,
+            credential = vc.Credencial,
+            issuerDid = emissor.Did,
+            walletEndpoint = configuration["AuthenticationDid:WalletEndpoint"] ?? "http://127.0.0.1:43123"
+        });
+    }
+
+    [HttpPost("/gestao-perfis/emitir-credencial/prova")]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> EmitirCredencialComProva(
+        [FromBody] EnviarProvaVcPermissaoRequest? request,
+        CancellationToken cancellationToken)
+    {
+        var emissorId = long.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);
+        if (request is null || string.IsNullOrWhiteSpace(request.EmissaoId)
+            || !emissoesPendentes.TentarObter(request.EmissaoId, out var emissao)
+            || emissao is null || emissao.EmissorId != emissorId
+            || !CredencialCorresponde(emissao.Credencial.Credencial, request.Credential))
+        {
+            return BadRequest(new { message = "A VC não corresponde a uma emissão pendente válida." });
+        }
+
+        string credencialId;
+        try
+        {
+            credencialId = await ledger.EmitirCredencialPermissaoV2Async(
+                new CredencialPermissaoV2Dto(request.Credential), cancellationToken);
+        }
+        catch (Exception error)
+        {
+            HttpContext.RequestServices.GetRequiredService<ILogger<GestaoPerfisController>>()
+                .LogError(error, "Falha ao registrar VC de permissão pendente {EmissaoId} no ledger.", request.EmissaoId);
+            return StatusCode(StatusCodes.Status503ServiceUnavailable, new
+            {
+                message = "Não foi possível registrar a VC no ledger. Tente novamente com a mesma prova."
+            });
+        }
 
         db.Credenciais.Add(new Credencial
         {
             Tipo = TipoCredencial.PERMISSAO,
             Identificador = credencialId,
-            TitularId = titular.Id,
+            TitularId = emissao.TitularId,
             EmissorId = emissorId,
-            ProcessoId = modelo.ProcessoId,
-            EmitidaEm = agora,
-            ValidaAte = modelo.ValidaAte,
+            ProcessoId = emissao.ProcessoId,
+            EmitidaEm = emissao.Credencial.EmitidaEm,
+            ValidaAte = emissao.Credencial.ExpiraEm,
             Situacao = SituacaoCredencial.VIGENTE,
         });
 
-        await db.SaveChangesAsync();
-
-        TempData["MensagemSucesso"] = $"Credencial de permissão emitida para {titular.Nome}.";
-        return RedirectToAction(nameof(EmitirCredencial));
+        await db.SaveChangesAsync(cancellationToken);
+        emissoesPendentes.Remover(request.EmissaoId);
+        return Ok(new { redirectUrl = Url.Action(nameof(EmitirCredencial)), message = "VC de permissão emitida." });
     }
 
     private async Task CarregarPerfisAsync(CadastrarIntervenienteViewModel modelo)
@@ -385,6 +446,19 @@ public class GestaoPerfisController(CustodyChainDbContext db, IServicoLedger led
             && json.TryGetProperty("subjectDid", out var subject) && subject.GetString() == subjectDid
             && json.TryGetProperty("actorDid", out var actor) && actor.GetString() == actorDid
             && json.TryGetProperty("expectedDocumentVersion", out var version) && version.GetInt32() == 1;
+    }
+
+    private static bool CredencialCorresponde(JsonElement semAssinatura, JsonElement assinada)
+    {
+        if (assinada.ValueKind != JsonValueKind.Object || !assinada.TryGetProperty("proof", out _))
+        {
+            return false;
+        }
+
+        var recebida = JsonNode.Parse(assinada.GetRawText())?.AsObject();
+        recebida?.Remove("proof");
+        var esperada = JsonNode.Parse(semAssinatura.GetRawText());
+        return JsonNode.DeepEquals(esperada, recebida);
     }
 
     private static string CalcularHash(string valor) =>
