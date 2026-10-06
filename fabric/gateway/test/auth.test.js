@@ -4,7 +4,7 @@ const assert = require('node:assert/strict');
 const test = require('node:test');
 
 process.env.GATEWAY_SERVICE_TOKEN = 'token-de-teste-comprido';
-const { autenticarServico, validarComandoDid, verificarProvaDid } = require('../src/app');
+const { autenticarServico, tratarErro, validarComandoDid, verificarProvaDid } = require('../src/app');
 
 test('middleware aceita bearer token configurado', () => {
     let nextCalled = false;
@@ -35,6 +35,14 @@ test('recusa prova DID sem uma chave Multikey válida', () => {
         () => verificarProvaDid({ type: 'CustodyChainDidRegistration' }, 'assinatura', 'invalida'),
         /Chave pública/
     );
+});
+
+test('classifica migração administrativa repetida como conflito', () => {
+    const response = responseFake();
+    tratarErro(response, {
+        details: [{ message: 'O bootstrap ou a migração do DID administrador já foi concluída.' }]
+    });
+    assert.equal(response.statusCode, 409);
 });
 
 function responseFake() {

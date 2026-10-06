@@ -32,6 +32,46 @@ test('bootstrap recusa MSP que não administra identidades', async () => {
     );
 });
 
+test('migra uma única vez o DID administrativo legado ativo para v2', async () => {
+    const contract = new CustodyChainContract();
+    const ctx = contexto('Org1MSP');
+    const legacyDocument = {
+        did,
+        metodoDid: 'did:legal:admin',
+        ativo: true,
+        didEmissor: did,
+        criadoEm: '2026-10-01T00:00:00.000Z',
+        ativadoEm: '2026-10-01T00:01:00.000Z'
+    };
+    await ctx.stub.putState(ctx.stub.createCompositeKey('DID', [did]), Buffer.from(JSON.stringify(legacyDocument)));
+
+    const migrated = JSON.parse(await contract.MigrarAdminDidLegadoParaV2(ctx, did, keyId, publicKey));
+
+    assert.equal(migrated.version, 2);
+    assert.equal(migrated.migradoDeVersao, 1);
+    assert.deepEqual(migrated.capabilityInvocation, [keyId]);
+    assert.equal(migrated.criadoEm, legacyDocument.criadoEm);
+    await assert.rejects(
+        contract.MigrarAdminDidLegadoParaV2(ctx, did, keyId, publicKey),
+        /já foi concluída/
+    );
+});
+
+test('recusa migração de DID legado não administrativo ou inativo', async () => {
+    const contract = new CustodyChainContract();
+    const ctx = contexto('Org1MSP');
+    await ctx.stub.putState(ctx.stub.createCompositeKey('DID', [did]), Buffer.from(JSON.stringify({
+        did,
+        metodoDid: 'did:legal:admin',
+        ativo: false
+    })));
+
+    await assert.rejects(
+        contract.MigrarAdminDidLegadoParaV2(ctx, did, keyId, publicKey),
+        /legado ativo/
+    );
+});
+
 test('revogação v2 torna o DID inativo', async () => {
     const contract = new CustodyChainContract();
     const ctx = contexto('Org1MSP');

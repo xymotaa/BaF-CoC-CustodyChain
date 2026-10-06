@@ -77,9 +77,12 @@ function obterContrato() {
 }
 
 function tratarErro(res, erro) {
-    const mensagem = erro && erro.details ? erro.details : (erro && erro.message) || 'Erro desconhecido no gateway.';
+    const detalhes = erro && erro.details;
+    const mensagem = Array.isArray(detalhes)
+        ? detalhes.map((detalhe) => detalhe.message || String(detalhe)).join(' ')
+        : detalhes || (erro && erro.message) || 'Erro desconhecido no gateway.';
     const status = mensagem.includes('não encontrado') ? 404
-        : mensagem.includes('já existe') || mensagem.includes('já foi concluído') ? 409
+        : mensagem.includes('já existe') || mensagem.includes('já foi concluído') || mensagem.includes('já foi concluída') ? 409
             : mensagem.includes('inválid') || mensagem.includes('não autorizado') ? 400
                 : 500;
     res.status(status).json({ error: mensagem });
@@ -185,6 +188,19 @@ app.post('/v2/bootstrap/admin', async (req, res) => {
         const contrato = obterContrato();
         const resultado = await contrato.submitTransaction(
             'BootstrapAdminDid', did, verificationMethodId, publicKeyMultibase
+        );
+        res.status(201).json(JSON.parse(decodificar(resultado)));
+    } catch (erro) {
+        tratarErro(res, erro);
+    }
+});
+
+app.post('/v2/bootstrap/admin/legacy-migration', async (req, res) => {
+    try {
+        corpoObrigatorio(req, ['did', 'verificationMethodId', 'publicKeyMultibase']);
+        const { did, verificationMethodId, publicKeyMultibase } = req.body;
+        const resultado = await obterContrato().submitTransaction(
+            'MigrarAdminDidLegadoParaV2', did, verificationMethodId, publicKeyMultibase
         );
         res.status(201).json(JSON.parse(decodificar(resultado)));
     } catch (erro) {
@@ -384,4 +400,4 @@ process.on('SIGINT', () => {
     process.exit(0);
 });
 
-module.exports = { app, autenticarServico, decodificar, validarComandoDid, verificarProvaDid };
+module.exports = { app, autenticarServico, decodificar, tratarErro, validarComandoDid, verificarProvaDid };

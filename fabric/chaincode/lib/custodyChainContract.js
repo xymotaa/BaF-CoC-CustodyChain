@@ -81,6 +81,62 @@ class CustodyChainContract extends Contract {
         return JSON.stringify(documento);
     }
 
+    async MigrarAdminDidLegadoParaV2(ctx, did, verificationMethodId, publicKeyMultibase) {
+        this._garantirOrganizacaoAdministradora(ctx);
+        this._validarDocumentoDidV2(did, verificationMethodId, publicKeyMultibase);
+
+        const chaveBootstrap = ctx.stub.createCompositeKey(PREFIXO_GOVERNANCA, ['admin-bootstrap']);
+        const bootstrapExistente = await ctx.stub.getState(chaveBootstrap);
+        if (bootstrapExistente && bootstrapExistente.length > 0) {
+            throw new Error('O bootstrap ou a migração do DID administrador já foi concluída.');
+        }
+
+        const chaveDid = ctx.stub.createCompositeKey(PREFIXO_DID, [did]);
+        const bytes = await ctx.stub.getState(chaveDid);
+        if (!bytes || bytes.length === 0) {
+            throw new Error(`DID legado não encontrado: ${did}`);
+        }
+
+        const legado = JSON.parse(bytes.toString());
+        if (legado.version === 2 || legado.metodoDid !== 'did:legal:admin' || legado.ativo !== true) {
+            throw new Error('Somente um DID administrativo legado ativo pode ser migrado para v2.');
+        }
+
+        const agora = this._agora(ctx);
+        const documento = {
+            id: did,
+            did,
+            metodoDid: 'did:legal:admin',
+            version: 2,
+            documentVersion: 1,
+            status: 'ATIVO',
+            ativo: true,
+            controller: did,
+            verificationMethod: [{
+                id: verificationMethodId,
+                type: 'Multikey',
+                controller: did,
+                publicKeyMultibase
+            }],
+            authentication: [verificationMethodId],
+            assertionMethod: [verificationMethodId],
+            capabilityInvocation: [verificationMethodId],
+            didEmissor: null,
+            criadoEm: legado.criadoEm || agora,
+            ativadoEm: legado.ativadoEm || agora,
+            migradoDeVersao: 1,
+            migradoEm: agora
+        };
+
+        await ctx.stub.putState(chaveDid, Buffer.from(JSON.stringify(documento)));
+        await ctx.stub.putState(chaveBootstrap, Buffer.from(JSON.stringify({
+            did,
+            criadoEm: agora,
+            origem: 'MIGRACAO_LEGADA_V1'
+        })));
+        return JSON.stringify(documento);
+    }
+
     async AtualizarCapacidadeAdminDidV2(ctx) {
         this._garantirOrganizacaoAdministradora(ctx);
         const chaveBootstrap = ctx.stub.createCompositeKey(PREFIXO_GOVERNANCA, ['admin-bootstrap']);

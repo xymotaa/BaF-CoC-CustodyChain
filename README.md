@@ -84,11 +84,23 @@ cd wallet
 npm run create-admin -- --did did:legal:admin:teste-001
 ```
 
-O comando imprime somente `did`, `keyId`, algoritmo e chave pública. Use esses
-três valores públicos para executar uma vez o bootstrap pelo gateway:
+O comando imprime somente `did`, `keyId`, algoritmo e chave pública. Em uma
+rede nova, use esses três valores públicos para executar uma vez o bootstrap
+pelo gateway:
 
 ```bash
 curl -X POST http://127.0.0.1:3000/v2/bootstrap/admin \
+  -H "Authorization: Bearer $GATEWAY_SERVICE_TOKEN" \
+  -H 'Content-Type: application/json' \
+  -d '{"did":"did:legal:admin:teste-001","verificationMethodId":"did:legal:admin:teste-001#auth-1","publicKeyMultibase":"<chave-publica-impressa>"}'
+```
+
+Se a rede já possuir o DID administrativo legado v1 ativo (como a base de
+desenvolvimento inicial), use a migração única abaixo em vez do bootstrap. Ela
+só é aceita pela `Org1MSP`, preserva o DID e vincula a chave pública da wallet:
+
+```bash
+curl -X POST http://127.0.0.1:3000/v2/bootstrap/admin/legacy-migration \
   -H "Authorization: Bearer $GATEWAY_SERVICE_TOKEN" \
   -H 'Content-Type: application/json' \
   -d '{"did":"did:legal:admin:teste-001","verificationMethodId":"did:legal:admin:teste-001#auth-1","publicKeyMultibase":"<chave-publica-impressa>"}'
