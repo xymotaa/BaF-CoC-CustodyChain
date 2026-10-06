@@ -23,3 +23,31 @@ public class DesignarPericiaViewModel
     public IReadOnlyList<OpcaoVestigioViewModel> VestigiosDisponiveis { get; set; } = [];
     public IReadOnlyList<OpcaoIntervenienteViewModel> PeritosDisponiveis { get; set; } = [];
 }
+
+public sealed record SolicitacaoDesignacaoPericiaItemViewModel(
+    long PericiaId,
+    string RotuloEvidencia,
+    string PeritoNome,
+    string? AreaPericial,
+    string Prioridade,
+    DateTime SolicitadaEm);
+
+public sealed class SolicitacoesDesignacaoPericiaViewModel
+{
+    public IReadOnlyList<SolicitacaoDesignacaoPericiaItemViewModel> Solicitacoes { get; set; } = [];
+}
+
+public sealed record AprovarDesignacaoPericiaViewModel(
+    long PericiaId,
+    string RotuloEvidencia,
+    string DescricaoVestigio,
+    string PeritoNome,
+    string DidPerito,
+    string? AreaPericial,
+    string Prioridade,
+    DateTime SolicitadaEm);
+
+public sealed record PrepararAprovacaoDesignacaoPericiaRequest(DateTime? ValidaAte);
+
+public sealed record EnviarProvaAprovacaoDesignacaoPericiaRequest(
+    System.Text.Json.JsonElement Credential);

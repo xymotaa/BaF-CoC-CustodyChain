@@ -1,0 +1,75 @@
+@model CustodyChain.Web.Models.ViewModels.SolicitacoesDesignacaoPericiaViewModel
+@{
+    ViewData["Title"] = "Solicitações de perícia";
+}
+
+<div class="pagina-cabecalho">
+    <h1>Solicitações de perícia</h1>
+    <p class="campo-ajuda">Revise o escopo antes de assinar a credencial que autoriza o perito.</p>
+</div>
+
+@if (TempData["MensagemSucesso"] is string sucesso)
+{
+    <div class="alerta alerta-sucesso" role="status">
+        <span class="alerta-icone"><svg><use href="#icone-sucesso" /></svg></span>
+        <span>@sucesso</span>
+    </div>
+}
+@if (TempData["MensagemErro"] is string erro)
+{
+    <div class="alerta alerta-erro" role="alert">
+        <span class="alerta-icone"><svg><use href="#icone-alerta" /></svg></span>
+        <span>@erro</span>
+    </div>
+}
+
+@if (Model.Solicitacoes.Count == 0)
+{
+    <div class="painel-vazio">
+        <span class="painel-vazio-icone"><svg width="28" height="28"><use href="#icone-pericia" /></svg></span>
+        <p>Não há solicitações aguardando aprovação.</p>
+    </div>
+}
+else
+{
+    <div class="lista-solicitacoes">
+        @foreach (var item in Model.Solicitacoes)
+        {
+            <article class="cartao solicitacao">
+                <div>
+                    <h2>@item.RotuloEvidencia</h2>
+                    <dl class="solicitacao-dados">
+                        <div><dt>Perito</dt><dd>@item.PeritoNome</dd></div>
+                        <div><dt>Área</dt><dd>@(item.AreaPericial ?? "Não informada")</dd></div>
+                        <div><dt>Prioridade</dt><dd>@item.Prioridade</dd></div>
+                        <div><dt>Solicitada em</dt><dd>@item.SolicitadaEm.ToLocalTime().ToString("dd/MM/yyyy HH:mm")</dd></div>
+                    </dl>
+                </div>
+                <a class="botao botao-primario" href="/pericias/@item.PericiaId/aprovar">Revisar e assinar</a>
+            </article>
+        }
+    </div>
+}
+
+@section Styles {
+    <style>
+        .pagina-cabecalho { margin-bottom: 1.5rem; }
+        .pagina-cabecalho h1 { margin-bottom: 0.25rem; }
+        .lista-solicitacoes { display: grid; gap: 1rem; max-width: 880px; }
+        .solicitacao { display: flex; align-items: center; justify-content: space-between; gap: 1.5rem; padding: 1.25rem; }
+        .solicitacao h2 { margin: 0 0 0.75rem; font-size: 1.15rem; }
+        .solicitacao-dados { display: grid; grid-template-columns: repeat(2, minmax(140px, 1fr)); gap: 0.75rem 1.5rem; margin: 0; }
+        .solicitacao-dados div { display: grid; gap: 0.15rem; }
+        .solicitacao-dados dt { color: var(--cor-texto-suave); font-size: 0.875rem; }
+        .solicitacao-dados dd { margin: 0; }
+        .solicitacao .botao { flex: none; min-height: 44px; }
+        .painel-vazio { border: 1px dashed var(--cor-borda-forte); border-radius: var(--raio); padding: 2rem 1.5rem; text-align: center; color: var(--cor-texto-suave); }
+        .painel-vazio-icone { display: inline-flex; color: var(--cor-texto-fraco); margin-bottom: 0.5rem; }
+        .painel-vazio p { margin: 0; }
+        @@media (max-width: 720px) {
+            .solicitacao { align-items: stretch; flex-direction: column; }
+            .solicitacao-dados { grid-template-columns: 1fr; }
+            .solicitacao .botao { align-self: flex-start; }
+        }
+    </style>
+}

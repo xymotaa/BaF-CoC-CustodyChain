@@ -74,17 +74,6 @@ public class ServicoLedgerFabric(HttpClient httpClient) : IServicoLedger
         return new DidDocument(dto.Did, dto.MetodoDid, dto.Ativo);
     }
 
-    public async Task<string> EmitirCredencialPermissaoAsync(CredencialPermissaoDto dto)
-    {
-        var credencialId = $"cred-perm-{Guid.NewGuid():N}";
-        var corpo = new { credencialId, dto.Did, dto.DidEmissor, dto.Perfil };
-
-        var resposta = await httpClient.PostAsJsonAsync("/credenciais/permissao", corpo, OpcoesJson);
-        await LancarSeFalhaAsync(resposta);
-
-        return credencialId;
-    }
-
     public async Task<string> EmitirCredencialPermissaoV2Async(
         CredencialPermissaoV2Dto dto,
         CancellationToken cancellationToken = default)

@@ -36,6 +36,31 @@ public class CriarVcPermissaoTests
             Agora)));
     }
 
+    [Fact]
+    public void Criar_ComEscopoPericial_PreservaIdentificadorEAutorizacao()
+    {
+        var sut = new CriarVcPermissao(new ClockFixo());
+        var identificador = "urn:uuid:11111111-1111-1111-1111-111111111111";
+
+        var resultado = sut.Executar(new CriarVcPermissaoInput(
+            "did:legal:admin:emissor",
+            "did:legal:expert:titular",
+            "PERITO",
+            10,
+            Agora.AddHours(1),
+            identificador,
+            Agora,
+            42,
+            ["PERICIA_RECEBER", "LACRE_ROMPER"]));
+
+        var authorization = resultado.Credencial.GetProperty("credentialSubject").GetProperty("authorization");
+        Assert.Equal(identificador, resultado.Id);
+        Assert.Equal("10", authorization.GetProperty("processoId").GetString());
+        Assert.Equal("42", authorization.GetProperty("assetId").GetString());
+        Assert.Equal(["PERICIA_RECEBER", "LACRE_ROMPER"],
+            authorization.GetProperty("operations").EnumerateArray().Select(item => item.GetString()));
+    }
+
     private sealed class ClockFixo : IClock
     {
         public DateTime UtcNow => Agora;

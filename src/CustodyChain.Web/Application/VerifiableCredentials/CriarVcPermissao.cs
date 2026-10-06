@@ -7,21 +7,35 @@ public sealed class CriarVcPermissao(IClock clock)
 {
     public VcPermissaoSemAssinatura Executar(CriarVcPermissaoInput input)
     {
-        var emitidaEm = DateTime.SpecifyKind(clock.UtcNow, DateTimeKind.Utc);
+        var emitidaEm = DateTime.SpecifyKind(input.EmitidaEm ?? clock.UtcNow, DateTimeKind.Utc);
+        var possuiEscopo = input.VestigioId is not null || input.Operacoes is not null;
         if (string.IsNullOrWhiteSpace(input.DidEmissor) || string.IsNullOrWhiteSpace(input.DidTitular)
             || string.IsNullOrWhiteSpace(input.PerfilTitular)
-            || (input.ExpiraEm is not null && input.ExpiraEm <= emitidaEm))
+            || (input.ExpiraEm is not null && input.ExpiraEm <= emitidaEm)
+            || (input.Identificador is not null && string.IsNullOrWhiteSpace(input.Identificador))
+            || (possuiEscopo && (input.ProcessoId is null or <= 0 || input.VestigioId is null or <= 0
+                || input.Operacoes is not { Count: > 0 }
+                || input.Operacoes.Any(string.IsNullOrWhiteSpace))))
         {
             throw new ArgumentException("Dados inválidos para emissão da VC de permissão.");
         }
 
-        var id = $"urn:uuid:{Guid.NewGuid()}";
+        var id = input.Identificador ?? $"urn:uuid:{Guid.NewGuid()}";
         var subject = new Dictionary<string, object?>
         {
             ["id"] = input.DidTitular,
             ["perfil"] = input.PerfilTitular
         };
-        if (input.ProcessoId is not null)
+        if (possuiEscopo)
+        {
+            subject["authorization"] = new Dictionary<string, object?>
+            {
+                ["processoId"] = input.ProcessoId!.Value.ToString(),
+                ["assetId"] = input.VestigioId!.Value.ToString(),
+                ["operations"] = input.Operacoes!.ToArray()
+            };
+        }
+        else if (input.ProcessoId is not null)
         {
             subject["processoId"] = input.ProcessoId.Value.ToString();
         }

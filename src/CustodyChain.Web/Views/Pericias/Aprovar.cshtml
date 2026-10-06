@@ -1,0 +1,146 @@
+@model CustodyChain.Web.Models.ViewModels.AprovarDesignacaoPericiaViewModel
+@{
+    ViewData["Title"] = "Aprovar perícia";
+}
+
+<div class="pagina-cabecalho">
+    <h1>Aprovar perícia</h1>
+    <p class="campo-ajuda">A assinatura autoriza somente as operações periciais deste vestígio e processo.</p>
+</div>
+
+<form id="approval-form" class="formulario-aprovacao">
+    @Html.AntiForgeryToken()
+    <section class="cartao secao-formulario" aria-labelledby="resumo-titulo">
+        <h2 id="resumo-titulo">Escopo da autorização</h2>
+        <dl class="resumo">
+            <div><dt>Vestígio</dt><dd>@Model.RotuloEvidencia</dd></div>
+            <div><dt>Descrição</dt><dd>@Model.DescricaoVestigio</dd></div>
+            <div><dt>Perito</dt><dd>@Model.PeritoNome</dd></div>
+            <div><dt>DID do perito</dt><dd class="valor-tecnico">@Model.DidPerito</dd></div>
+            <div><dt>Área pericial</dt><dd>@(Model.AreaPericial ?? "Não informada")</dd></div>
+            <div><dt>Prioridade</dt><dd>@Model.Prioridade</dd></div>
+        </dl>
+        <p class="campo-ajuda operacoes">
+            Operações: receber perícia, romper lacre, emitir laudo, fracionar, unificar, consumir e exaurir amostras.
+        </p>
+    </section>
+
+    <section class="cartao secao-formulario" aria-labelledby="assinatura-titulo">
+        <h2 id="assinatura-titulo">Assinatura administrativa</h2>
+        <div class="grade-campos grade-2col">
+            <div class="campo">
+                <label class="campo-rotulo" for="valid-until">Válida até (opcional)</label>
+                <input id="valid-until" name="ValidaAte" type="datetime-local" class="campo-entrada" />
+            </div>
+            <div class="campo">
+                <label class="campo-rotulo" for="wallet-password">Senha da wallet emissora</label>
+                <input id="wallet-password" class="campo-entrada" type="password" autocomplete="current-password" required />
+                <span class="campo-ajuda">A senha é enviada somente à wallet local.</span>
+            </div>
+            <div class="campo">
+                <label class="campo-rotulo" for="pairing-token">Código de pareamento da wallet</label>
+                <input id="pairing-token" class="campo-entrada" type="password" autocomplete="off" required />
+            </div>
+        </div>
+    </section>
+
+    <div id="approval-error" class="alerta alerta-erro" role="alert" tabindex="-1" hidden></div>
+    <p id="approval-status" class="campo-ajuda" role="status" aria-live="polite"></p>
+    <div class="formulario-acoes">
+        <a class="botao" href="/pericias/solicitacoes">Voltar</a>
+        <button id="approve-button" type="submit" class="botao botao-primario">Assinar e aprovar</button>
+    </div>
+</form>
+
+@section Scripts {
+    <script>
+        (() => {
+            const form = document.getElementById('approval-form');
+            const button = document.getElementById('approve-button');
+            const password = document.getElementById('wallet-password');
+            const pairing = document.getElementById('pairing-token');
+            const validUntil = document.getElementById('valid-until');
+            const error = document.getElementById('approval-error');
+            const status = document.getElementById('approval-status');
+            const antiForgery = form.querySelector('input[name="__RequestVerificationToken"]').value;
+            let signedCredential = null;
+            const applicationPost = async (url, body) => {
+                const response = await fetch(url, {
+                    method: 'POST', credentials: 'same-origin',
+                    headers: { 'Content-Type': 'application/json', 'RequestVerificationToken': antiForgery },
+                    body: JSON.stringify(body)
+                });
+                const payload = await response.json().catch(() => ({}));
+                if (!response.ok) throw new Error(payload.message || 'Não foi possível aprovar a perícia.');
+                return payload;
+            };
+            form.addEventListener('submit', async (event) => {
+                event.preventDefault();
+                error.hidden = true;
+                if (!signedCredential && (!password.value || !pairing.value)) {
+                    error.textContent = 'Informe a senha e o código de pareamento da wallet.';
+                    error.hidden = false;
+                    error.focus();
+                    return;
+                }
+                button.disabled = true;
+                form.setAttribute('aria-busy', 'true');
+                try {
+                    if (!signedCredential) {
+                        status.textContent = 'Preparando a credencial com o escopo exibido.';
+                        const command = await applicationPost('/pericias/@Model.PericiaId/aprovar/comando', {
+                            validaAte: validUntil.value || null
+                        });
+                        status.textContent = 'Aguardando a assinatura da wallet administrativa.';
+                        const walletResponse = await fetch(`${command.walletEndpoint}/v1/proofs/verifiable-credential`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json', 'X-Wallet-Pairing-Token': pairing.value },
+                            body: JSON.stringify({ did: command.issuerDid, password: password.value, credential: command.credential })
+                        });
+                        const wallet = await walletResponse.json().catch(() => ({}));
+                        if (!walletResponse.ok) throw new Error(wallet.message || 'A wallet recusou a assinatura da credencial.');
+                        signedCredential = wallet.verifiableCredential;
+                        password.value = '';
+                    }
+                    status.textContent = 'Confirmando a credencial no ledger.';
+                    const result = await applicationPost('/pericias/@Model.PericiaId/aprovar/prova', {
+                        credential: signedCredential
+                    });
+                    window.location.assign(result.redirectUrl);
+                } catch (exception) {
+                    password.value = '';
+                    status.textContent = '';
+                    error.textContent = exception.message;
+                    error.hidden = false;
+                    error.focus();
+                } finally {
+                    button.disabled = false;
+                    form.removeAttribute('aria-busy');
+                }
+            });
+        })();
+    </script>
+}
+
+@section Styles {
+    <style>
+        .pagina-cabecalho { margin-bottom: 1.5rem; }
+        .pagina-cabecalho h1 { margin-bottom: 0.25rem; }
+        .formulario-aprovacao { display: flex; flex-direction: column; gap: 1.25rem; max-width: 800px; }
+        .secao-formulario { padding: 1.5rem; }
+        .secao-formulario h2 { margin: 0 0 1rem; font-size: 1.15rem; }
+        .resumo { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; margin: 0; }
+        .resumo div { display: grid; gap: 0.2rem; }
+        .resumo dt { color: var(--cor-texto-suave); font-size: 0.875rem; }
+        .resumo dd { margin: 0; overflow-wrap: anywhere; }
+        .valor-tecnico { font-family: 'JetBrains Mono', monospace; font-size: 0.875rem; }
+        .operacoes { margin: 1rem 0 0; max-width: 68ch; }
+        .grade-campos { display: grid; gap: 0 1rem; }
+        .grade-2col { grid-template-columns: 1fr 1fr; }
+        .formulario-acoes { display: flex; justify-content: flex-end; gap: 0.75rem; }
+        .formulario-acoes .botao { min-height: 44px; }
+        @@media (max-width: 640px) {
+            .resumo, .grade-2col { grid-template-columns: 1fr; }
+        }
+    </style>
+}

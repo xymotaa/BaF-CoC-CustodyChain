@@ -141,6 +141,7 @@ test('emite VC de permissão assinada pelo DID emissor e preserva idempotência'
     const ctx = contexto('Org1MSP');
     const admin = gerarIdentidade(did, keyId);
     await contract.BootstrapAdminDid(ctx, did, keyId, admin.publicKeyMultibase);
+    await registrarPeritoAtivo(ctx);
     const credential = criarVcPermissao(admin.privateKey);
 
     const credentialId = await contract.EmitirCredencialPermissaoV2(ctx, JSON.stringify(credential));
@@ -151,6 +152,29 @@ test('emite VC de permissão assinada pelo DID emissor e preserva idempotência'
     assert.equal(registrado.did, credential.credentialSubject.id);
     assert.equal(registrado.verifiableCredential.proof.proofValue, credential.proof.proofValue);
     assert.equal(await contract.EmitirCredencialPermissaoV2(ctx, JSON.stringify(credential)), credential.id);
+
+    const novaProva = {
+        ...credential,
+        proof: {
+            ...credential.proof,
+            created: '2027-01-15T08:01:00.000Z',
+            proofValue: assinar(admin.privateKey, (({ proof, ...semProva }) => semProva)(credential))
+        }
+    };
+    assert.equal(await contract.EmitirCredencialPermissaoV2(ctx, JSON.stringify(novaProva)), credential.id);
+
+    const { proof, ...envelopeDiferente } = {
+        ...credential,
+        credentialSubject: { ...credential.credentialSubject, perfil: 'ADMIN' }
+    };
+    const credencialDiferente = {
+        ...envelopeDiferente,
+        proof: { ...credential.proof, proofValue: assinar(admin.privateKey, envelopeDiferente) }
+    };
+    await assert.rejects(
+        contract.EmitirCredencialPermissaoV2(ctx, JSON.stringify(credencialDiferente)),
+        /Conflito de idempotência/
+    );
 });
 
 test('recusa emissão de permissão pelo contrato legado sem prova', async () => {
@@ -166,6 +190,7 @@ test('recusa VC de permissão com prova modificada ou chave sem assertionMethod'
     const ctx = contexto('Org1MSP');
     const admin = gerarIdentidade(did, keyId);
     await contract.BootstrapAdminDid(ctx, did, keyId, admin.publicKeyMultibase);
+    await registrarPeritoAtivo(ctx);
     const credential = criarVcPermissao(admin.privateKey);
 
     await assert.rejects(
@@ -191,6 +216,7 @@ test('revoga VC somente com prova assinada pelo emissor e aceita repetição', a
     const ctx = contexto('Org1MSP');
     const admin = gerarIdentidade(did, keyId);
     await contract.BootstrapAdminDid(ctx, did, keyId, admin.publicKeyMultibase);
+    await registrarPeritoAtivo(ctx);
     const credential = criarVcPermissao(admin.privateKey);
     await contract.EmitirCredencialPermissaoV2(ctx, JSON.stringify(credential));
     const command = {
@@ -208,7 +234,43 @@ test('revoga VC somente com prova assinada pelo emissor e aceita repetição', a
     assert.equal(JSON.parse(await contract.VerificarCredencial(ctx, credential.id)).valido, false);
 });
 
-function criarVcPermissao(privateKey) {
+test('registra VC pericial com escopo de processo, vestígio e operações', async () => {
+    const contract = new CustodyChainContract();
+    const ctx = contexto('Org1MSP');
+    const admin = gerarIdentidade(did, keyId);
+    await contract.BootstrapAdminDid(ctx, did, keyId, admin.publicKeyMultibase);
+    await registrarPeritoAtivo(ctx);
+    const credential = criarVcPermissao(admin.privateKey, {
+        processoId: '10',
+        assetId: '42',
+        operations: ['PERICIA_RECEBER', 'LACRE_ROMPER', 'LAUDO_EMITIR']
+    });
+
+    const credentialId = await contract.EmitirCredencialPermissaoV2(ctx, JSON.stringify(credential));
+    const registered = JSON.parse(await contract.ObterCredencial(ctx, credentialId));
+
+    assert.equal(registered.processoId, '10');
+    assert.equal(registered.assetId, '42');
+    assert.deepEqual(registered.operacoes, ['PERICIA_RECEBER', 'LACRE_ROMPER', 'LAUDO_EMITIR']);
+});
+
+test('recusa VC pericial com operação fora da política', async () => {
+    const contract = new CustodyChainContract();
+    const ctx = contexto('Org1MSP');
+    const admin = gerarIdentidade(did, keyId);
+    await contract.BootstrapAdminDid(ctx, did, keyId, admin.publicKeyMultibase);
+    await registrarPeritoAtivo(ctx);
+    const credential = criarVcPermissao(admin.privateKey, {
+        processoId: '10', assetId: '42', operations: ['OPERACAO_INEXISTENTE']
+    });
+
+    await assert.rejects(
+        contract.EmitirCredencialPermissaoV2(ctx, JSON.stringify(credential)),
+        /Envelope/
+    );
+});
+
+function criarVcPermissao(privateKey, authorization) {
     const credential = {
         '@context': ['https://www.w3.org/2018/credentials/v1'],
         id: 'urn:uuid:55555555-5555-5555-5555-555555555555',
@@ -216,7 +278,11 @@ function criarVcPermissao(privateKey) {
         issuer: did,
         issuanceDate: '2027-01-15T08:00:00.000Z',
         expirationDate: '2027-01-16T08:00:00.000Z',
-        credentialSubject: { id: 'did:legal:expert:teste-vc', perfil: 'PERITO' },
+        credentialSubject: {
+            id: 'did:legal:expert:teste-vc',
+            perfil: 'PERITO',
+            ...(authorization ? { authorization } : {})
+        },
         credentialStatus: {
             id: 'urn:uuid:55555555-5555-5555-5555-555555555555#status',
             type: 'CustodyChainLedgerStatusV1'
@@ -233,6 +299,18 @@ function criarVcPermissao(privateKey) {
             proofValue: assinar(privateKey, credential)
         }
     };
+}
+
+async function registrarPeritoAtivo(ctx) {
+    const holderDid = 'did:legal:expert:teste-vc';
+    await ctx.stub.putState(ctx.stub.createCompositeKey('DID', [holderDid]), Buffer.from(JSON.stringify({
+        id: holderDid,
+        did: holderDid,
+        metodoDid: 'did:legal:expert',
+        version: 2,
+        status: 'ATIVO',
+        ativo: true
+    })));
 }
 
 function gerarIdentidade(identityDid, identityKeyId) {

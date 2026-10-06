@@ -17,8 +17,6 @@ public record RegistroDidPendenteDto(object Command, string Signature);
 
 public record AtivacaoDidV2Dto(object Command, string KeyId, string Signature);
 
-public record CredencialPermissaoDto(string Did, string DidEmissor, string Perfil);
-
 public record CredencialPermissaoV2Dto(System.Text.Json.JsonElement Credential);
 
 public record RevogacaoCredencialV2Dto(object Command, string KeyId, string Signature);
@@ -43,7 +41,6 @@ public interface IServicoLedger
     Task<string> GerarDidAsync(TipoAtor tipo);
     Task AtivarDidAsync(string did, string didEmissor, string senhaEmissor);
     Task<DidDocument> ResolverDidAsync(string did);
-    Task<string> EmitirCredencialPermissaoAsync(CredencialPermissaoDto dto);
     Task<string> EmitirCredencialPermissaoV2Async(CredencialPermissaoV2Dto dto, CancellationToken cancellationToken = default);
     Task RevogarCredencialV2Async(string credencialId, RevogacaoCredencialV2Dto dto, CancellationToken cancellationToken = default);
     Task<string> EmitirCredencialCoCAsync(CredencialCoCDto dto, CancellationToken cancellationToken = default);

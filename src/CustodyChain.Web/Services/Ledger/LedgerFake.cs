@@ -56,12 +56,6 @@ public class LedgerFake : IServicoLedger
         return Task.FromResult(doc);
     }
 
-    public Task<string> EmitirCredencialPermissaoAsync(CredencialPermissaoDto dto)
-    {
-        var credencialId = $"cred-perm-{Guid.NewGuid():N}";
-        return Task.FromResult(credencialId);
-    }
-
     public Task<string> EmitirCredencialPermissaoV2Async(
         CredencialPermissaoV2Dto dto,
         CancellationToken cancellationToken = default)

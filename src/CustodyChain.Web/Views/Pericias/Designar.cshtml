@@ -1,11 +1,11 @@
 @model CustodyChain.Web.Models.ViewModels.DesignarPericiaViewModel
 @{
-    ViewData["Title"] = "Designar perícia";
+    ViewData["Title"] = "Solicitar perícia";
 }
 
 <div class="pagina-cabecalho">
-    <h1>Designar perícia</h1>
-    <p class="campo-ajuda">Designa um perito para examinar um vestígio armazenado e emite a credencial de permissão (RN10).</p>
+    <h1>Solicitar perícia</h1>
+    <p class="campo-ajuda">Indica o perito e mantém o vestígio armazenado até a aprovação administrativa da credencial (RN10).</p>
 </div>
 
 @if (TempData["MensagemSucesso"] is string mensagem)
@@ -28,7 +28,7 @@
 {
     <div class="painel-vazio">
         <span class="painel-vazio-icone"><svg width="28" height="28"><use href="#icone-pericia" /></svg></span>
-        <p>Nenhum vestígio armazenado disponível para designação pericial.</p>
+        <p>Nenhum vestígio armazenado disponível para solicitação pericial.</p>
     </div>
 }
 else
@@ -80,7 +80,7 @@ else
         </section>
 
         <div class="formulario-acoes">
-            <button type="submit" class="botao botao-primario">Designar perícia</button>
+            <button type="submit" class="botao botao-primario">Solicitar perícia</button>
         </div>
     </form>
 }

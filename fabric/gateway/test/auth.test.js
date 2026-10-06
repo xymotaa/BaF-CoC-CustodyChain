@@ -80,6 +80,22 @@ test('valida a assinatura da VC de permissão sobre o envelope sem proof', () =>
     }, multikey), /Assinatura/);
 });
 
+test('recusa escopo de VC com operação fora da política', () => {
+    const issuer = 'did:legal:admin:teste-vc';
+    const credential = {
+        id: 'urn:uuid:11111111-1111-1111-1111-111111111111',
+        type: ['VerifiableCredential', 'CustodyChainPermissionCredential'],
+        issuer,
+        credentialSubject: {
+            id: 'did:legal:expert:teste-vc', perfil: 'PERITO',
+            authorization: { processoId: '10', assetId: '42', operations: ['OPERACAO_INEXISTENTE'] }
+        },
+        proof: { verificationMethod: `${issuer}#auth-1` }
+    };
+
+    assert.throws(() => validarVcPermissao(credential), /Envelope/);
+});
+
 function canonicalizar(value) {
     if (value === null || typeof value === 'string' || typeof value === 'boolean' || typeof value === 'number') return JSON.stringify(value);
     if (Array.isArray(value)) return `[${value.map(canonicalizar).join(',')}]`;

@@ -145,11 +145,24 @@ function verificarVcPermissao(credential, publicKeyMultibase) {
 }
 
 function validarVcPermissao(credential) {
+    const authorization = credential?.credentialSubject?.authorization;
+    const allowedOperations = new Set([
+        'PERICIA_RECEBER', 'LACRE_ROMPER', 'LAUDO_EMITIR', 'AMOSTRA_FRACIONAR',
+        'AMOSTRA_UNIFICAR', 'AMOSTRA_CONSUMIR', 'AMOSTRA_EXAURIR'
+    ]);
+    const invalidAuthorization = authorization !== undefined
+        && (!authorization || typeof authorization !== 'object' || Array.isArray(authorization)
+            || !/^[1-9][0-9]*$/.test(authorization.processoId)
+            || !/^[1-9][0-9]*$/.test(authorization.assetId)
+            || !Array.isArray(authorization.operations) || authorization.operations.length === 0
+            || new Set(authorization.operations).size !== authorization.operations.length
+            || authorization.operations.some((operation) => !allowedOperations.has(operation)));
     if (!credential || typeof credential !== 'object' || Array.isArray(credential)
         || !Array.isArray(credential.type)
         || !credential.type.includes('VerifiableCredential')
         || !credential.type.includes('CustodyChainPermissionCredential')
         || typeof credential.id !== 'string' || typeof credential.issuer !== 'string'
+        || invalidAuthorization
         || credential.proof?.verificationMethod?.startsWith(`${credential.issuer}#`) !== true) {
         throw new Error('Envelope da VC de permissão inválido.');
     }

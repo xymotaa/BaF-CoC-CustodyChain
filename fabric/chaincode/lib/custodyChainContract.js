@@ -342,19 +342,8 @@ class CustodyChainContract extends Contract {
 
         const chave = ctx.stub.createCompositeKey(PREFIXO_CREDENCIAL, [credencial.id]);
         const existente = await ctx.stub.getState(chave);
-        if (existente && existente.length > 0) {
-            const registroExistente = JSON.parse(existente.toString());
-            if (registroExistente.vcHashSha256 === this._hashComando(credencial)) {
-                return credencial.id;
-            }
-            throw new Error(`Conflito de idempotência para a credencial: ${credencial.id}`);
-        }
-
         const documentoEmissor = await this._obterDocumentoDid(ctx, credencial.issuer);
-        if (documentoEmissor.version !== 2 || documentoEmissor.status !== 'ATIVO' || documentoEmissor.ativo !== true) {
-            throw new Error('DID emissor não está ativo para emitir VC de permissão.');
-        }
-
+        const documentoTitular = await this._obterDocumentoDid(ctx, credencial.credentialSubject.id);
         const metodo = documentoEmissor.verificationMethod?.find(
             (item) => item.id === credencial.proof.verificationMethod);
         if (!metodo || !documentoEmissor.assertionMethod?.includes(metodo.id)) {
@@ -364,6 +353,31 @@ class CustodyChainContract extends Contract {
         const { proof, ...credencialSemProva } = credencial;
         this._verificarAssinatura(credencialSemProva, proof.proofValue, metodo.publicKeyMultibase);
 
+        const credentialHashSha256 = this._hashComando(credencialSemProva);
+        if (existente && existente.length > 0) {
+            const registroExistente = JSON.parse(existente.toString());
+            const credencialExistenteSemProva = { ...(registroExistente.verifiableCredential || {}) };
+            delete credencialExistenteSemProva.proof;
+            const hashExistente = registroExistente.credentialHashSha256
+                || this._hashComando(credencialExistenteSemProva);
+            if (hashExistente === credentialHashSha256) {
+                return credencial.id;
+            }
+            throw new Error(`Conflito de idempotência para a credencial: ${credencial.id}`);
+        }
+
+        if (documentoEmissor.version !== 2 || documentoEmissor.status !== 'ATIVO' || documentoEmissor.ativo !== true) {
+            throw new Error('DID emissor não está ativo para emitir VC de permissão.');
+        }
+        if (documentoTitular.version !== 2 || documentoTitular.status !== 'ATIVO' || documentoTitular.ativo !== true) {
+            throw new Error('DID titular não está ativo para receber VC de permissão.');
+        }
+        if (credencial.credentialSubject.authorization
+            && (credencial.credentialSubject.perfil !== 'PERITO'
+                || documentoTitular.metodoDid !== 'did:legal:expert')) {
+            throw new Error('O escopo pericial exige um DID titular ativo do tipo expert.');
+        }
+
         const agora = this._agora(ctx);
         const registro = {
             credencialId: credencial.id,
@@ -372,10 +386,14 @@ class CustodyChainContract extends Contract {
             did: credencial.credentialSubject.id,
             didEmissor: credencial.issuer,
             perfil: credencial.credentialSubject.perfil,
-            processoId: credencial.credentialSubject.processoId || null,
+            processoId: credencial.credentialSubject.authorization?.processoId
+                || credencial.credentialSubject.processoId || null,
+            assetId: credencial.credentialSubject.authorization?.assetId || null,
+            operacoes: credencial.credentialSubject.authorization?.operations || [],
             emitidaEm: credencial.issuanceDate,
             expiraEm: credencial.expirationDate || null,
             vcHashSha256: this._hashComando(credencial),
+            credentialHashSha256,
             verifiableCredential: credencial,
             status: 'ATIVA',
             revogada: false,
@@ -584,6 +602,23 @@ class CustodyChainContract extends Contract {
         const subject = credencial.credentialSubject;
         const status = credencial.credentialStatus;
         const proof = credencial.proof;
+        const authorization = subject?.authorization;
+        const operacoesPermitidas = new Set([
+            'PERICIA_RECEBER',
+            'LACRE_ROMPER',
+            'LAUDO_EMITIR',
+            'AMOSTRA_FRACIONAR',
+            'AMOSTRA_UNIFICAR',
+            'AMOSTRA_CONSUMIR',
+            'AMOSTRA_EXAURIR'
+        ]);
+        const escopoInvalido = authorization !== undefined
+            && (!authorization || typeof authorization !== 'object' || Array.isArray(authorization)
+                || !/^[1-9][0-9]*$/.test(authorization.processoId)
+                || !/^[1-9][0-9]*$/.test(authorization.assetId)
+                || !Array.isArray(authorization.operations) || authorization.operations.length === 0
+                || new Set(authorization.operations).size !== authorization.operations.length
+                || authorization.operations.some((operacao) => !operacoesPermitidas.has(operacao)));
         if (!this._identificadorValido(credencial.id)
             || !Array.isArray(credencial['@context'])
             || !credencial['@context'].includes('https://www.w3.org/2018/credentials/v1')
@@ -597,6 +632,7 @@ class CustodyChainContract extends Contract {
             || !subject || typeof subject !== 'object'
             || !/^did:legal:(admin|custodian|delegate|expert|judge):[a-zA-Z0-9._-]{3,128}$/.test(subject.id)
             || typeof subject.perfil !== 'string' || !/^[A-Z_]{3,20}$/.test(subject.perfil)
+            || escopoInvalido
             || !status || status.id !== `${credencial.id}#status` || status.type !== 'CustodyChainLedgerStatusV1'
             || !proof || proof.type !== 'CustodyChainEd25519Signature2026'
             || proof.proofPurpose !== 'assertionMethod'

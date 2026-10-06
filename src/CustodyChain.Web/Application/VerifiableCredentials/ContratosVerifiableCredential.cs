@@ -7,7 +7,11 @@ public sealed record CriarVcPermissaoInput(
     string DidTitular,
     string PerfilTitular,
     long? ProcessoId,
-    DateTime? ExpiraEm);
+    DateTime? ExpiraEm,
+    string? Identificador = null,
+    DateTime? EmitidaEm = null,
+    long? VestigioId = null,
+    IReadOnlyList<string>? Operacoes = null);
 
 public sealed record VcPermissaoSemAssinatura(
     string Id,
