@@ -16,6 +16,7 @@ const PEER_HOST_ALIAS = process.env.PEER_HOST_ALIAS || 'peer0.org1.example.com';
 const PORT = process.env.PORT || 3000;
 const SERVICE_TOKEN = process.env.GATEWAY_SERVICE_TOKEN || '';
 const LEGACY_IDENTITY_WRITES_ENABLED = process.env.ENABLE_LEGACY_IDENTITY_WRITES === 'true';
+const SUPPORTED_SIGNED_OPERATIONS = new Set(['LAUDO_EMITIR']);
 const ALLOWED_ORIGINS = (process.env.ALLOWED_ORIGINS || 'http://localhost:5143')
     .split(',')
     .map((origin) => origin.trim())
@@ -166,6 +167,45 @@ function validarVcPermissao(credential) {
         || credential.proof?.verificationMethod?.startsWith(`${credential.issuer}#`) !== true) {
         throw new Error('Envelope da VC de permissão inválido.');
     }
+}
+
+function validarOperacaoAssinada(operation) {
+    if (!operation || typeof operation !== 'object' || Array.isArray(operation)
+        || operation.type !== 'CustodyChainSignedOperation'
+        || operation.version !== 1
+        || !/^urn:uuid:[0-9a-fA-F-]{36}$/.test(operation.operationId)
+        || !SUPPORTED_SIGNED_OPERATIONS.has(operation.operation)
+        || !operation.payload || typeof operation.payload !== 'object' || Array.isArray(operation.payload)
+        || !/^did:legal:(admin|custodian|delegate|expert|judge):[a-zA-Z0-9._-]{3,128}$/.test(operation.signerDid)
+        || typeof operation.keyId !== 'string' || !operation.keyId.startsWith(`${operation.signerDid}#`)
+        || operation.algorithm !== 'Ed25519'
+        || operation.canonicalization !== 'custodychain-json-c14n-v1'
+        || operation.audience !== 'custodychain-ledger'
+        || !Number.isFinite(Date.parse(operation.timestamp))
+        || !Number.isFinite(Date.parse(operation.expiresAt))
+        || Date.parse(operation.expiresAt) <= Date.parse(operation.timestamp)
+        || Date.parse(operation.expiresAt) - Date.parse(operation.timestamp) > 10 * 60 * 1000
+        || !/^[A-Za-z0-9_-]{22,128}$/.test(operation.nonce)
+        || !/^[A-Za-z0-9_-]{86}$/.test(operation.signature)
+        || possuiNumeroNaoInteiro(operation)) {
+        throw new Error('Envelope da operação assinada inválido.');
+    }
+}
+
+function validarJanelaOperacaoAssinada(operation) {
+    const agora = Date.now();
+    const emitidaEm = Date.parse(operation.timestamp);
+    const expiraEm = Date.parse(operation.expiresAt);
+    if (expiraEm < agora || emitidaEm > agora + 2 * 60 * 1000) {
+        throw new Error('Janela temporal da operação assinada inválida ou expirada.');
+    }
+}
+
+function possuiNumeroNaoInteiro(value) {
+    if (typeof value === 'number') return !Number.isSafeInteger(value);
+    if (Array.isArray(value)) return value.some(possuiNumeroNaoInteiro);
+    if (value && typeof value === 'object') return Object.values(value).some(possuiNumeroNaoInteiro);
+    return false;
 }
 
 function canonicalizarJson(valor) {
@@ -368,6 +408,27 @@ app.post('/v2/credenciais/permissao', async (req, res) => {
     }
 });
 
+app.post('/v2/operacoes', async (req, res) => {
+    try {
+        const { operation } = req.body;
+        validarOperacaoAssinada(operation);
+        validarJanelaOperacaoAssinada(operation);
+        const contrato = obterContrato();
+        const signatario = JSON.parse(decodificar(await contrato.evaluateTransaction('ResolverDid', operation.signerDid)));
+        const metodo = signatario.verificationMethod?.find((item) => item.id === operation.keyId);
+        if (signatario.status !== 'ATIVO' || signatario.ativo !== true
+            || !signatario.capabilityInvocation?.includes(operation.keyId) || !metodo) {
+            throw new Error('A chave do signatário não possui capabilityInvocation para publicar a operação.');
+        }
+        const { signature, ...semAssinatura } = operation;
+        verificarProvaDid(semAssinatura, signature, metodo.publicKeyMultibase);
+        const resultado = await contrato.submitTransaction('RegistrarOperacaoAssinadaV1', JSON.stringify(operation));
+        res.status(201).json({ operationId: decodificar(resultado) });
+    } catch (erro) {
+        tratarErro(res, erro);
+    }
+});
+
 app.post('/credenciais/coc', async (req, res) => {
     try {
         const { credencialId, assetId, evento, did, payloadHashSha256 } = req.body;
@@ -465,5 +526,6 @@ process.on('SIGINT', () => {
 
 module.exports = {
     app, autenticarServico, decodificar, tratarErro, validarComandoDid,
-    verificarProvaDid, validarVcPermissao, verificarVcPermissao
+    verificarProvaDid, validarVcPermissao, verificarVcPermissao,
+    validarOperacaoAssinada
 };

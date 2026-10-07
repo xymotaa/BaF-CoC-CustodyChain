@@ -93,6 +93,26 @@ public sealed class ServicoLedgerContractTests
         Assert.Equal("urn:uuid:11111111-1111-1111-1111-111111111111", corpo.RootElement.GetProperty("credential").GetProperty("id").GetString());
     }
 
+    [Fact]
+    public async Task ServicoLedgerFabric_EnviaOperacaoAssinadaParaARotaV2()
+    {
+        var handler = new HandlerCapturandoRequisicao();
+        using var httpClient = new HttpClient(handler) { BaseAddress = new Uri("http://ledger.local") };
+        var ledger = new ServicoLedgerFabric(httpClient);
+        using var document = JsonDocument.Parse("""
+            {"operationId":"urn:uuid:11111111-1111-1111-1111-111111111111"}
+            """);
+
+        var operationId = await ledger.RegistrarOperacaoAssinadaV1Async(
+            new OperacaoAssinadaV1Dto(document.RootElement.Clone()));
+
+        Assert.Equal("urn:uuid:11111111-1111-1111-1111-111111111111", operationId);
+        Assert.Equal(HttpMethod.Post, handler.Method);
+        Assert.Equal("/v2/operacoes", handler.Path);
+        using var corpo = JsonDocument.Parse(handler.Body!);
+        Assert.Equal(operationId, corpo.RootElement.GetProperty("operation").GetProperty("operationId").GetString());
+    }
+
     private sealed class HandlerCapturandoRequisicao : HttpMessageHandler
     {
         public HttpMethod? Method { get; private set; }
@@ -107,7 +127,9 @@ public sealed class ServicoLedgerContractTests
 
             return new HttpResponseMessage(HttpStatusCode.Created)
             {
-                Content = JsonContent.Create(new { credencialId = "cred-coc-estavel" })
+                Content = Path == "/v2/operacoes"
+                    ? JsonContent.Create(new { operationId = "urn:uuid:11111111-1111-1111-1111-111111111111" })
+                    : JsonContent.Create(new { credencialId = "cred-coc-estavel" })
             };
         }
     }

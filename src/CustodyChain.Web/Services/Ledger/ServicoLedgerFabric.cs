@@ -104,6 +104,21 @@ public class ServicoLedgerFabric(HttpClient httpClient) : IServicoLedger
         await LancarSeFalhaAsync(resposta);
     }
 
+    public async Task<string> RegistrarOperacaoAssinadaV1Async(
+        OperacaoAssinadaV1Dto dto,
+        CancellationToken cancellationToken = default)
+    {
+        var resposta = await httpClient.PostAsJsonAsync("/v2/operacoes", new
+        {
+            operation = dto.Operation
+        }, OpcoesJson, cancellationToken);
+        await LancarSeFalhaAsync(resposta);
+
+        var resultado = await resposta.Content.ReadFromJsonAsync<OperacaoAssinadaGatewayDto>(OpcoesJson, cancellationToken)
+            ?? throw new InvalidOperationException("Resposta vazia do gateway ao registrar a operação assinada.");
+        return resultado.OperationId;
+    }
+
     public async Task<string> EmitirCredencialCoCAsync(CredencialCoCDto dto, CancellationToken cancellationToken = default)
     {
         var credencialId = dto.CredencialId ?? $"cred-coc-{Guid.NewGuid():N}";
@@ -180,6 +195,9 @@ public class ServicoLedgerFabric(HttpClient httpClient) : IServicoLedger
 
     private record CredencialEmitidaGatewayDto(
         [property: JsonPropertyName("credencialId")] string CredencialId);
+
+    private record OperacaoAssinadaGatewayDto(
+        [property: JsonPropertyName("operationId")] string OperationId);
 
     private record EventoHistoricoGatewayDto(
         [property: JsonPropertyName("assetId")] string AssetId,

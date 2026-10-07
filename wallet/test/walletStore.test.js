@@ -135,6 +135,36 @@ test('assina VC de permissão somente para o DID emissor', () => {
     }
 });
 
+test('assina vetor canônico de operação sem alterar o envelope', () => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'custodychain-wallet-'));
+    const store = new WalletStore(path.join(directory, 'wallet.db'));
+    const did = 'did:legal:expert:teste-001';
+    const password = 'senha-local-forte';
+    const vectors = JSON.parse(fs.readFileSync(
+        path.resolve(__dirname, '..', '..', 'contracts', 'signed-operation-v1-vectors.json')));
+    const operation = vectors.vectors[0].unsigned;
+
+    try {
+        const identity = store.createIdentity({ did, password });
+        const signed = store.signSignedOperation({ did, password, operation });
+        const publicKey = crypto.createPublicKey({
+            key: Buffer.concat([
+                Buffer.from('302a300506032b6570032100', 'hex'),
+                decodeMultikey(identity.publicKeyMultibase).subarray(2)
+            ]),
+            format: 'der', type: 'spki'
+        });
+        const { signature, ...unsigned } = signed;
+
+        assert.equal(canonicalize(unsigned), vectors.vectors[0].canonical);
+        assert.equal(crypto.verify(null, Buffer.from(canonicalize(unsigned)), publicKey,
+            Buffer.from(signature, 'base64url')), true);
+    } finally {
+        store.close();
+        fs.rmSync(directory, { recursive: true, force: true });
+    }
+});
+
 function decodeMultikey(value) {
     const alphabet = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';
     const bytes = [0];

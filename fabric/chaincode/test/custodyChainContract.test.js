@@ -270,6 +270,39 @@ test('recusa VC pericial com operação fora da política', async () => {
     );
 });
 
+test('registra operação assinada v1, preserva idempotência e recusa conflito', async () => {
+    const contract = new CustodyChainContract();
+    const ctx = contexto('Org1MSP');
+    const signerDid = 'did:legal:expert:teste-operacao';
+    const signer = gerarIdentidade(signerDid, `${signerDid}#key-1`);
+    await registrarIdentidadeAtiva(ctx, signerDid, 'did:legal:expert', signer);
+    const operation = {
+        type: 'CustodyChainSignedOperation', version: 1,
+        operationId: 'urn:uuid:77777777-7777-7777-7777-777777777777',
+        operation: 'LAUDO_EMITIR',
+        payload: { assetId: '42', processoId: '10', hashLaudo: 'a'.repeat(64) },
+        signerDid, keyId: signer.keyId, algorithm: 'Ed25519',
+        canonicalization: 'custodychain-json-c14n-v1', audience: 'custodychain-ledger',
+        timestamp: '2027-01-15T08:00:00.000Z', expiresAt: '2027-01-15T08:05:00.000Z',
+        nonce: '0123456789abcdefghijkl'
+    };
+    const signed = { ...operation, signature: assinar(signer.privateKey, operation) };
+
+    assert.equal(await contract.RegistrarOperacaoAssinadaV1(ctx, JSON.stringify(signed)), operation.operationId);
+    assert.equal(await contract.RegistrarOperacaoAssinadaV1(ctx, JSON.stringify(signed)), operation.operationId);
+
+    const changed = {
+        ...operation,
+        payload: { ...operation.payload, hashLaudo: 'b'.repeat(64) }
+    };
+    await assert.rejects(
+        contract.RegistrarOperacaoAssinadaV1(ctx, JSON.stringify({
+            ...changed, signature: assinar(signer.privateKey, changed)
+        })),
+        /Conflito de idempotência/
+    );
+});
+
 function criarVcPermissao(privateKey, authorization) {
     const credential = {
         '@context': ['https://www.w3.org/2018/credentials/v1'],
@@ -310,6 +343,24 @@ async function registrarPeritoAtivo(ctx) {
         version: 2,
         status: 'ATIVO',
         ativo: true
+    })));
+}
+
+async function registrarIdentidadeAtiva(ctx, identityDid, metodoDid, identity) {
+    await ctx.stub.putState(ctx.stub.createCompositeKey('DID', [identityDid]), Buffer.from(JSON.stringify({
+        id: identityDid,
+        did: identityDid,
+        metodoDid,
+        version: 2,
+        status: 'ATIVO',
+        ativo: true,
+        verificationMethod: [{
+            id: identity.keyId,
+            type: 'Multikey',
+            controller: identityDid,
+            publicKeyMultibase: identity.publicKeyMultibase
+        }],
+        capabilityInvocation: [identity.keyId]
     })));
 }
 

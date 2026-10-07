@@ -5,8 +5,10 @@
 Esta é a arquitetura aprovada após a correção das suposições sobre wallet,
 VC e outbox. A fatia de designação pericial descrita em
 `v0.36.0-designacao-pericia-vc-escopada.md` está implementada. O contrato
-`SignedOperationV1` e a migração da outbox abaixo permanecem planejados; este
-documento não os apresenta como código entregue.
+`SignedOperationV1` e a migração da outbox abaixo estão implementados na
+fatia 2. O tracer de negócio que emitirá a primeira operação, `LAUDO_EMITIR`,
+continua planejado para a fatia 3; portanto esta fatia não simula uma decisão
+de autorização de domínio.
 
 ## SignedOperationV1
 
@@ -84,7 +86,7 @@ resposta do ledger e o commit local divergirem.
 ## Ordem das próximas fatias
 
 - [x] Fatia 1 — designação de perícia com VC assinada e escopada;
-- [ ] Fatia 2 — `SignedOperationV1`, persistência integral na outbox e vetores
+- [x] Fatia 2 — `SignedOperationV1`, persistência integral na outbox e vetores
   canônicos compartilhados;
 - [ ] Fatia 3 — tracer de autorização distribuída para `LAUDO_EMITIR`;
 - [ ] Fatia 4 — demais operações periciais;

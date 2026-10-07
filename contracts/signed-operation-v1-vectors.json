@@ -1,0 +1,33 @@
+{
+  "canonicalization": "custodychain-json-c14n-v1",
+  "vectors": [
+    {
+      "name": "laudo-emitir-com-payload-aninhado",
+      "unsigned": {
+        "version": 1,
+        "operation": "LAUDO_EMITIR",
+        "payload": {
+          "hashLaudo": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "assetId": "42",
+          "metadata": {
+            "version": 1,
+            "tags": ["pericia", "laudo"]
+          },
+          "processoId": "10"
+        },
+        "type": "CustodyChainSignedOperation",
+        "signerDid": "did:legal:expert:teste-001",
+        "keyId": "did:legal:expert:teste-001#key-1",
+        "algorithm": "Ed25519",
+        "canonicalization": "custodychain-json-c14n-v1",
+        "audience": "custodychain-ledger",
+        "timestamp": "2026-10-06T12:00:00.000Z",
+        "expiresAt": "2026-10-06T12:05:00.000Z",
+        "nonce": "0123456789abcdefghijkl",
+        "operationId": "urn:uuid:11111111-1111-1111-1111-111111111111"
+      },
+      "canonical": "{\"algorithm\":\"Ed25519\",\"audience\":\"custodychain-ledger\",\"canonicalization\":\"custodychain-json-c14n-v1\",\"expiresAt\":\"2026-10-06T12:05:00.000Z\",\"keyId\":\"did:legal:expert:teste-001#key-1\",\"nonce\":\"0123456789abcdefghijkl\",\"operation\":\"LAUDO_EMITIR\",\"operationId\":\"urn:uuid:11111111-1111-1111-1111-111111111111\",\"payload\":{\"assetId\":\"42\",\"hashLaudo\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"metadata\":{\"tags\":[\"pericia\",\"laudo\"],\"version\":1},\"processoId\":\"10\"},\"signerDid\":\"did:legal:expert:teste-001\",\"timestamp\":\"2026-10-06T12:00:00.000Z\",\"type\":\"CustodyChainSignedOperation\",\"version\":1}",
+      "sha256": "3e45b6e09e9673d14de5b75fa128c701aa1aeffd84675cc64f8097720b5b1ac8"
+    }
+  ]
+}

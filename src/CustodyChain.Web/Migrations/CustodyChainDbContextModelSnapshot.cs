@@ -810,6 +810,16 @@ namespace CustodyChain.Web.Migrations
                     b.Property<string>("PayloadHashSha256")
                         .HasColumnType("char(64)");
 
+                    b.Property<string>("OperacaoAssinadaHashSha256")
+                        .HasColumnType("char(64)");
+
+                    b.Property<string>("OperacaoAssinadaId")
+                        .HasMaxLength(120)
+                        .HasColumnType("varchar(120)");
+
+                    b.Property<string>("OperacaoAssinadaJson")
+                        .HasColumnType("longtext");
+
                     b.Property<DateTime?>("ProcessandoEm")
                         .HasColumnType("datetime(6)");
 
@@ -818,6 +828,9 @@ namespace CustodyChain.Web.Migrations
 
                     b.Property<long>("RegistroOrigemId")
                         .HasColumnType("bigint");
+
+                    b.Property<byte?>("VersaoOperacaoAssinada")
+                        .HasColumnType("tinyint unsigned");
 
                     b.Property<byte>("Tentativas")
                         .IsConcurrencyToken()
@@ -835,6 +848,9 @@ namespace CustodyChain.Web.Migrations
                     b.HasIndex("VestigioId");
 
                     b.HasIndex("ChaveIdempotencia")
+                        .IsUnique();
+
+                    b.HasIndex("OperacaoAssinadaId")
                         .IsUnique();
 
                     b.HasIndex("Estado", "CriadoEm");

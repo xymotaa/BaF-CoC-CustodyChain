@@ -7,7 +7,7 @@ process.env.GATEWAY_SERVICE_TOKEN = 'token-de-teste-comprido';
 const crypto = require('node:crypto');
 const {
     autenticarServico, tratarErro, validarComandoDid, verificarProvaDid,
-    validarVcPermissao, verificarVcPermissao
+    validarVcPermissao, verificarVcPermissao, validarOperacaoAssinada
 } = require('../src/app');
 
 test('middleware aceita bearer token configurado', () => {
@@ -94,6 +94,20 @@ test('recusa escopo de VC com operação fora da política', () => {
     };
 
     assert.throws(() => validarVcPermissao(credential), /Envelope/);
+});
+
+test('valida vetor canônico da operação assinada', () => {
+    const fs = require('node:fs');
+    const path = require('node:path');
+    const vector = JSON.parse(fs.readFileSync(
+        path.resolve(__dirname, '..', '..', '..', 'contracts', 'signed-operation-v1-vectors.json'))).vectors[0].unsigned;
+    const operation = { ...vector, signature: 'A'.repeat(86) };
+
+    assert.doesNotThrow(() => validarOperacaoAssinada(operation));
+    assert.throws(() => validarOperacaoAssinada({
+        ...operation,
+        payload: { ...operation.payload, quantidade: 1.5 }
+    }), /Envelope/);
 });
 
 function canonicalizar(value) {

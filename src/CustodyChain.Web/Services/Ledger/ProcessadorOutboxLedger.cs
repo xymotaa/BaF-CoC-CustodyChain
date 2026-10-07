@@ -1,4 +1,5 @@
 using CustodyChain.Web.Data;
+using CustodyChain.Web.Application.SignedOperations;
 using CustodyChain.Web.Models.Entities;
 using Microsoft.EntityFrameworkCore;
 
@@ -21,10 +22,14 @@ public sealed class ProcessadorOutboxLedger(
         var ids = await db.RegistrosLedger
             .AsNoTracking()
             .Where(registro => registro.Estado == EstadoRegistroLedger.PENDENTE
-                && registro.ChaveIdempotencia != null
-                && registro.CredencialId != null
-                && registro.DidResponsavel != null
-                && registro.PayloadHashSha256 != null
+                && (registro.OperacaoAssinadaId != null
+                    || registro.OperacaoAssinadaJson != null
+                    || registro.OperacaoAssinadaHashSha256 != null
+                    || registro.VersaoOperacaoAssinada != null
+                    || (registro.ChaveIdempotencia != null
+                        && registro.CredencialId != null
+                        && registro.DidResponsavel != null
+                        && registro.PayloadHashSha256 != null))
                 && (registro.ProximaTentativaEm == null || registro.ProximaTentativaEm <= agora))
             .OrderBy(registro => registro.CriadoEm)
             .Select(registro => registro.Id)
@@ -53,16 +58,8 @@ public sealed class ProcessadorOutboxLedger(
 
         try
         {
-            await ledger.EmitirCredencialCoCAsync(
-                new CredencialCoCDto(
-                    registro.VestigioId!.Value.ToString(),
-                    registro.Evento,
-                    registro.DidResponsavel!,
-                    registro.PayloadHashSha256!,
-                    registro.CredencialId),
-                cancellationToken);
-
-            await MarcarComoAncoradoAsync(registro.Id, registro.CredencialId!, cancellationToken);
+            var credencialId = await PublicarAsync(registro, cancellationToken);
+            await MarcarComoAncoradoAsync(registro.Id, credencialId, cancellationToken);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -75,6 +72,53 @@ public sealed class ProcessadorOutboxLedger(
         }
 
         return true;
+    }
+
+    private async Task<string?> PublicarAsync(RegistroLedger registro, CancellationToken cancellationToken)
+    {
+        if (registro.OperacaoAssinadaJson is not null
+            || registro.OperacaoAssinadaId is not null
+            || registro.OperacaoAssinadaHashSha256 is not null
+            || registro.VersaoOperacaoAssinada is not null)
+        {
+            var operacao = ValidarOperacaoPersistida(registro);
+            var operationId = await ledger.RegistrarOperacaoAssinadaV1Async(
+                new OperacaoAssinadaV1Dto(operacao.Envelope), cancellationToken);
+            if (!string.Equals(operationId, operacao.OperationId, StringComparison.Ordinal))
+                throw new InvalidOperationException("O ledger retornou um identificador diferente da operação assinada.");
+            return null;
+        }
+
+        if (registro.VestigioId is null || registro.DidResponsavel is null
+            || registro.PayloadHashSha256 is null || registro.CredencialId is null)
+            throw new InvalidOperationException("Registro legado da outbox está incompleto.");
+
+        return await ledger.EmitirCredencialCoCAsync(
+            new CredencialCoCDto(
+                registro.VestigioId.Value.ToString(),
+                registro.Evento,
+                registro.DidResponsavel,
+                registro.PayloadHashSha256,
+                registro.CredencialId),
+            cancellationToken);
+    }
+
+    private static OperacaoAssinadaV1 ValidarOperacaoPersistida(RegistroLedger registro)
+    {
+        if (registro.OperacaoAssinadaJson is null
+            || registro.OperacaoAssinadaId is null
+            || registro.OperacaoAssinadaHashSha256 is null
+            || registro.VersaoOperacaoAssinada != 1
+            || registro.ChaveIdempotencia != registro.OperacaoAssinadaId)
+            throw new InvalidOperationException("Registro de operação assinada está incompleto ou inconsistente.");
+
+        var operacao = OperacaoAssinadaV1.Ler(registro.OperacaoAssinadaJson);
+        if (!string.Equals(operacao.OperationId, registro.OperacaoAssinadaId, StringComparison.Ordinal)
+            || !string.Equals(operacao.CalcularHashCanonicoSemAssinatura(),
+                registro.OperacaoAssinadaHashSha256, StringComparison.Ordinal))
+            throw new InvalidOperationException("A operação assinada persistida não corresponde ao seu identificador ou hash canônico.");
+
+        return operacao;
     }
 
     private async Task<RegistroLedger?> ReservarAsync(long registroId, CancellationToken cancellationToken)
@@ -102,7 +146,7 @@ public sealed class ProcessadorOutboxLedger(
         }
     }
 
-    private async Task MarcarComoAncoradoAsync(long registroId, string credencialId, CancellationToken cancellationToken)
+    private async Task MarcarComoAncoradoAsync(long registroId, string? credencialId, CancellationToken cancellationToken)
     {
         var registro = await db.RegistrosLedger.SingleAsync(r => r.Id == registroId, cancellationToken);
         registro.Estado = EstadoRegistroLedger.ANCORADO;
@@ -110,8 +154,10 @@ public sealed class ProcessadorOutboxLedger(
         registro.ProcessandoEm = null;
         registro.Erro = null;
 
-        var credencial = await db.Credenciais.SingleOrDefaultAsync(c => c.Identificador == credencialId, cancellationToken);
-        if (credencial is not null && credencial.Situacao == SituacaoCredencial.PENDENTE)
+        var credencial = !string.IsNullOrWhiteSpace(credencialId)
+            ? await db.Credenciais.SingleOrDefaultAsync(c => c.Identificador == credencialId, cancellationToken)
+            : null;
+        if (credencial is { Situacao: SituacaoCredencial.PENDENTE })
         {
             credencial.Situacao = SituacaoCredencial.VIGENTE;
         }

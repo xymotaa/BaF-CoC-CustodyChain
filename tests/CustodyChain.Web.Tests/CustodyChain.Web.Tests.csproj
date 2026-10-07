@@ -20,4 +20,10 @@
     <ProjectReference Include="../../src/CustodyChain.Web/CustodyChain.Web.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <None Include="../../contracts/signed-operation-v1-vectors.json"
+          Link="contracts/signed-operation-v1-vectors.json"
+          CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
 </Project>

@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using CustodyChain.Web.Application.SignedOperations;
 
 namespace CustodyChain.Web.Services.Ledger;
 
@@ -11,6 +12,7 @@ public class LedgerFake : IServicoLedger
     private readonly ConcurrentDictionary<string, DidDocument> _dids = new();
     private readonly ConcurrentDictionary<string, List<EstadoRegistro>> _historico = new();
     private readonly ConcurrentDictionary<string, CredencialCoCRegistrada> _credenciaisCoC = new();
+    private readonly ConcurrentDictionary<string, string> _operacoesAssinadas = new();
     private int _sequencial;
 
     public Task RegistrarDidV2PendenteAsync(RegistroDidPendenteDto dto, CancellationToken cancellationToken = default)
@@ -67,6 +69,19 @@ public class LedgerFake : IServicoLedger
 
     public Task RevogarCredencialV2Async(string credencialId, RevogacaoCredencialV2Dto dto, CancellationToken cancellationToken = default) =>
         Task.CompletedTask;
+
+    public Task<string> RegistrarOperacaoAssinadaV1Async(
+        OperacaoAssinadaV1Dto dto,
+        CancellationToken cancellationToken = default)
+    {
+        var operacao = OperacaoAssinadaV1.Ler(dto.Operation.GetRawText());
+        var hash = operacao.CalcularHashCanonicoSemAssinatura();
+        if (_operacoesAssinadas.TryGetValue(operacao.OperationId, out var existente) && existente != hash)
+            throw new InvalidOperationException($"Conflito de idempotência para a operação: {operacao.OperationId}");
+
+        _operacoesAssinadas.TryAdd(operacao.OperationId, hash);
+        return Task.FromResult(operacao.OperationId);
+    }
 
     public Task<string> EmitirCredencialCoCAsync(CredencialCoCDto dto, CancellationToken cancellationToken = default)
     {

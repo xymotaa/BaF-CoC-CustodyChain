@@ -150,6 +150,30 @@ class WalletStore {
         return this.sign({ did, password, signingInput });
     }
 
+    signSignedOperation({ did, password, operation }) {
+        if (!operation || typeof operation !== 'object' || Array.isArray(operation)
+            || Object.hasOwn(operation, 'signature')
+            || operation.type !== 'CustodyChainSignedOperation'
+            || operation.version !== 1
+            || operation.signerDid !== did
+            || operation.algorithm !== 'Ed25519'
+            || operation.canonicalization !== 'custodychain-json-c14n-v1'
+            || typeof operation.keyId !== 'string') {
+            throw new Error('A operação não corresponde ao contrato de assinatura da wallet.');
+        }
+
+        const assinatura = this.sign({
+            did,
+            password,
+            signingInput: Buffer.from(canonicalize(operation), 'utf8').toString('base64url')
+        });
+        if (operation.keyId !== assinatura.keyId) {
+            throw new Error('A operação não corresponde à chave ativa da identidade selecionada.');
+        }
+
+        return { ...operation, signature: assinatura.signature };
+    }
+
     signVerifiableCredential({ did, password, credential }) {
         if (!credential || typeof credential !== 'object' || Array.isArray(credential)
             || Object.hasOwn(credential, 'proof') || credential.issuer !== did

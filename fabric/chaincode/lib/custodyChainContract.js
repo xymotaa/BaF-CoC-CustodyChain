@@ -7,7 +7,9 @@ const PREFIXO_DID = 'DID';
 const PREFIXO_CREDENCIAL = 'CRED';
 const PREFIXO_HISTORICO = 'HIST';
 const PREFIXO_GOVERNANCA = 'GOV';
+const PREFIXO_OPERACAO_ASSINADA = 'SOP';
 const MSP_ADMINISTRADOR = 'Org1MSP';
+const OPERACOES_ASSINADAS_SUPORTADAS = new Set(['LAUDO_EMITIR']);
 
 class CustodyChainContract extends Contract {
 
@@ -449,6 +451,53 @@ class CustodyChainContract extends Contract {
         return credencialId;
     }
 
+    async RegistrarOperacaoAssinadaV1(ctx, operacaoJson) {
+        const operacao = this._lerOperacaoAssinadaV1(operacaoJson);
+        this._validarOperacaoAssinadaV1(operacao);
+        this._validarJanelaOperacaoAssinada(ctx, operacao);
+
+        const chave = ctx.stub.createCompositeKey(PREFIXO_OPERACAO_ASSINADA, [operacao.operationId]);
+        const existente = await ctx.stub.getState(chave);
+        const documentoSignatario = await this._obterDocumentoDid(ctx, operacao.signerDid);
+        const metodo = documentoSignatario.verificationMethod?.find((item) => item.id === operacao.keyId);
+        if (!metodo || !documentoSignatario.capabilityInvocation?.includes(metodo.id)) {
+            throw new Error('A chave do signatário não possui capabilityInvocation para publicar a operação.');
+        }
+
+        const { signature, ...operacaoSemAssinatura } = operacao;
+        this._verificarAssinatura(operacaoSemAssinatura, signature, metodo.publicKeyMultibase);
+        const operationHashSha256 = this._hashComando(operacaoSemAssinatura);
+
+        if (existente && existente.length > 0) {
+            const registroExistente = JSON.parse(existente.toString());
+            if (registroExistente.operationHashSha256 === operationHashSha256) {
+                return operacao.operationId;
+            }
+            throw new Error(`Conflito de idempotência para a operação: ${operacao.operationId}`);
+        }
+
+        if (documentoSignatario.version !== 2 || documentoSignatario.status !== 'ATIVO'
+            || documentoSignatario.ativo !== true) {
+            throw new Error('DID do signatário não está ativo para publicar a operação.');
+        }
+
+        const registro = {
+            operationId: operacao.operationId,
+            formato: 'SIGNED_OPERATION_V1',
+            operation: operacao.operation,
+            signerDid: operacao.signerDid,
+            keyId: operacao.keyId,
+            timestamp: operacao.timestamp,
+            expiresAt: operacao.expiresAt,
+            nonce: operacao.nonce,
+            operationHashSha256,
+            signedOperation: operacao,
+            registradaEm: this._agora(ctx)
+        };
+        await ctx.stub.putState(chave, Buffer.from(JSON.stringify(registro)));
+        return operacao.operationId;
+    }
+
     async VerificarCredencial(ctx, credencialId) {
         const chave = ctx.stub.createCompositeKey(PREFIXO_CREDENCIAL, [credencialId]);
         const bytes = await ctx.stub.getState(chave);
@@ -596,6 +645,60 @@ class CustodyChainContract extends Contract {
         } catch {
             throw new Error('VC de permissão não contém JSON válido.');
         }
+    }
+
+    _lerOperacaoAssinadaV1(operacaoJson) {
+        if (typeof operacaoJson !== 'string' || operacaoJson.length === 0 || operacaoJson.length > 32768) {
+            throw new Error('Operação assinada inválida.');
+        }
+        try {
+            const operacao = JSON.parse(operacaoJson);
+            if (!operacao || typeof operacao !== 'object' || Array.isArray(operacao)) {
+                throw new Error();
+            }
+            return operacao;
+        } catch {
+            throw new Error('Operação assinada não contém JSON válido.');
+        }
+    }
+
+    _validarOperacaoAssinadaV1(operacao) {
+        if (operacao.type !== 'CustodyChainSignedOperation'
+            || operacao.version !== 1
+            || !this._identificadorValido(operacao.operationId)
+            || !OPERACOES_ASSINADAS_SUPORTADAS.has(operacao.operation)
+            || !operacao.payload || typeof operacao.payload !== 'object' || Array.isArray(operacao.payload)
+            || !/^did:legal:(admin|custodian|delegate|expert|judge):[a-zA-Z0-9._-]{3,128}$/.test(operacao.signerDid)
+            || typeof operacao.keyId !== 'string' || !operacao.keyId.startsWith(`${operacao.signerDid}#`)
+            || operacao.algorithm !== 'Ed25519'
+            || operacao.canonicalization !== 'custodychain-json-c14n-v1'
+            || operacao.audience !== 'custodychain-ledger'
+            || typeof operacao.timestamp !== 'string' || typeof operacao.expiresAt !== 'string'
+            || !/^[A-Za-z0-9_-]{22,128}$/.test(operacao.nonce)
+            || !/^[A-Za-z0-9_-]{86}$/.test(operacao.signature)
+            || !this._valoresCanonicosDeOperacao(operacao)) {
+            throw new Error('Envelope da operação assinada inválido.');
+        }
+    }
+
+    _validarJanelaOperacaoAssinada(ctx, operacao) {
+        const emitidaEm = Date.parse(operacao.timestamp);
+        const expiraEm = Date.parse(operacao.expiresAt);
+        const agora = Date.parse(this._agora(ctx));
+        if (!Number.isFinite(emitidaEm) || !Number.isFinite(expiraEm)
+            || expiraEm <= emitidaEm || expiraEm - emitidaEm > (10 * 60 * 1000)
+            || expiraEm < agora || emitidaEm > agora + (2 * 60 * 1000)) {
+            throw new Error('Janela temporal da operação assinada inválida ou expirada.');
+        }
+    }
+
+    _valoresCanonicosDeOperacao(valor) {
+        if (valor === null || typeof valor === 'string' || typeof valor === 'boolean') return true;
+        if (typeof valor === 'number') return Number.isSafeInteger(valor);
+        if (Array.isArray(valor)) return valor.every((item) => this._valoresCanonicosDeOperacao(item));
+        if (typeof valor === 'object') return Object.values(valor)
+            .every((item) => this._valoresCanonicosDeOperacao(item));
+        return false;
     }
 
     _validarCredencialPermissaoV2(credencial) {

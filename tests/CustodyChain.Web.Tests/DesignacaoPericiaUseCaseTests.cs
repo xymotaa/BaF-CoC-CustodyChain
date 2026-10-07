@@ -161,6 +161,10 @@ public sealed class DesignacaoPericiaUseCaseTests
             return Task.FromResult(IdentificadorRecebido!);
         }
 
+        public Task<string> RegistrarOperacaoAssinadaV1Async(
+            OperacaoAssinadaV1Dto dto, CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException();
+
         public Task RegistrarDidV2PendenteAsync(RegistroDidPendenteDto dto, CancellationToken cancellationToken = default) => throw new NotSupportedException();
         public Task AtivarDidV2Async(string did, AtivacaoDidV2Dto dto, CancellationToken cancellationToken = default) => throw new NotSupportedException();
         public Task<string> GerarDidAsync(TipoAtor tipo) => throw new NotSupportedException();

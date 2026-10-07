@@ -26,6 +26,10 @@ public class RegistroLedger
     public string? CredencialId { get; set; }
     public string? DidResponsavel { get; set; }
     public string? ChaveIdempotencia { get; set; }
+    public string? OperacaoAssinadaId { get; set; }
+    public byte? VersaoOperacaoAssinada { get; set; }
+    public string? OperacaoAssinadaJson { get; set; }
+    public string? OperacaoAssinadaHashSha256 { get; set; }
     public EstadoRegistroLedger Estado { get; set; }
     public byte Tentativas { get; set; }
     public string? TxHash { get; set; }
