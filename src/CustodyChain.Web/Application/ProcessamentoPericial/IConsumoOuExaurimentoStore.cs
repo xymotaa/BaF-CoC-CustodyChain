@@ -5,6 +5,7 @@ public interface IConsumoOuExaurimentoStore
     Task<ContextoConsumoOuExaurimento?> ObterContextoAsync(
         long periciaId,
         long peritoId,
+        DateTime agora,
         CancellationToken cancellationToken);
 
     Task PersistirAsync(
@@ -15,8 +16,10 @@ public interface IConsumoOuExaurimentoStore
 public sealed record ContextoConsumoOuExaurimento(
     long PericiaId,
     long VestigioId,
+    long ProcessoId,
     string RotuloEvidencia,
-    string DidPerito);
+    string DidPerito,
+    string CredencialId);
 
 public sealed record ConsumoOuExaurimentoPendente(
     long PericiaId,
@@ -26,7 +29,8 @@ public sealed record ConsumoOuExaurimentoPendente(
     string? QuantidadeDescrita,
     string Justificativa,
     DateTime ExecutadoEm,
-    string PayloadJson,
-    string PayloadHashSha256,
-    string CredencialId,
+    DateTime ConfirmadoEm,
+    string OperacaoAssinadaJson,
+    string OperacaoAssinadaId,
+    string OperacaoAssinadaHashSha256,
     string DidResponsavel);

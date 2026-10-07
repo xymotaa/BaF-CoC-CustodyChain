@@ -16,7 +16,9 @@ const PEER_HOST_ALIAS = process.env.PEER_HOST_ALIAS || 'peer0.org1.example.com';
 const PORT = process.env.PORT || 3000;
 const SERVICE_TOKEN = process.env.GATEWAY_SERVICE_TOKEN || '';
 const LEGACY_IDENTITY_WRITES_ENABLED = process.env.ENABLE_LEGACY_IDENTITY_WRITES === 'true';
-const SUPPORTED_SIGNED_OPERATIONS = new Set(['PERICIA_RECEBER', 'LACRE_ROMPER', 'LAUDO_EMITIR']);
+const SUPPORTED_SIGNED_OPERATIONS = new Set([
+    'PERICIA_RECEBER', 'LACRE_ROMPER', 'LAUDO_EMITIR', 'AMOSTRA_CONSUMIR', 'AMOSTRA_EXAURIR'
+]);
 const ALLOWED_ORIGINS = (process.env.ALLOWED_ORIGINS || 'http://localhost:5143')
     .split(',')
     .map((origin) => origin.trim())

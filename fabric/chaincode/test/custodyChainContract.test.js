@@ -340,7 +340,9 @@ test('autoriza recebimento e rompimento somente no escopo da VC pericial', async
     const signer = gerarIdentidade(signerDid, `${signerDid}#key-1`);
     await registrarIdentidadeAtiva(ctx, signerDid, 'did:legal:expert', signer);
     const credential = criarVcPermissao(admin.privateKey, {
-        processoId: '10', assetId: '42', operations: ['PERICIA_RECEBER', 'LACRE_ROMPER']
+        processoId: '10', assetId: '42', operations: [
+            'PERICIA_RECEBER', 'LACRE_ROMPER', 'AMOSTRA_CONSUMIR', 'AMOSTRA_EXAURIR'
+        ]
     }, signerDid);
     await contract.EmitirCredencialPermissaoV2(ctx, JSON.stringify(credential));
 
@@ -365,6 +367,22 @@ test('autoriza recebimento e rompimento somente no escopo da VC pericial', async
     assert.equal(await contract.RegistrarOperacaoAssinadaV1(ctx, JSON.stringify({
         ...romper, signature: assinar(signer.privateKey, romper)
     })), romper.operationId);
+
+    const consumir = envelope('urn:uuid:cccccccc-cccc-cccc-cccc-cccccccccccc', 'AMOSTRA_CONSUMIR', {
+        credentialId: credential.id, processoId: '10', periciaId: '17', assetId: '42',
+        quantidadeDescrita: '10 g', justificativa: 'Análise técnica'
+    });
+    assert.equal(await contract.RegistrarOperacaoAssinadaV1(ctx, JSON.stringify({
+        ...consumir, signature: assinar(signer.privateKey, consumir)
+    })), consumir.operationId);
+
+    const exaurir = envelope('urn:uuid:dddddddd-dddd-dddd-dddd-dddddddddddd', 'AMOSTRA_EXAURIR', {
+        credentialId: credential.id, processoId: '10', periciaId: '17', assetId: '42',
+        quantidadeDescrita: null, justificativa: 'Material integralmente utilizado'
+    });
+    assert.equal(await contract.RegistrarOperacaoAssinadaV1(ctx, JSON.stringify({
+        ...exaurir, signature: assinar(signer.privateKey, exaurir)
+    })), exaurir.operationId);
 
     const lacreInvalido = { ...romper, operationId: 'urn:uuid:bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb', payload: { ...romper.payload, lacreId: '0' } };
     await assert.rejects(

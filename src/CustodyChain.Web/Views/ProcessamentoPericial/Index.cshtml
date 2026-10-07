@@ -149,25 +149,36 @@ else
 
                     <details class="operacao-amostra-detalhes">
                         <summary>Consumo ou exaurimento</summary>
-                        <form asp-controller="ProcessamentoPericial" asp-action="ConsumirOuExaurir" method="post" class="formulario-inline">
+                        <form class="formulario-inline" data-operacao-assinada-form data-pericia-id="@item.PericiaId"
+                              data-preparar-url="/processamento-pericial/@item.PericiaId/consumir-exaurir/comando"
+                              data-concluir-url="/processamento-pericial/@item.PericiaId/consumir-exaurir/prova">
                             @Html.AntiForgeryToken()
-                            <input type="hidden" name="PericiaId" value="@item.PericiaId" />
                             <div class="campo campo-inline">
-                                <label class="campo-rotulo">Tipo</label>
-                                <select name="Tipo" class="campo-entrada">
+                                <label class="campo-rotulo" for="amostra-tipo-@item.PericiaId">Tipo</label>
+                                <select id="amostra-tipo-@item.PericiaId" name="Tipo" class="campo-entrada">
                                     <option value="CONSUMO">Consumo</option>
                                     <option value="EXAURIMENTO">Exaurimento</option>
                                 </select>
                             </div>
                             <div class="campo campo-inline">
-                                <label class="campo-rotulo">Quantidade descrita</label>
-                                <input name="QuantidadeDescrita" class="campo-entrada" />
+                                <label class="campo-rotulo" for="amostra-quantidade-@item.PericiaId">Quantidade descrita</label>
+                                <input id="amostra-quantidade-@item.PericiaId" name="QuantidadeDescrita" class="campo-entrada" />
                             </div>
                             <div class="campo campo-inline">
-                                <label class="campo-rotulo">Justificativa</label>
-                                <input name="Justificativa" class="campo-entrada" required />
+                                <label class="campo-rotulo" for="amostra-justificativa-@item.PericiaId">Justificativa</label>
+                                <input id="amostra-justificativa-@item.PericiaId" name="Justificativa" class="campo-entrada" required />
                             </div>
-                            <button type="submit" class="botao botao-secundario">Registrar</button>
+                            <div class="campo campo-inline">
+                                <label class="campo-rotulo" for="amostra-senha-@item.PericiaId">Senha da wallet</label>
+                                <input id="amostra-senha-@item.PericiaId" name="SenhaWallet" type="password" class="campo-entrada" autocomplete="current-password" required />
+                            </div>
+                            <div class="campo campo-inline">
+                                <label class="campo-rotulo" for="amostra-pareamento-@item.PericiaId">Código de pareamento</label>
+                                <input id="amostra-pareamento-@item.PericiaId" name="CodigoPareamento" type="password" class="campo-entrada" autocomplete="off" required />
+                            </div>
+                            <button type="submit" class="botao botao-secundario">Assinar e registrar</button>
+                            <p class="campo-ajuda" data-operacao-status role="status" aria-atomic="true"></p>
+                            <div class="alerta alerta-erro" data-operacao-error role="alert" tabindex="-1" hidden></div>
                         </form>
                     </details>
 
@@ -275,12 +286,24 @@ else
                 const password = form.querySelector('[name="SenhaWallet"]');
                 const pairing = form.querySelector('[name="CodigoPareamento"]');
                 const justification = form.querySelector('[name="Justificativa"]');
+                const type = form.querySelector('[name="Tipo"]');
+                const quantity = form.querySelector('[name="QuantidadeDescrita"]');
                 const status = form.querySelector('[data-operacao-status]');
                 const error = form.querySelector('[data-operacao-error]');
                 const antiForgery = form.querySelector('input[name="__RequestVerificationToken"]').value;
                 let signedOperation = null;
 
                 justification?.addEventListener('input', () => {
+                    signedOperation = null;
+                    password.required = true;
+                    pairing.required = true;
+                });
+                type?.addEventListener('change', () => {
+                    signedOperation = null;
+                    password.required = true;
+                    pairing.required = true;
+                });
+                quantity?.addEventListener('input', () => {
                     signedOperation = null;
                     password.required = true;
                     pairing.required = true;
@@ -304,7 +327,11 @@ else
                     button.disabled = true;
                     form.setAttribute('aria-busy', 'true');
                     try {
-                        const payload = justification ? { justificativa: justification.value } : {};
+                        const payload = {
+                            ...(justification ? { justificativa: justification.value } : {}),
+                            ...(type ? { tipo: type.value } : {}),
+                            ...(quantity ? { quantidadeDescrita: quantity.value } : {})
+                        };
                         if (!signedOperation) {
                             status.textContent = 'Preparando a operação para assinatura.';
                             const command = await post(form.dataset.prepararUrl, antiForgery, payload);

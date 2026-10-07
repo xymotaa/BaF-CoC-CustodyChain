@@ -295,10 +295,11 @@ public class ProcessamentoPericialController(
         return RedirectToAction(nameof(Index));
     }
 
-    [HttpPost("/processamento-pericial/consumir-exaurir")]
+    [HttpPost("/processamento-pericial/{periciaId:long}/consumir-exaurir/comando")]
     [ValidateAntiForgeryToken]
-    public async Task<IActionResult> ConsumirOuExaurir(
-        ConsumirOuExaurirViewModel modelo,
+    public async Task<IActionResult> PrepararConsumoOuExaurimento(
+        long periciaId,
+        [FromBody] PrepararConsumoOuExaurimentoRequest? request,
         CancellationToken cancellationToken)
     {
         if (!TryObterIntervenienteId(out var peritoId))
@@ -306,25 +307,65 @@ public class ProcessamentoPericialController(
 
         try
         {
-            var resultado = await registrarConsumoOuExaurimento.ExecutarAsync(
+            var preparacao = await registrarConsumoOuExaurimento.PrepararAsync(
                 new RegistrarConsumoOuExaurimentoCommand(
                     peritoId,
-                    modelo.PericiaId,
-                    modelo.Tipo,
-                    modelo.QuantidadeDescrita,
-                    modelo.Justificativa), cancellationToken);
-            var nomeOperacao = resultado.Tipo == "CONSUMO" ? "Consumo" : "Exaurimento";
-            TempData["MensagemSucesso"] =
-                $"{nomeOperacao} registrado para o vestígio {resultado.RotuloEvidencia}. A ancoragem da credencial está pendente.";
+                    periciaId,
+                    request?.Tipo,
+                    request?.QuantidadeDescrita,
+                    request?.Justificativa), cancellationToken);
+            return Ok(new
+            {
+                operation = preparacao.Operacao,
+                signerDid = preparacao.DidPerito,
+                walletEndpoint = configuration["AuthenticationDid:WalletEndpoint"] ?? "http://127.0.0.1:43123"
+            });
         }
         catch (Exception exception) when (exception is ValidacaoConsumoOuExaurimentoException
             or RecursoConsumoOuExaurimentoNaoEncontradoException
             or ConflitoConsumoOuExaurimentoException)
         {
-            TempData["MensagemErro"] = exception.Message;
+            return BadRequest(new { message = exception.Message });
         }
+    }
 
-        return RedirectToAction(nameof(Index));
+    [HttpPost("/processamento-pericial/{periciaId:long}/consumir-exaurir/prova")]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> ConcluirConsumoOuExaurimento(
+        long periciaId,
+        [FromBody] EnviarOperacaoConsumoOuExaurimentoRequest? request,
+        CancellationToken cancellationToken)
+    {
+        if (!TryObterIntervenienteId(out var peritoId))
+            return Forbid();
+        if (request is null)
+            return BadRequest(new { message = "Informe a operação assinada pela wallet." });
+
+        try
+        {
+            var resultado = await registrarConsumoOuExaurimento.ExecutarAsync(
+                new ConcluirConsumoOuExaurimentoCommand(
+                    peritoId,
+                    periciaId,
+                    request.Tipo,
+                    request.QuantidadeDescrita,
+                    request.Justificativa,
+                    request.Operation), cancellationToken);
+            var nomeOperacao = resultado.Tipo == "CONSUMO" ? "Consumo" : "Exaurimento";
+            TempData["MensagemSucesso"] =
+                $"{nomeOperacao} registrado para o vestígio {resultado.RotuloEvidencia}. A autorização foi confirmada no ledger.";
+            return Ok(new { redirectUrl = Url.Action(nameof(Index)) });
+        }
+        catch (IndisponibilidadeLedgerConsumoOuExaurimentoException exception)
+        {
+            return StatusCode(StatusCodes.Status503ServiceUnavailable, new { message = exception.Message });
+        }
+        catch (Exception exception) when (exception is ValidacaoConsumoOuExaurimentoException
+            or RecursoConsumoOuExaurimentoNaoEncontradoException
+            or ConflitoConsumoOuExaurimentoException)
+        {
+            return BadRequest(new { message = exception.Message });
+        }
     }
 
     private bool TryObterIntervenienteId(out long intervenienteId) =>
@@ -339,4 +380,15 @@ public class ProcessamentoPericialController(
     public sealed record PrepararRompimentoLacreRequest(string? Justificativa);
 
     public sealed record EnviarOperacaoRompimentoLacreRequest(string? Justificativa, JsonElement Operation);
+
+    public sealed record PrepararConsumoOuExaurimentoRequest(
+        string? Tipo,
+        string? QuantidadeDescrita,
+        string? Justificativa);
+
+    public sealed record EnviarOperacaoConsumoOuExaurimentoRequest(
+        string? Tipo,
+        string? QuantidadeDescrita,
+        string? Justificativa,
+        JsonElement Operation);
 }

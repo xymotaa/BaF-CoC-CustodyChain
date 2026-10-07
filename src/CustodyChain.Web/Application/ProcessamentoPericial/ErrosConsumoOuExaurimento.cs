@@ -10,3 +10,6 @@ public sealed class RecursoConsumoOuExaurimentoNaoEncontradoException(string mes
 public sealed class ConflitoConsumoOuExaurimentoException(string message) : Exception(message);
 
 public sealed class AtorConsumoOuExaurimentoNaoAutorizadoException(string message) : Exception(message);
+
+public sealed class IndisponibilidadeLedgerConsumoOuExaurimentoException(string message, Exception innerException)
+    : Exception(message, innerException);

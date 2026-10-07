@@ -9,7 +9,9 @@ const PREFIXO_HISTORICO = 'HIST';
 const PREFIXO_GOVERNANCA = 'GOV';
 const PREFIXO_OPERACAO_ASSINADA = 'SOP';
 const MSP_ADMINISTRADOR = 'Org1MSP';
-const OPERACOES_ASSINADAS_SUPORTADAS = new Set(['PERICIA_RECEBER', 'LACRE_ROMPER', 'LAUDO_EMITIR']);
+const OPERACOES_ASSINADAS_SUPORTADAS = new Set([
+    'PERICIA_RECEBER', 'LACRE_ROMPER', 'LAUDO_EMITIR', 'AMOSTRA_CONSUMIR', 'AMOSTRA_EXAURIR'
+]);
 
 class CustodyChainContract extends Contract {
 
@@ -714,6 +716,12 @@ class CustodyChainContract extends Contract {
                 || typeof payload.numeroLacre !== 'string' || !payload.numeroLacre.trim()
                 || typeof payload.justificativa !== 'string' || !payload.justificativa.trim())) {
             throw new Error('Payload da operação LACRE_ROMPER inválido.');
+        }
+
+        if ((operacao.operation === 'AMOSTRA_CONSUMIR' || operacao.operation === 'AMOSTRA_EXAURIR')
+            && ((payload.quantidadeDescrita !== null && typeof payload.quantidadeDescrita !== 'string')
+                || typeof payload.justificativa !== 'string' || !payload.justificativa.trim())) {
+            throw new Error(`Payload da operação ${operacao.operation} inválido.`);
         }
 
         const chaveCredencial = ctx.stub.createCompositeKey(PREFIXO_CREDENCIAL, [payload.credentialId]);

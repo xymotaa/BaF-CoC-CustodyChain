@@ -117,7 +117,7 @@ resposta do ledger e o commit local divergirem.
   canônicos compartilhados;
 - [x] Fatia 3 — tracer síncrono de autorização distribuída para `LAUDO_EMITIR`;
 - [x] Fatia 4a — `PERICIA_RECEBER` e `LACRE_ROMPER` com autorização síncrona;
-- [ ] Fatia 4b — `AMOSTRA_CONSUMIR` e `AMOSTRA_EXAURIR`;
+- [x] Fatia 4b — `AMOSTRA_CONSUMIR` e `AMOSTRA_EXAURIR`;
 - [ ] Fatia 4c — `AMOSTRA_FRACIONAR`;
 - [ ] Fatia 4d — `AMOSTRA_UNIFICAR`, com VC válida por origem;
 - [ ] Fatia 5 — coleta, remessa, recebimento e guarda;
