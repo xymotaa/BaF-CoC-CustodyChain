@@ -149,19 +149,106 @@ else
                         </form>
                     </details>
 
-                    <form asp-controller="ProcessamentoPericial" asp-action="EmitirLaudo" method="post" class="formulario-inline">
+                    <form class="formulario-inline formulario-laudo" data-laudo-form data-pericia-id="@item.PericiaId">
                         @Html.AntiForgeryToken()
-                        <input type="hidden" name="PericiaId" value="@item.PericiaId" />
                         <div class="campo campo-inline">
-                            <label class="campo-rotulo">Conteúdo do laudo</label>
-                            <textarea name="Conteudo" rows="4" class="campo-entrada campo-textarea" required></textarea>
+                            <label class="campo-rotulo" for="laudo-conteudo-@item.PericiaId">Conteúdo do laudo</label>
+                            <textarea id="laudo-conteudo-@item.PericiaId" name="Conteudo" rows="4" class="campo-entrada campo-textarea" required></textarea>
                         </div>
-                        <button type="submit" class="botao botao-primario">Emitir laudo</button>
+                        <div class="campo campo-inline">
+                            <label class="campo-rotulo" for="laudo-senha-@item.PericiaId">Senha da wallet</label>
+                            <input id="laudo-senha-@item.PericiaId" name="SenhaWallet" type="password" class="campo-entrada" autocomplete="current-password" required />
+                        </div>
+                        <div class="campo campo-inline">
+                            <label class="campo-rotulo" for="laudo-pareamento-@item.PericiaId">Código de pareamento</label>
+                            <input id="laudo-pareamento-@item.PericiaId" name="CodigoPareamento" type="password" class="campo-entrada" autocomplete="off" required />
+                        </div>
+                        <button type="submit" class="botao botao-primario">Assinar e emitir laudo</button>
+                        <p class="campo-ajuda" data-laudo-status role="status" aria-atomic="true"></p>
+                        <div class="alerta alerta-erro" data-laudo-error role="alert" tabindex="-1" hidden></div>
                     </form>
                 }
             </section>
         }
     </div>
+}
+
+@section Scripts {
+    <script>
+        (() => {
+            const post = async (url, antiForgery, body) => {
+                const response = await fetch(url, {
+                    method: 'POST', credentials: 'same-origin',
+                    headers: { 'Content-Type': 'application/json', 'RequestVerificationToken': antiForgery },
+                    body: JSON.stringify(body)
+                });
+                const payload = await response.json().catch(() => ({}));
+                if (!response.ok) throw new Error(payload.message || 'Não foi possível emitir o laudo.');
+                return payload;
+            };
+
+            document.querySelectorAll('[data-laudo-form]').forEach((form) => {
+                const button = form.querySelector('button[type="submit"]');
+                const content = form.querySelector('[name="Conteudo"]');
+                const password = form.querySelector('[name="SenhaWallet"]');
+                const pairing = form.querySelector('[name="CodigoPareamento"]');
+                const status = form.querySelector('[data-laudo-status]');
+                const error = form.querySelector('[data-laudo-error]');
+                const antiForgery = form.querySelector('input[name="__RequestVerificationToken"]').value;
+                const periciaId = form.dataset.periciaId;
+                let signedOperation = null;
+
+                content.addEventListener('input', () => { signedOperation = null; });
+                form.addEventListener('submit', async (event) => {
+                    event.preventDefault();
+                    error.hidden = true;
+                    if (!content.value.trim() || (!signedOperation && (!password.value || !pairing.value))) {
+                        error.textContent = 'Informe o conteúdo do laudo, a senha e o código de pareamento da wallet.';
+                        error.hidden = false;
+                        error.focus();
+                        return;
+                    }
+
+                    button.disabled = true;
+                    form.setAttribute('aria-busy', 'true');
+                    try {
+                        if (!signedOperation) {
+                            status.textContent = 'Preparando a operação de emissão do laudo.';
+                            const command = await post(`/processamento-pericial/${periciaId}/emitir-laudo/comando`, antiForgery, {
+                                conteudo: content.value
+                            });
+                            status.textContent = `Aguardando a assinatura do laudo ${command.numeroLaudo} na wallet.`;
+                            const walletResponse = await fetch(`${command.walletEndpoint}/v1/proofs/signed-operation`, {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json', 'X-Wallet-Pairing-Token': pairing.value },
+                                body: JSON.stringify({ did: command.signerDid, password: password.value, operation: command.operation })
+                            });
+                            const wallet = await walletResponse.json().catch(() => ({}));
+                            if (!walletResponse.ok) throw new Error(wallet.message || 'A wallet recusou a assinatura do laudo.');
+                            signedOperation = wallet.operation;
+                            password.value = '';
+                        }
+
+                        status.textContent = 'Confirmando a autorização no ledger.';
+                        const result = await post(`/processamento-pericial/${periciaId}/emitir-laudo/prova`, antiForgery, {
+                            conteudo: content.value,
+                            operation: signedOperation
+                        });
+                        window.location.assign(result.redirectUrl);
+                    } catch (exception) {
+                        password.value = '';
+                        status.textContent = '';
+                        error.textContent = exception.message;
+                        error.hidden = false;
+                        error.focus();
+                    } finally {
+                        button.disabled = false;
+                        form.removeAttribute('aria-busy');
+                    }
+                });
+            });
+        })();
+    </script>
 }
 
 @section Styles {

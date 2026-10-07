@@ -115,7 +115,7 @@ resposta do ledger e o commit local divergirem.
 - [x] Fatia 1 — designação de perícia com VC assinada e escopada;
 - [x] Fatia 2 — `SignedOperationV1`, persistência integral na outbox e vetores
   canônicos compartilhados;
-- [ ] Fatia 3 — tracer síncrono de autorização distribuída para `LAUDO_EMITIR`;
+- [x] Fatia 3 — tracer síncrono de autorização distribuída para `LAUDO_EMITIR`;
 - [ ] Fatia 4 — demais operações periciais;
 - [ ] Fatia 5 — coleta, remessa, recebimento e guarda;
 - [ ] Fatia 6 — destinação final com segregação de funções;

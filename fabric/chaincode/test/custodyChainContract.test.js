@@ -273,14 +273,23 @@ test('recusa VC pericial com operação fora da política', async () => {
 test('registra operação assinada v1, preserva idempotência e recusa conflito', async () => {
     const contract = new CustodyChainContract();
     const ctx = contexto('Org1MSP');
+    const admin = gerarIdentidade(did, keyId);
+    await contract.BootstrapAdminDid(ctx, did, keyId, admin.publicKeyMultibase);
     const signerDid = 'did:legal:expert:teste-operacao';
     const signer = gerarIdentidade(signerDid, `${signerDid}#key-1`);
     await registrarIdentidadeAtiva(ctx, signerDid, 'did:legal:expert', signer);
+    const credential = criarVcPermissao(admin.privateKey, {
+        processoId: '10', assetId: '42', operations: ['LAUDO_EMITIR']
+    }, signerDid);
+    await contract.EmitirCredencialPermissaoV2(ctx, JSON.stringify(credential));
     const operation = {
         type: 'CustodyChainSignedOperation', version: 1,
         operationId: 'urn:uuid:77777777-7777-7777-7777-777777777777',
         operation: 'LAUDO_EMITIR',
-        payload: { assetId: '42', processoId: '10', hashLaudo: 'a'.repeat(64) },
+        payload: {
+            credentialId: credential.id, assetId: '42', processoId: '10', periciaId: '17',
+            numeroLaudo: 'LAUDO-2027-000017', hashLaudo: 'a'.repeat(64), hashVestigio: 'b'.repeat(64)
+        },
         signerDid, keyId: signer.keyId, algorithm: 'Ed25519',
         canonicalization: 'custodychain-json-c14n-v1', audience: 'custodychain-ledger',
         timestamp: '2027-01-15T08:00:00.000Z', expiresAt: '2027-01-15T08:05:00.000Z',
@@ -301,9 +310,28 @@ test('registra operação assinada v1, preserva idempotência e recusa conflito'
         })),
         /Conflito de idempotência/
     );
+
+    ctx.definirHorario('2027-01-15T08:06:00.000Z');
+    assert.equal(
+        await contract.RegistrarOperacaoAssinadaV1(ctx, JSON.stringify(signed)),
+        operation.operationId
+    );
+
+    ctx.definirHorario('2027-01-15T08:00:00.000Z');
+    const foraDoEscopo = {
+        ...operation,
+        operationId: 'urn:uuid:88888888-8888-8888-8888-888888888888',
+        payload: { ...operation.payload, assetId: '43' }
+    };
+    await assert.rejects(
+        contract.RegistrarOperacaoAssinadaV1(ctx, JSON.stringify({
+            ...foraDoEscopo, signature: assinar(signer.privateKey, foraDoEscopo)
+        })),
+        /não autoriza/
+    );
 });
 
-function criarVcPermissao(privateKey, authorization) {
+function criarVcPermissao(privateKey, authorization, subjectDid = 'did:legal:expert:teste-vc') {
     const credential = {
         '@context': ['https://www.w3.org/2018/credentials/v1'],
         id: 'urn:uuid:55555555-5555-5555-5555-555555555555',
@@ -312,7 +340,7 @@ function criarVcPermissao(privateKey, authorization) {
         issuanceDate: '2027-01-15T08:00:00.000Z',
         expirationDate: '2027-01-16T08:00:00.000Z',
         credentialSubject: {
-            id: 'did:legal:expert:teste-vc',
+            id: subjectDid,
             perfil: 'PERITO',
             ...(authorization ? { authorization } : {})
         },
@@ -401,13 +429,18 @@ function base58(bytes) {
 
 function contexto(mspId) {
     const state = new Map();
+    let horarioAtual = new Date('2027-01-15T08:00:00.000Z');
     return {
         clientIdentity: { getMSPID: () => mspId },
+        definirHorario: (iso) => { horarioAtual = new Date(iso); },
         stub: {
             createCompositeKey: (prefix, values) => `${prefix}:${values.join(':')}`,
             getState: async (key) => state.get(key) || Buffer.alloc(0),
             putState: async (key, value) => state.set(key, value),
-            getTxTimestamp: () => ({ seconds: { low: 1_800_000_000 }, nanos: 0 })
+            getTxTimestamp: () => ({
+                seconds: { low: Math.floor(horarioAtual.getTime() / 1000) },
+                nanos: (horarioAtual.getTime() % 1000) * 1_000_000
+            })
         }
     };
 }

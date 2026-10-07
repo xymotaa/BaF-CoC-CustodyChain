@@ -10,8 +10,10 @@ public interface IEmissaoLaudoStore
 public sealed record ContextoEmissaoLaudo(
     long PericiaId,
     long VestigioId,
+    long ProcessoId,
     string RotuloEvidencia,
     string DidPerito,
+    string CredencialId,
     string? HashVestigios);
 
 public sealed record LaudoPendente(
@@ -22,7 +24,8 @@ public sealed record LaudoPendente(
     string HashVestigios,
     string HashLaudo,
     DateTime EmitidoEm,
-    string PayloadJson,
-    string PayloadHashSha256,
-    string CredencialId,
+    DateTime ConfirmadoEm,
+    string OperacaoAssinadaJson,
+    string OperacaoAssinadaId,
+    string OperacaoAssinadaHashSha256,
     string DidResponsavel);

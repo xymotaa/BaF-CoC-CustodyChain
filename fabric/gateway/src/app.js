@@ -192,15 +192,6 @@ function validarOperacaoAssinada(operation) {
     }
 }
 
-function validarJanelaOperacaoAssinada(operation) {
-    const agora = Date.now();
-    const emitidaEm = Date.parse(operation.timestamp);
-    const expiraEm = Date.parse(operation.expiresAt);
-    if (expiraEm < agora || emitidaEm > agora + 2 * 60 * 1000) {
-        throw new Error('Janela temporal da operação assinada inválida ou expirada.');
-    }
-}
-
 function possuiNumeroNaoInteiro(value) {
     if (typeof value === 'number') return !Number.isSafeInteger(value);
     if (Array.isArray(value)) return value.some(possuiNumeroNaoInteiro);
@@ -412,7 +403,6 @@ app.post('/v2/operacoes', async (req, res) => {
     try {
         const { operation } = req.body;
         validarOperacaoAssinada(operation);
-        validarJanelaOperacaoAssinada(operation);
         const contrato = obterContrato();
         const signatario = JSON.parse(decodificar(await contrato.evaluateTransaction('ResolverDid', operation.signerDid)));
         const metodo = signatario.verificationMethod?.find((item) => item.id === operation.keyId);

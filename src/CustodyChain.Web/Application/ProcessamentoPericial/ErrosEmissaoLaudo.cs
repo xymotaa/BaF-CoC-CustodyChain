@@ -12,3 +12,6 @@ public sealed class HashVestigioAusenteException(string message) : Exception(mes
 public sealed class ConflitoEmissaoLaudoException(string message) : Exception(message);
 
 public sealed class AtorEmissaoLaudoNaoAutorizadoException(string message) : Exception(message);
+
+public sealed class IndisponibilidadeLedgerEmissaoLaudoException(string message, Exception innerException)
+    : Exception(message, innerException);

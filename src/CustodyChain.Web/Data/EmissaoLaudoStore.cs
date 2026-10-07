@@ -18,11 +18,16 @@ public sealed class EmissaoLaudoStore(CustodyChainDbContext db) : IEmissaoLaudoS
              && pericia.PeritoId == peritoId
              && pericia.Situacao == SituacaoPericia.EM_EXECUCAO
              && perito.Situacao == SituacaoInterveniente.ATIVO
+             && pericia.Credencial != null
+             && pericia.Credencial.Situacao == SituacaoCredencial.VIGENTE
+             && (pericia.Credencial.ValidaAte == null || pericia.Credencial.ValidaAte > DateTime.UtcNow)
          select new ContextoEmissaoLaudo(
              pericia.Id,
              pericia.VestigioId,
+             pericia.ProcessoId,
              pericia.Vestigio.RotuloEvidencia,
              perito.Did,
+             pericia.Credencial!.Identificador,
              pericia.Vestigio.HashSha256))
         .SingleOrDefaultAsync(cancellationToken);
 
@@ -33,13 +38,17 @@ public sealed class EmissaoLaudoStore(CustodyChainDbContext db) : IEmissaoLaudoS
         {
             var pericia = await db.Pericias
                 .Include(p => p.Vestigio)
+                .Include(p => p.Credencial)
                 .SingleOrDefaultAsync(p => p.Id == laudoPendente.PericiaId
                     && p.PeritoId == laudoPendente.PeritoId
                     && p.Situacao == SituacaoPericia.EM_EXECUCAO, cancellationToken);
             var peritoAtivo = await db.Intervenientes.AnyAsync(i => i.Id == laudoPendente.PeritoId
                 && i.Situacao == SituacaoInterveniente.ATIVO, cancellationToken);
 
-            if (pericia is null || !peritoAtivo || pericia.Vestigio.HashSha256 != laudoPendente.HashVestigios)
+            if (pericia is null || !peritoAtivo || pericia.Credencial is null
+                || pericia.Credencial.Situacao != SituacaoCredencial.VIGENTE
+                || (pericia.Credencial.ValidaAte is not null && pericia.Credencial.ValidaAte <= laudoPendente.EmitidoEm)
+                || pericia.Vestigio.HashSha256 != laudoPendente.HashVestigios)
                 throw new ConflitoEmissaoLaudoException(
                     "A perícia, o responsável ou o hash do vestígio mudou enquanto o laudo era emitido. Atualize a página e tente novamente.");
 
@@ -63,31 +72,24 @@ public sealed class EmissaoLaudoStore(CustodyChainDbContext db) : IEmissaoLaudoS
 
             await db.SaveChangesAsync(cancellationToken);
 
-            db.Credenciais.Add(new Credencial
-            {
-                Tipo = TipoCredencial.COC,
-                Identificador = laudoPendente.CredencialId,
-                TitularId = laudoPendente.PeritoId,
-                EmissorId = laudoPendente.PeritoId,
-                VestigioId = pericia.VestigioId,
-                EmitidaEm = laudoPendente.EmitidoEm,
-                Situacao = SituacaoCredencial.PENDENTE,
-            });
             db.RegistrosLedger.Add(new RegistroLedger
             {
                 EntidadeOrigem = "LAUDO",
                 RegistroOrigemId = laudo.Id,
                 VestigioId = pericia.VestigioId,
-                Evento = "LAUDO",
-                PayloadJson = laudoPendente.PayloadJson,
-                PayloadHashSha256 = laudoPendente.PayloadHashSha256,
-                CredencialId = laudoPendente.CredencialId,
+                Evento = "LAUDO_EMITIR",
+                PayloadJson = laudoPendente.OperacaoAssinadaJson,
+                PayloadHashSha256 = laudoPendente.OperacaoAssinadaHashSha256,
                 DidResponsavel = laudoPendente.DidResponsavel,
-                ChaveIdempotencia = laudoPendente.CredencialId,
-                Estado = EstadoRegistroLedger.PENDENTE,
-                Tentativas = 0,
+                ChaveIdempotencia = laudoPendente.OperacaoAssinadaId,
+                OperacaoAssinadaId = laudoPendente.OperacaoAssinadaId,
+                VersaoOperacaoAssinada = 1,
+                OperacaoAssinadaJson = laudoPendente.OperacaoAssinadaJson,
+                OperacaoAssinadaHashSha256 = laudoPendente.OperacaoAssinadaHashSha256,
+                Estado = EstadoRegistroLedger.ANCORADO,
+                Tentativas = 1,
                 CriadoEm = laudoPendente.EmitidoEm,
-                ProximaTentativaEm = laudoPendente.EmitidoEm,
+                AncoradoEm = laudoPendente.ConfirmadoEm,
             });
             db.LogsAuditoria.Add(CriarLogLaudo(laudo.Id, laudoPendente));
 

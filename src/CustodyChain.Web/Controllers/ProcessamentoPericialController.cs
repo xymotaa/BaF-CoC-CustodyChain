@@ -1,4 +1,5 @@
 using System.Security.Claims;
+using System.Text.Json;
 using CustodyChain.Web.Application.ProcessamentoPericial;
 using CustodyChain.Web.Data;
 using CustodyChain.Web.Models.Entities;
@@ -16,7 +17,8 @@ public class ProcessamentoPericialController(
     IEmitirLaudo emitirLaudo,
     IFracionarAmostra fracionarAmostra,
     IUnificarAmostras unificarAmostras,
-    IRegistrarConsumoOuExaurimento registrarConsumoOuExaurimento) : Controller
+    IRegistrarConsumoOuExaurimento registrarConsumoOuExaurimento,
+    IConfiguration configuration) : Controller
 {
     [HttpGet("/processamento-pericial")]
     public async Task<IActionResult> Index()
@@ -111,29 +113,68 @@ public class ProcessamentoPericialController(
         return RedirectToAction(nameof(Index));
     }
 
-    [HttpPost("/processamento-pericial/emitir-laudo")]
+    [HttpPost("/processamento-pericial/{periciaId:long}/emitir-laudo/comando")]
     [ValidateAntiForgeryToken]
-    public async Task<IActionResult> EmitirLaudo(EmitirLaudoViewModel modelo, CancellationToken cancellationToken)
+    public async Task<IActionResult> PrepararEmissaoLaudo(
+        long periciaId,
+        [FromBody] PrepararEmissaoLaudoRequest? request,
+        CancellationToken cancellationToken)
     {
         if (!TryObterIntervenienteId(out var peritoId))
             return Forbid();
 
         try
         {
-            var resultado = await emitirLaudo.ExecutarAsync(
-                new EmitirLaudoCommand(peritoId, modelo.PericiaId, modelo.Conteudo), cancellationToken);
-            TempData["MensagemSucesso"] =
-                $"Laudo {resultado.NumeroLaudo} emitido para o vestígio {resultado.RotuloEvidencia}. A ancoragem da credencial está pendente.";
+            var preparacao = await emitirLaudo.PrepararAsync(
+                new EmitirLaudoCommand(peritoId, periciaId, request?.Conteudo), cancellationToken);
+            return Ok(new
+            {
+                operation = preparacao.Operacao,
+                signerDid = preparacao.DidPerito,
+                numeroLaudo = preparacao.NumeroLaudo,
+                walletEndpoint = configuration["AuthenticationDid:WalletEndpoint"] ?? "http://127.0.0.1:43123"
+            });
         }
         catch (Exception exception) when (exception is ValidacaoEmissaoLaudoException
             or RecursoEmissaoLaudoNaoEncontradoException
             or HashVestigioAusenteException
             or ConflitoEmissaoLaudoException)
         {
-            TempData["MensagemErro"] = exception.Message;
+            return BadRequest(new { message = exception.Message });
         }
+    }
 
-        return RedirectToAction(nameof(Index));
+    [HttpPost("/processamento-pericial/{periciaId:long}/emitir-laudo/prova")]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> ConcluirEmissaoLaudo(
+        long periciaId,
+        [FromBody] EnviarOperacaoLaudoRequest? request,
+        CancellationToken cancellationToken)
+    {
+        if (!TryObterIntervenienteId(out var peritoId))
+            return Forbid();
+        if (request is null)
+            return BadRequest(new { message = "Informe a operação de laudo assinada pela wallet." });
+
+        try
+        {
+            var resultado = await emitirLaudo.ExecutarAsync(
+                new ConcluirEmissaoLaudoCommand(peritoId, periciaId, request.Conteudo, request.Operation), cancellationToken);
+            TempData["MensagemSucesso"] =
+                $"Laudo {resultado.NumeroLaudo} emitido para o vestígio {resultado.RotuloEvidencia}. A autorização foi confirmada no ledger.";
+            return Ok(new { redirectUrl = Url.Action(nameof(Index)) });
+        }
+        catch (IndisponibilidadeLedgerEmissaoLaudoException exception)
+        {
+            return StatusCode(StatusCodes.Status503ServiceUnavailable, new { message = exception.Message });
+        }
+        catch (Exception exception) when (exception is ValidacaoEmissaoLaudoException
+            or RecursoEmissaoLaudoNaoEncontradoException
+            or HashVestigioAusenteException
+            or ConflitoEmissaoLaudoException)
+        {
+            return BadRequest(new { message = exception.Message });
+        }
     }
 
     [HttpPost("/processamento-pericial/fracionar")]
@@ -217,4 +258,8 @@ public class ProcessamentoPericialController(
 
     private bool TryObterIntervenienteId(out long intervenienteId) =>
         long.TryParse(User.FindFirstValue(ClaimTypes.NameIdentifier), out intervenienteId) && intervenienteId > 0;
+
+    public sealed record PrepararEmissaoLaudoRequest(string? Conteudo);
+
+    public sealed record EnviarOperacaoLaudoRequest(string? Conteudo, JsonElement Operation);
 }

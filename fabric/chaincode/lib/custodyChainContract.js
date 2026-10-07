@@ -454,7 +454,6 @@ class CustodyChainContract extends Contract {
     async RegistrarOperacaoAssinadaV1(ctx, operacaoJson) {
         const operacao = this._lerOperacaoAssinadaV1(operacaoJson);
         this._validarOperacaoAssinadaV1(operacao);
-        this._validarJanelaOperacaoAssinada(ctx, operacao);
 
         const chave = ctx.stub.createCompositeKey(PREFIXO_OPERACAO_ASSINADA, [operacao.operationId]);
         const existente = await ctx.stub.getState(chave);
@@ -476,10 +475,12 @@ class CustodyChainContract extends Contract {
             throw new Error(`Conflito de idempotência para a operação: ${operacao.operationId}`);
         }
 
+        this._validarJanelaOperacaoAssinada(ctx, operacao);
         if (documentoSignatario.version !== 2 || documentoSignatario.status !== 'ATIVO'
             || documentoSignatario.ativo !== true) {
             throw new Error('DID do signatário não está ativo para publicar a operação.');
         }
+        await this._validarAutorizacaoOperacaoAssinada(ctx, operacao);
 
         const registro = {
             operationId: operacao.operationId,
@@ -689,6 +690,39 @@ class CustodyChainContract extends Contract {
             || expiraEm <= emitidaEm || expiraEm - emitidaEm > (10 * 60 * 1000)
             || expiraEm < agora || emitidaEm > agora + (2 * 60 * 1000)) {
             throw new Error('Janela temporal da operação assinada inválida ou expirada.');
+        }
+    }
+
+    async _validarAutorizacaoOperacaoAssinada(ctx, operacao) {
+        if (operacao.operation !== 'LAUDO_EMITIR') {
+            throw new Error(`Política de autorização não implementada para a operação: ${operacao.operation}`);
+        }
+
+        const payload = operacao.payload;
+        if (!this._identificadorValido(payload.credentialId)
+            || !/^[1-9][0-9]*$/.test(payload.processoId)
+            || !/^[1-9][0-9]*$/.test(payload.assetId)
+            || !/^[1-9][0-9]*$/.test(payload.periciaId)
+            || typeof payload.numeroLaudo !== 'string' || !/^LAUDO-[0-9]{4}-[0-9]{6}$/.test(payload.numeroLaudo)
+            || typeof payload.hashLaudo !== 'string' || !/^[a-f0-9]{64}$/.test(payload.hashLaudo)
+            || typeof payload.hashVestigio !== 'string' || !/^[a-f0-9]{64}$/.test(payload.hashVestigio)) {
+            throw new Error('Payload da operação LAUDO_EMITIR inválido.');
+        }
+
+        const chaveCredencial = ctx.stub.createCompositeKey(PREFIXO_CREDENCIAL, [payload.credentialId]);
+        const bytes = await ctx.stub.getState(chaveCredencial);
+        if (!bytes || bytes.length === 0) {
+            throw new Error('VC de permissão não encontrada para emitir o laudo.');
+        }
+
+        const credencial = JSON.parse(bytes.toString());
+        if (credencial.tipo !== 'PERMISSAO' || credencial.formato !== 'VC_V1'
+            || credencial.status !== 'ATIVA' || credencial.revogada
+            || credencial.did !== operacao.signerDid || credencial.perfil !== 'PERITO'
+            || credencial.processoId !== payload.processoId || credencial.assetId !== payload.assetId
+            || !Array.isArray(credencial.operacoes) || !credencial.operacoes.includes(operacao.operation)
+            || (credencial.expiraEm && Date.parse(credencial.expiraEm) <= Date.parse(this._agora(ctx)))) {
+            throw new Error('VC de permissão não autoriza a emissão deste laudo.');
         }
     }
 
