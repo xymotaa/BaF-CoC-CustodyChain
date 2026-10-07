@@ -8,14 +8,16 @@ public sealed class CriarVcPermissao(IClock clock)
     public VcPermissaoSemAssinatura Executar(CriarVcPermissaoInput input)
     {
         var emitidaEm = DateTime.SpecifyKind(input.EmitidaEm ?? clock.UtcNow, DateTimeKind.Utc);
-        var possuiEscopo = input.VestigioId is not null || input.Operacoes is not null;
+        var possuiAutorizacao = input.Operacoes is not null;
+        var operacoesInvalidas = input.Operacoes is { Count: 0 }
+            || input.Operacoes?.Any(string.IsNullOrWhiteSpace) == true;
         if (string.IsNullOrWhiteSpace(input.DidEmissor) || string.IsNullOrWhiteSpace(input.DidTitular)
             || string.IsNullOrWhiteSpace(input.PerfilTitular)
             || (input.ExpiraEm is not null && input.ExpiraEm <= emitidaEm)
             || (input.Identificador is not null && string.IsNullOrWhiteSpace(input.Identificador))
-            || (possuiEscopo && (input.ProcessoId is null or <= 0 || input.VestigioId is null or <= 0
-                || input.Operacoes is not { Count: > 0 }
-                || input.Operacoes.Any(string.IsNullOrWhiteSpace))))
+            || (possuiAutorizacao && (input.ProcessoId is null or <= 0 || operacoesInvalidas))
+            || (!possuiAutorizacao && input.VestigioId is not null)
+            || (input.VestigioId is not null && input.VestigioId <= 0))
         {
             throw new ArgumentException("Dados inválidos para emissão da VC de permissão.");
         }
@@ -26,14 +28,16 @@ public sealed class CriarVcPermissao(IClock clock)
             ["id"] = input.DidTitular,
             ["perfil"] = input.PerfilTitular
         };
-        if (possuiEscopo)
+        if (possuiAutorizacao)
         {
-            subject["authorization"] = new Dictionary<string, object?>
+            var authorization = new Dictionary<string, object?>
             {
                 ["processoId"] = input.ProcessoId!.Value.ToString(),
-                ["assetId"] = input.VestigioId!.Value.ToString(),
                 ["operations"] = input.Operacoes!.ToArray()
             };
+            if (input.VestigioId is not null)
+                authorization["assetId"] = input.VestigioId.Value.ToString();
+            subject["authorization"] = authorization;
         }
         else if (input.ProcessoId is not null)
         {

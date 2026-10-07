@@ -151,7 +151,8 @@ function validarVcPermissao(credential) {
     const authorization = credential?.credentialSubject?.authorization;
     const allowedOperations = new Set([
         'PERICIA_RECEBER', 'LACRE_ROMPER', 'LAUDO_EMITIR', 'AMOSTRA_FRACIONAR', 'AMOSTRA_UNIFICAR',
-        'AMOSTRA_CONSUMIR', 'AMOSTRA_EXAURIR'
+        'AMOSTRA_CONSUMIR', 'AMOSTRA_EXAURIR',
+        'COLETA_REGISTRAR', 'REMESSA_CRIAR', 'REMESSA_RECEBER', 'REMESSA_RECUSAR', 'GUARDA_REGISTRAR'
     ]);
     const invalidAuthorization = authorization !== undefined
         && (!authorization || typeof authorization !== 'object' || Array.isArray(authorization)

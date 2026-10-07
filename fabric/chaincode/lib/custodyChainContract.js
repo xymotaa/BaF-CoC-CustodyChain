@@ -376,11 +376,7 @@ class CustodyChainContract extends Contract {
         if (documentoTitular.version !== 2 || documentoTitular.status !== 'ATIVO' || documentoTitular.ativo !== true) {
             throw new Error('DID titular não está ativo para receber VC de permissão.');
         }
-        if (credencial.credentialSubject.authorization
-            && (credencial.credentialSubject.perfil !== 'PERITO'
-                || documentoTitular.metodoDid !== 'did:legal:expert')) {
-            throw new Error('O escopo pericial exige um DID titular ativo do tipo expert.');
-        }
+        this._validarEscopoVcPermissao(credencial.credentialSubject, documentoTitular);
 
         const agora = this._agora(ctx);
         const registro = {
@@ -825,15 +821,20 @@ class CustodyChainContract extends Contract {
             'AMOSTRA_FRACIONAR',
             'AMOSTRA_UNIFICAR',
             'AMOSTRA_CONSUMIR',
-            'AMOSTRA_EXAURIR'
+            'AMOSTRA_EXAURIR',
+            'COLETA_REGISTRAR',
+            'REMESSA_CRIAR',
+            'REMESSA_RECEBER',
+            'REMESSA_RECUSAR',
+            'GUARDA_REGISTRAR'
         ]);
-        const escopoInvalido = authorization !== undefined
-            && (!authorization || typeof authorization !== 'object' || Array.isArray(authorization)
-                || !/^[1-9][0-9]*$/.test(authorization.processoId)
-                || !/^[1-9][0-9]*$/.test(authorization.assetId)
-                || !Array.isArray(authorization.operations) || authorization.operations.length === 0
-                || new Set(authorization.operations).size !== authorization.operations.length
-                || authorization.operations.some((operacao) => !operacoesPermitidas.has(operacao)));
+        const escopoInvalido = authorization !== undefined && (!authorization
+            || typeof authorization !== 'object' || Array.isArray(authorization)
+            || !/^[1-9][0-9]*$/.test(authorization.processoId)
+            || (authorization.assetId !== undefined && !/^[1-9][0-9]*$/.test(authorization.assetId))
+            || !Array.isArray(authorization.operations) || authorization.operations.length === 0
+            || new Set(authorization.operations).size !== authorization.operations.length
+            || authorization.operations.some((operacao) => !operacoesPermitidas.has(operacao)));
         if (!this._identificadorValido(credencial.id)
             || !Array.isArray(credencial['@context'])
             || !credencial['@context'].includes('https://www.w3.org/2018/credentials/v1')
@@ -856,6 +857,30 @@ class CustodyChainContract extends Contract {
             || !Number.isFinite(Date.parse(proof.created))
             || typeof proof.proofValue !== 'string') {
             throw new Error('Envelope da VC de permissão inválido.');
+        }
+    }
+
+    _validarEscopoVcPermissao(subject, documentoTitular) {
+        const authorization = subject.authorization;
+        if (!authorization) return;
+
+        const operacoes = authorization.operations;
+        const perfilValido = (perfil, metodoDid, operacoesEsperadas, exigeAtivo) =>
+            subject.perfil === perfil
+            && documentoTitular.metodoDid === metodoDid
+            && operacoes.every((operacao) => operacoesEsperadas.includes(operacao))
+            && (exigeAtivo ? /^[1-9][0-9]*$/.test(authorization.assetId) : authorization.assetId === undefined);
+
+        const perito = perfilValido('PERITO', 'did:legal:expert', [
+            'PERICIA_RECEBER', 'LACRE_ROMPER', 'LAUDO_EMITIR', 'AMOSTRA_FRACIONAR',
+            'AMOSTRA_UNIFICAR', 'AMOSTRA_CONSUMIR', 'AMOSTRA_EXAURIR'
+        ], true);
+        const coletor = perfilValido('COLETOR', 'did:legal:delegate', ['COLETA_REGISTRAR'], false);
+        const custodia = perfilValido('CUSTODIA', 'did:legal:custodian', [
+            'REMESSA_CRIAR', 'REMESSA_RECEBER', 'REMESSA_RECUSAR', 'GUARDA_REGISTRAR'
+        ], true);
+        if (!perito && !coletor && !custodia) {
+            throw new Error('Perfil, DID ou escopo da VC de permissão não é autorizado.');
         }
     }
 

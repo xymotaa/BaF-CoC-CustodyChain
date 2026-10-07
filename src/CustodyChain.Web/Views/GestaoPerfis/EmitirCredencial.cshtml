@@ -5,7 +5,7 @@
 
 <div class="pagina-cabecalho">
     <h1>Emitir credencial de permissão</h1>
-    <p class="campo-ajuda">Autoriza um interveniente ativo a atuar (ex: perito sobre um vestígio, RN10). RF04.</p>
+    <p class="campo-ajuda">Coletor recebe autorização por processo; Custódia recebe autorização por processo e vestígio. As operações são definidas pelo perfil.</p>
 </div>
 
 @if (TempData["MensagemSucesso"] is string mensagem)
@@ -53,13 +53,26 @@ else
                 <div class="campo">
                     <label asp-for="ProcessoId" class="campo-rotulo"></label>
                     <select asp-for="ProcessoId" class="campo-entrada">
-                        <option value="">Sem processo específico</option>
+                        <option value="">Selecione o processo</option>
                         @foreach (var opcao in Model.ProcessosDisponiveis)
                         {
                             <option value="@opcao.Id">@opcao.Numero</option>
                         }
                     </select>
                     <span asp-validation-for="ProcessoId" class="campo-erro"></span>
+                </div>
+
+                <div class="campo">
+                    <label asp-for="VestigioId" class="campo-rotulo"></label>
+                    <select asp-for="VestigioId" class="campo-entrada">
+                        <option value="">Sem vestígio (somente Coletor)</option>
+                        @foreach (var opcao in Model.VestigiosDisponiveis)
+                        {
+                            <option value="@opcao.Id" data-processo-id="@opcao.ProcessoId">@opcao.RotuloEvidencia</option>
+                        }
+                    </select>
+                    <span class="campo-ajuda">Para Custódia, selecione um vestígio do processo escolhido.</span>
+                    <span asp-validation-for="VestigioId" class="campo-erro"></span>
                 </div>
 
                 <div class="campo">
@@ -96,6 +109,8 @@ else
             const button = document.getElementById('issue-credential');
             const password = document.getElementById('wallet-password');
             const pairing = document.getElementById('pairing-token');
+            const processo = document.getElementById('ProcessoId');
+            const vestigio = document.getElementById('VestigioId');
             const error = document.getElementById('credential-error');
             const status = document.getElementById('credential-status');
             const antiForgery = form.querySelector('input[name="__RequestVerificationToken"]').value;
@@ -109,6 +124,16 @@ else
                 if (!response.ok) throw new Error(payload.message || 'Não foi possível emitir a VC.');
                 return payload;
             };
+            const atualizarVestigios = () => {
+                const processoId = processo.value;
+                [...vestigio.options].forEach((option) => {
+                    if (!option.dataset.processoId) return;
+                    option.hidden = Boolean(processoId) && option.dataset.processoId !== processoId;
+                });
+                if (vestigio.selectedOptions[0]?.hidden) vestigio.value = '';
+            };
+            processo.addEventListener('change', atualizarVestigios);
+            atualizarVestigios();
             form.addEventListener('submit', async (event) => {
                 event.preventDefault();
                 error.hidden = true;
@@ -125,6 +150,7 @@ else
                     const command = await postApplication('/gestao-perfis/emitir-credencial/comando', {
                         titularId: Number(fields.get('TitularId')) || null,
                         processoId: Number(fields.get('ProcessoId')) || null,
+                        vestigioId: Number(fields.get('VestigioId')) || null,
                         validaAte: fields.get('ValidaAte') || null
                     });
                     status.textContent = 'Aguardando assinatura da wallet emissora.';

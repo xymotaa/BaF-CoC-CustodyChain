@@ -120,7 +120,11 @@ resposta do ledger e o commit local divergirem.
 - [x] Fatia 4b — `AMOSTRA_CONSUMIR` e `AMOSTRA_EXAURIR`;
 - [x] Fatia 4c — `AMOSTRA_FRACIONAR`;
 - [x] Fatia 4d — `AMOSTRA_UNIFICAR`, com VC válida por origem;
-- [ ] Fatia 5 — coleta, remessa, recebimento e guarda;
+- [x] Fatia 5a — emissão de VC por escopo de processo/ativo e política por perfil;
+- [ ] Fatia 5b — `COLETA_REGISTRAR`;
+- [ ] Fatia 5c — `REMESSA_CRIAR`;
+- [ ] Fatia 5d — `REMESSA_RECEBER` e `REMESSA_RECUSAR`;
+- [ ] Fatia 5e — `GUARDA_REGISTRAR`;
 - [ ] Fatia 6 — destinação final com segregação de funções;
 - [ ] Fatia 7 — remoção completa dos contratos CoC legados;
 - [ ] Fatia 8 — rotação/recuperação de chaves e identidade Fabric por organização.

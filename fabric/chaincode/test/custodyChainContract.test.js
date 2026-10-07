@@ -185,6 +185,29 @@ test('recusa emissão de permissão pelo contrato legado sem prova', async () =>
     );
 });
 
+test('emite VC de coleta por processo e recusa ativo nesse escopo', async () => {
+    const contract = new CustodyChainContract();
+    const ctx = contexto('Org1MSP');
+    const admin = gerarIdentidade(did, keyId);
+    await contract.BootstrapAdminDid(ctx, did, keyId, admin.publicKeyMultibase);
+    const coletorDid = 'did:legal:delegate:teste-coleta';
+    const coletor = gerarIdentidade(coletorDid, `${coletorDid}#key-1`);
+    await registrarIdentidadeAtiva(ctx, coletorDid, 'did:legal:delegate', coletor);
+
+    const credential = criarVcPermissao(admin.privateKey, {
+        processoId: '10', operations: ['COLETA_REGISTRAR']
+    }, coletorDid, 'urn:uuid:aaaaaaaa-1111-1111-1111-111111111111', 'COLETOR');
+    assert.equal(await contract.EmitirCredencialPermissaoV2(ctx, JSON.stringify(credential)), credential.id);
+
+    const invalida = criarVcPermissao(admin.privateKey, {
+        processoId: '10', assetId: '42', operations: ['COLETA_REGISTRAR']
+    }, coletorDid, 'urn:uuid:bbbbbbbb-1111-1111-1111-111111111111', 'COLETOR');
+    await assert.rejects(
+        contract.EmitirCredencialPermissaoV2(ctx, JSON.stringify(invalida)),
+        /Perfil, DID ou escopo/
+    );
+});
+
 test('recusa VC de permissão com prova modificada ou chave sem assertionMethod', async () => {
     const contract = new CustodyChainContract();
     const ctx = contexto('Org1MSP');
@@ -430,7 +453,7 @@ test('autoriza recebimento e rompimento somente no escopo da VC pericial', async
     );
 });
 
-function criarVcPermissao(privateKey, authorization, subjectDid = 'did:legal:expert:teste-vc', credentialId = 'urn:uuid:55555555-5555-5555-5555-555555555555') {
+function criarVcPermissao(privateKey, authorization, subjectDid = 'did:legal:expert:teste-vc', credentialId = 'urn:uuid:55555555-5555-5555-5555-555555555555', perfil = 'PERITO') {
     const credential = {
         '@context': ['https://www.w3.org/2018/credentials/v1'],
         id: credentialId,
@@ -440,7 +463,7 @@ function criarVcPermissao(privateKey, authorization, subjectDid = 'did:legal:exp
         expirationDate: '2027-01-16T08:00:00.000Z',
         credentialSubject: {
             id: subjectDid,
-            perfil: 'PERITO',
+            perfil,
             ...(authorization ? { authorization } : {})
         },
         credentialStatus: {

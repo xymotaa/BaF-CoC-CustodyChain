@@ -61,6 +61,26 @@ public class CriarVcPermissaoTests
             authorization.GetProperty("operations").EnumerateArray().Select(item => item.GetString()));
     }
 
+    [Fact]
+    public void Criar_ComEscopoDeProcesso_PreservaOperacaoSemAtivo()
+    {
+        var sut = new CriarVcPermissao(new ClockFixo());
+
+        var resultado = sut.Executar(new CriarVcPermissaoInput(
+            "did:legal:admin:emissor",
+            "did:legal:delegate:coletor",
+            "COLETOR",
+            10,
+            Agora.AddHours(1),
+            VestigioId: null,
+            Operacoes: ["COLETA_REGISTRAR"]));
+
+        var authorization = resultado.Credencial.GetProperty("credentialSubject").GetProperty("authorization");
+        Assert.Equal("10", authorization.GetProperty("processoId").GetString());
+        Assert.False(authorization.TryGetProperty("assetId", out _));
+        Assert.Equal("COLETA_REGISTRAR", authorization.GetProperty("operations")[0].GetString());
+    }
+
     private sealed class ClockFixo : IClock
     {
         public DateTime UtcNow => Agora;

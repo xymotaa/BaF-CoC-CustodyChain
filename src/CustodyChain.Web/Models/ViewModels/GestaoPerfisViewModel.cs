@@ -64,15 +64,22 @@ public class EmitirCredencialPermissaoViewModel
     [Display(Name = "Titular")]
     public long? TitularId { get; set; }
 
-    [Display(Name = "Processo (opcional)")]
+    [Required(ErrorMessage = "Selecione o processo.")]
+    [Display(Name = "Processo")]
     public long? ProcessoId { get; set; }
+
+    [Display(Name = "Vestígio (obrigatório para Custódia)")]
+    public long? VestigioId { get; set; }
 
     [Display(Name = "Válida até (opcional)")]
     public DateTime? ValidaAte { get; set; }
 
     public IReadOnlyList<ItemIntervenienteViewModel> TitularesDisponiveis { get; set; } = [];
     public IReadOnlyList<OpcaoProcessoViewModel> ProcessosDisponiveis { get; set; } = [];
+    public IReadOnlyList<OpcaoVestigioPermissaoViewModel> VestigiosDisponiveis { get; set; } = [];
 }
+
+public record OpcaoVestigioPermissaoViewModel(long Id, long ProcessoId, string RotuloEvidencia);
 
 public record EnviarProvaVcPermissaoRequest(string EmissaoId, System.Text.Json.JsonElement Credential);
 

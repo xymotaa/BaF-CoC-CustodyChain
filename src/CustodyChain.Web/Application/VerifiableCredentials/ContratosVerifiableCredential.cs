@@ -24,6 +24,7 @@ public sealed record EmissaoVcPendente(
     long EmissorId,
     long TitularId,
     long? ProcessoId,
+    long? VestigioId,
     VcPermissaoSemAssinatura Credencial,
     DateTime ExpiraEm);
 

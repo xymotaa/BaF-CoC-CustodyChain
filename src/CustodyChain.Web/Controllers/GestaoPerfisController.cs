@@ -24,6 +24,12 @@ public class GestaoPerfisController(
     CriarVcPermissao criarVcPermissao,
     IEmissaoVcPendenteStore emissoesPendentes) : Controller
 {
+    private static readonly IReadOnlyDictionary<string, IReadOnlyList<string>> OperacoesPorPerfil =
+        new Dictionary<string, IReadOnlyList<string>>(StringComparer.Ordinal)
+        {
+            ["COLETOR"] = ["COLETA_REGISTRAR"],
+            ["CUSTODIA"] = ["REMESSA_CRIAR", "REMESSA_RECEBER", "REMESSA_RECUSAR", "GUARDA_REGISTRAR"],
+        };
     private static readonly Dictionary<string, TipoAtor> MapaPerfilParaAtor = new()
     {
         ["ADMIN"] = TipoAtor.Admin,
@@ -357,6 +363,24 @@ public class GestaoPerfisController(
             return ValidationProblem(ModelState);
         }
 
+        if (!OperacoesPorPerfil.TryGetValue(titular.Perfil.Codigo, out var operacoes))
+            return BadRequest(new { message = "A emissão administrativa nesta tela é restrita aos perfis Coletor e Custódia." });
+
+        var processoExiste = modelo.ProcessoId is not null && await db.Processos
+            .AnyAsync(processo => processo.Id == modelo.ProcessoId, cancellationToken);
+        if (!processoExiste)
+            return BadRequest(new { message = "Selecione um processo válido para a autorização." });
+
+        var exigeVestigio = titular.Perfil.Codigo == "CUSTODIA";
+        if (exigeVestigio != (modelo.VestigioId is not null))
+            return BadRequest(new { message = exigeVestigio
+                ? "Uma VC de Custódia exige um vestígio específico."
+                : "A VC de Coletor é limitada ao processo e não recebe vestígio." });
+
+        if (modelo.VestigioId is not null && !await db.Vestigios.AnyAsync(vestigio =>
+            vestigio.Id == modelo.VestigioId && vestigio.ProcessoId == modelo.ProcessoId, cancellationToken))
+            return BadRequest(new { message = "O vestígio deve pertencer ao processo selecionado." });
+
         var emissor = await db.Intervenientes.FindAsync([emissorId], cancellationToken);
         if (emissor is null || emissor.Situacao != SituacaoInterveniente.ATIVO)
         {
@@ -367,7 +391,8 @@ public class GestaoPerfisController(
         try
         {
             vc = criarVcPermissao.Executar(new CriarVcPermissaoInput(
-                emissor.Did, titular.Did, titular.Perfil.Codigo, modelo.ProcessoId, modelo.ValidaAte));
+                emissor.Did, titular.Did, titular.Perfil.Codigo, modelo.ProcessoId, modelo.ValidaAte,
+                VestigioId: modelo.VestigioId, Operacoes: operacoes));
         }
         catch (ArgumentException error)
         {
@@ -376,7 +401,7 @@ public class GestaoPerfisController(
 
         var emissaoId = Guid.NewGuid().ToString("N");
         emissoesPendentes.Armazenar(new EmissaoVcPendente(
-            emissaoId, emissorId, titular.Id, modelo.ProcessoId, vc, DateTime.UtcNow.AddMinutes(2)));
+            emissaoId, emissorId, titular.Id, modelo.ProcessoId, modelo.VestigioId, vc, DateTime.UtcNow.AddMinutes(2)));
         return Ok(new
         {
             emissaoId,
@@ -424,6 +449,7 @@ public class GestaoPerfisController(
             TitularId = emissao.TitularId,
             EmissorId = emissorId,
             ProcessoId = emissao.ProcessoId,
+            VestigioId = emissao.VestigioId,
             EmitidaEm = emissao.Credencial.EmitidaEm,
             ValidaAte = emissao.Credencial.ExpiraEm,
             Situacao = SituacaoCredencial.VIGENTE,
@@ -560,6 +586,12 @@ public class GestaoPerfisController(
         modelo.ProcessosDisponiveis = await db.Processos
             .OrderBy(p => p.Numero)
             .Select(p => new OpcaoProcessoViewModel(p.Id, p.Numero, p.NomeOperacao))
+            .ToListAsync();
+
+        modelo.VestigiosDisponiveis = await db.Vestigios
+            .OrderBy(vestigio => vestigio.RotuloEvidencia)
+            .Select(vestigio => new OpcaoVestigioPermissaoViewModel(
+                vestigio.Id, vestigio.ProcessoId, vestigio.RotuloEvidencia))
             .ToListAsync();
     }
 }
