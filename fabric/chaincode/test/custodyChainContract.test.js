@@ -331,6 +331,50 @@ test('registra operação assinada v1, preserva idempotência e recusa conflito'
     );
 });
 
+test('autoriza recebimento e rompimento somente no escopo da VC pericial', async () => {
+    const contract = new CustodyChainContract();
+    const ctx = contexto('Org1MSP');
+    const admin = gerarIdentidade(did, keyId);
+    await contract.BootstrapAdminDid(ctx, did, keyId, admin.publicKeyMultibase);
+    const signerDid = 'did:legal:expert:teste-fatia4a';
+    const signer = gerarIdentidade(signerDid, `${signerDid}#key-1`);
+    await registrarIdentidadeAtiva(ctx, signerDid, 'did:legal:expert', signer);
+    const credential = criarVcPermissao(admin.privateKey, {
+        processoId: '10', assetId: '42', operations: ['PERICIA_RECEBER', 'LACRE_ROMPER']
+    }, signerDid);
+    await contract.EmitirCredencialPermissaoV2(ctx, JSON.stringify(credential));
+
+    const envelope = (operationId, operation, payload) => ({
+        type: 'CustodyChainSignedOperation', version: 1, operationId, operation, payload,
+        signerDid, keyId: signer.keyId, algorithm: 'Ed25519',
+        canonicalization: 'custodychain-json-c14n-v1', audience: 'custodychain-ledger',
+        timestamp: '2027-01-15T08:00:00.000Z', expiresAt: '2027-01-15T08:05:00.000Z',
+        nonce: '0123456789abcdefghijkl'
+    });
+    const receber = envelope('urn:uuid:99999999-9999-9999-9999-999999999999', 'PERICIA_RECEBER', {
+        credentialId: credential.id, processoId: '10', periciaId: '17', assetId: '42'
+    });
+    assert.equal(await contract.RegistrarOperacaoAssinadaV1(ctx, JSON.stringify({
+        ...receber, signature: assinar(signer.privateKey, receber)
+    })), receber.operationId);
+
+    const romper = envelope('urn:uuid:aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', 'LACRE_ROMPER', {
+        credentialId: credential.id, processoId: '10', periciaId: '17', assetId: '42',
+        lacreId: '9', numeroLacre: 'L-001', justificativa: 'Abertura para exame técnico'
+    });
+    assert.equal(await contract.RegistrarOperacaoAssinadaV1(ctx, JSON.stringify({
+        ...romper, signature: assinar(signer.privateKey, romper)
+    })), romper.operationId);
+
+    const lacreInvalido = { ...romper, operationId: 'urn:uuid:bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb', payload: { ...romper.payload, lacreId: '0' } };
+    await assert.rejects(
+        contract.RegistrarOperacaoAssinadaV1(ctx, JSON.stringify({
+            ...lacreInvalido, signature: assinar(signer.privateKey, lacreInvalido)
+        })),
+        /LACRE_ROMPER inválido/
+    );
+});
+
 function criarVcPermissao(privateKey, authorization, subjectDid = 'did:legal:expert:teste-vc') {
     const credential = {
         '@context': ['https://www.w3.org/2018/credentials/v1'],

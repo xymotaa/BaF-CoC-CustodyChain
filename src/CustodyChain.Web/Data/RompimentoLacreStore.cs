@@ -15,13 +15,16 @@ public sealed class RompimentoLacreStore(CustodyChainDbContext db) : IRompimento
         CancellationToken cancellationToken)
     {
         var contexto = await db.Pericias
-            .Where(p => p.Id == periciaId && p.PeritoId == peritoId && p.Situacao == SituacaoPericia.RECEBIDA)
+            .Where(p => p.Id == periciaId && p.PeritoId == peritoId && p.Situacao == SituacaoPericia.RECEBIDA
+                && p.Perito!.Situacao == SituacaoInterveniente.ATIVO)
             .Select(p => new
             {
                 p.Id,
                 p.VestigioId,
+                p.ProcessoId,
                 p.Vestigio.RotuloEvidencia,
                 DidPerito = p.Perito!.Did,
+                CredencialId = p.Credencial != null ? p.Credencial.Identificador : null,
                 CredencialValida = p.Credencial != null
                     && p.Credencial.Situacao == SituacaoCredencial.VIGENTE
                     && p.Credencial.VestigioId == p.VestigioId
@@ -44,6 +47,8 @@ public sealed class RompimentoLacreStore(CustodyChainDbContext db) : IRompimento
             contexto.RotuloEvidencia,
             contexto.DidPerito,
             contexto.CredencialValida,
+            contexto.ProcessoId,
+            contexto.CredencialId,
             lacre?.Id,
             lacre?.Numero);
     }
@@ -59,8 +64,10 @@ public sealed class RompimentoLacreStore(CustodyChainDbContext db) : IRompimento
                 .SingleOrDefaultAsync(p => p.Id == rompimento.PericiaId
                     && p.PeritoId == rompimento.PeritoId
                     && p.Situacao == SituacaoPericia.RECEBIDA, cancellationToken);
+            var peritoAtivo = await db.Intervenientes.AnyAsync(i => i.Id == rompimento.PeritoId
+                && i.Situacao == SituacaoInterveniente.ATIVO, cancellationToken);
 
-            if (pericia is null || !PossuiCredencialValida(pericia, rompimento.RompidoEm))
+            if (pericia is null || !peritoAtivo || !PossuiCredencialValida(pericia, rompimento.RompidoEm))
                 throw new ConflitoRompimentoLacreException(
                     "A perícia ou credencial mudou enquanto o lacre era rompido. Atualize a página e tente novamente.");
 
@@ -80,31 +87,24 @@ public sealed class RompimentoLacreStore(CustodyChainDbContext db) : IRompimento
             pericia.Vestigio.Estado = EstadoVestigio.EmPericia;
             pericia.Vestigio.AtualizadoEm = rompimento.RompidoEm;
 
-            db.Credenciais.Add(new Credencial
-            {
-                Tipo = TipoCredencial.COC,
-                Identificador = rompimento.CredencialId,
-                TitularId = rompimento.PeritoId,
-                EmissorId = rompimento.PeritoId,
-                VestigioId = pericia.VestigioId,
-                EmitidaEm = rompimento.RompidoEm,
-                Situacao = SituacaoCredencial.PENDENTE,
-            });
             db.RegistrosLedger.Add(new RegistroLedger
             {
                 EntidadeOrigem = "LACRE",
                 RegistroOrigemId = lacre.Id,
                 VestigioId = pericia.VestigioId,
-                Evento = "ROMPIMENTO",
-                PayloadJson = rompimento.PayloadJson,
-                PayloadHashSha256 = rompimento.PayloadHashSha256,
-                CredencialId = rompimento.CredencialId,
+                Evento = "LACRE_ROMPER",
+                PayloadJson = rompimento.OperacaoAssinadaJson,
+                PayloadHashSha256 = rompimento.OperacaoAssinadaHashSha256,
                 DidResponsavel = rompimento.DidResponsavel,
-                ChaveIdempotencia = rompimento.CredencialId,
-                Estado = EstadoRegistroLedger.PENDENTE,
-                Tentativas = 0,
+                ChaveIdempotencia = rompimento.OperacaoAssinadaId,
+                OperacaoAssinadaId = rompimento.OperacaoAssinadaId,
+                VersaoOperacaoAssinada = 1,
+                OperacaoAssinadaJson = rompimento.OperacaoAssinadaJson,
+                OperacaoAssinadaHashSha256 = rompimento.OperacaoAssinadaHashSha256,
+                Estado = EstadoRegistroLedger.ANCORADO,
+                Tentativas = 1,
                 CriadoEm = rompimento.RompidoEm,
-                ProximaTentativaEm = rompimento.RompidoEm,
+                AncoradoEm = rompimento.ConfirmadoEm,
             });
             db.LogsAuditoria.Add(CriarLogRompimento(lacre.Id, rompimento));
 

@@ -55,22 +55,44 @@ else
 
                 @if (item.Situacao == "DESIGNADA")
                 {
-                    <form asp-controller="ProcessamentoPericial" asp-action="Receber" method="post">
+                    <form class="formulario-inline" data-operacao-assinada-form data-pericia-id="@item.PericiaId"
+                          data-preparar-url="/processamento-pericial/@item.PericiaId/receber/comando"
+                          data-concluir-url="/processamento-pericial/@item.PericiaId/receber/prova">
                         @Html.AntiForgeryToken()
-                        <input type="hidden" name="periciaId" value="@item.PericiaId" />
-                        <button type="submit" class="botao botao-primario">Receber vestígio</button>
+                        <div class="campo campo-inline">
+                            <label class="campo-rotulo" for="receber-senha-@item.PericiaId">Senha da wallet</label>
+                            <input id="receber-senha-@item.PericiaId" name="SenhaWallet" type="password" class="campo-entrada" autocomplete="current-password" required />
+                        </div>
+                        <div class="campo campo-inline">
+                            <label class="campo-rotulo" for="receber-pareamento-@item.PericiaId">Código de pareamento</label>
+                            <input id="receber-pareamento-@item.PericiaId" name="CodigoPareamento" type="password" class="campo-entrada" autocomplete="off" required />
+                        </div>
+                        <button type="submit" class="botao botao-primario">Assinar e receber vestígio</button>
+                        <p class="campo-ajuda" data-operacao-status role="status" aria-atomic="true"></p>
+                        <div class="alerta alerta-erro" data-operacao-error role="alert" tabindex="-1" hidden></div>
                     </form>
                 }
                 else if (item.Situacao == "RECEBIDA")
                 {
-                    <form asp-controller="ProcessamentoPericial" asp-action="RomperLacre" method="post" class="formulario-inline">
+                    <form class="formulario-inline" data-operacao-assinada-form data-pericia-id="@item.PericiaId"
+                          data-preparar-url="/processamento-pericial/@item.PericiaId/romper-lacre/comando"
+                          data-concluir-url="/processamento-pericial/@item.PericiaId/romper-lacre/prova">
                         @Html.AntiForgeryToken()
-                        <input type="hidden" name="PericiaId" value="@item.PericiaId" />
                         <div class="campo campo-inline">
-                            <label class="campo-rotulo">Justificativa do rompimento (lacre @item.NumeroLacreAtual)</label>
-                            <input name="Justificativa" class="campo-entrada" required />
+                            <label class="campo-rotulo" for="lacre-justificativa-@item.PericiaId">Justificativa do rompimento (lacre @item.NumeroLacreAtual)</label>
+                            <input id="lacre-justificativa-@item.PericiaId" name="Justificativa" class="campo-entrada" required />
                         </div>
-                        <button type="submit" class="botao botao-primario" @(item.CredencialPermissaoValida ? "" : "disabled")>Romper lacre</button>
+                        <div class="campo campo-inline">
+                            <label class="campo-rotulo" for="lacre-senha-@item.PericiaId">Senha da wallet</label>
+                            <input id="lacre-senha-@item.PericiaId" name="SenhaWallet" type="password" class="campo-entrada" autocomplete="current-password" required />
+                        </div>
+                        <div class="campo campo-inline">
+                            <label class="campo-rotulo" for="lacre-pareamento-@item.PericiaId">Código de pareamento</label>
+                            <input id="lacre-pareamento-@item.PericiaId" name="CodigoPareamento" type="password" class="campo-entrada" autocomplete="off" required />
+                        </div>
+                        <button type="submit" class="botao botao-primario" @(item.CredencialPermissaoValida ? "" : "disabled")>Assinar e romper lacre</button>
+                        <p class="campo-ajuda" data-operacao-status role="status" aria-atomic="true"></p>
+                        <div class="alerta alerta-erro" data-operacao-error role="alert" tabindex="-1" hidden></div>
                     </form>
                 }
                 else if (item.Situacao == "EM_EXECUCAO")
@@ -234,6 +256,74 @@ else
                             conteudo: content.value,
                             operation: signedOperation
                         });
+                        window.location.assign(result.redirectUrl);
+                    } catch (exception) {
+                        password.value = '';
+                        status.textContent = '';
+                        error.textContent = exception.message;
+                        error.hidden = false;
+                        error.focus();
+                    } finally {
+                        button.disabled = false;
+                        form.removeAttribute('aria-busy');
+                    }
+                });
+            });
+
+            document.querySelectorAll('[data-operacao-assinada-form]').forEach((form) => {
+                const button = form.querySelector('button[type="submit"]');
+                const password = form.querySelector('[name="SenhaWallet"]');
+                const pairing = form.querySelector('[name="CodigoPareamento"]');
+                const justification = form.querySelector('[name="Justificativa"]');
+                const status = form.querySelector('[data-operacao-status]');
+                const error = form.querySelector('[data-operacao-error]');
+                const antiForgery = form.querySelector('input[name="__RequestVerificationToken"]').value;
+                let signedOperation = null;
+
+                justification?.addEventListener('input', () => {
+                    signedOperation = null;
+                    password.required = true;
+                    pairing.required = true;
+                });
+                form.addEventListener('submit', async (event) => {
+                    event.preventDefault();
+                    error.hidden = true;
+                    if ((!justification || justification.value.trim()) && (!signedOperation && (!password.value || !pairing.value))) {
+                        error.textContent = 'Informe a senha e o código de pareamento da wallet.';
+                        error.hidden = false;
+                        error.focus();
+                        return;
+                    }
+                    if (justification && !justification.value.trim()) {
+                        error.textContent = 'Informe a justificativa do rompimento.';
+                        error.hidden = false;
+                        error.focus();
+                        return;
+                    }
+
+                    button.disabled = true;
+                    form.setAttribute('aria-busy', 'true');
+                    try {
+                        const payload = justification ? { justificativa: justification.value } : {};
+                        if (!signedOperation) {
+                            status.textContent = 'Preparando a operação para assinatura.';
+                            const command = await post(form.dataset.prepararUrl, antiForgery, payload);
+                            status.textContent = 'Aguardando a assinatura na wallet.';
+                            const walletResponse = await fetch(`${command.walletEndpoint}/v1/proofs/signed-operation`, {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json', 'X-Wallet-Pairing-Token': pairing.value },
+                                body: JSON.stringify({ did: command.signerDid, password: password.value, operation: command.operation })
+                            });
+                            const wallet = await walletResponse.json().catch(() => ({}));
+                            if (!walletResponse.ok) throw new Error(wallet.message || 'A wallet recusou a assinatura da operação.');
+                            signedOperation = wallet.operation;
+                            password.value = '';
+                            password.required = false;
+                            pairing.required = false;
+                        }
+
+                        status.textContent = 'Confirmando a autorização no ledger.';
+                        const result = await post(form.dataset.concluirUrl, antiForgery, { ...payload, operation: signedOperation });
                         window.location.assign(result.redirectUrl);
                     } catch (exception) {
                         password.value = '';

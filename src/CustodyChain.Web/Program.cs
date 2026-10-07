@@ -58,6 +58,8 @@ builder.Services.AddScoped<IConfirmarRecebimento, ConfirmarRecebimentoUseCase>()
 builder.Services.AddScoped<IRecusarRecebimento, RecusarRecebimentoUseCase>();
 builder.Services.AddScoped<IRecebimentoStore, RecebimentoStore>();
 builder.Services.AddScoped<IRecebimentoPendentesQuery, RecebimentoPendentesQuery>();
+builder.Services.AddScoped<IReceberPericia, ReceberPericiaUseCase>();
+builder.Services.AddScoped<IRecebimentoPericiaStore, RecebimentoPericiaStore>();
 builder.Services.AddScoped<IRomperLacre, RomperLacreUseCase>();
 builder.Services.AddScoped<IRompimentoLacreStore, RompimentoLacreStore>();
 builder.Services.AddScoped<IEmitirLaudo, EmitirLaudoUseCase>();

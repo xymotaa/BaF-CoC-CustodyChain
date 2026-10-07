@@ -17,6 +17,8 @@ public sealed record ContextoRompimentoLacre(
     string RotuloEvidencia,
     string DidPerito,
     bool CredencialValida,
+    long ProcessoId,
+    string? CredencialId,
     long? LacreId,
     string? NumeroLacre);
 
@@ -27,7 +29,8 @@ public sealed record RompimentoLacrePendente(
     string NumeroLacre,
     string Justificativa,
     DateTime RompidoEm,
-    string PayloadJson,
-    string PayloadHashSha256,
-    string CredencialId,
+    DateTime ConfirmadoEm,
+    string OperacaoAssinadaJson,
+    string OperacaoAssinadaId,
+    string OperacaoAssinadaHashSha256,
     string DidResponsavel);

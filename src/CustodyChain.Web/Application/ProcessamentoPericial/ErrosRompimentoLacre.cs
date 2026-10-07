@@ -14,3 +14,6 @@ public sealed class LacreIntactoNaoEncontradoException(string message) : Excepti
 public sealed class ConflitoRompimentoLacreException(string message) : Exception(message);
 
 public sealed class AtorRompimentoLacreNaoAutorizadoException(string message) : Exception(message);
+
+public sealed class IndisponibilidadeLedgerRompimentoLacreException(string message, Exception innerException)
+    : Exception(message, innerException);

@@ -116,7 +116,10 @@ resposta do ledger e o commit local divergirem.
 - [x] Fatia 2 — `SignedOperationV1`, persistência integral na outbox e vetores
   canônicos compartilhados;
 - [x] Fatia 3 — tracer síncrono de autorização distribuída para `LAUDO_EMITIR`;
-- [ ] Fatia 4 — demais operações periciais;
+- [x] Fatia 4a — `PERICIA_RECEBER` e `LACRE_ROMPER` com autorização síncrona;
+- [ ] Fatia 4b — `AMOSTRA_CONSUMIR` e `AMOSTRA_EXAURIR`;
+- [ ] Fatia 4c — `AMOSTRA_FRACIONAR`;
+- [ ] Fatia 4d — `AMOSTRA_UNIFICAR`, com VC válida por origem;
 - [ ] Fatia 5 — coleta, remessa, recebimento e guarda;
 - [ ] Fatia 6 — destinação final com segregação de funções;
 - [ ] Fatia 7 — remoção completa dos contratos CoC legados;

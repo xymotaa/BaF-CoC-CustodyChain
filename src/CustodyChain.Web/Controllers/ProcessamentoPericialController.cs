@@ -13,6 +13,7 @@ namespace CustodyChain.Web.Controllers;
 [Authorize]
 public class ProcessamentoPericialController(
     CustodyChainDbContext db,
+    IReceberPericia receberPericia,
     IRomperLacre romperLacre,
     IEmitirLaudo emitirLaudo,
     IFracionarAmostra fracionarAmostra,
@@ -60,46 +61,84 @@ public class ProcessamentoPericialController(
         return View(new ProcessamentoPericialListaViewModel { Pericias = itens });
     }
 
-    [HttpPost("/processamento-pericial/receber")]
+    [HttpPost("/processamento-pericial/{periciaId:long}/receber/comando")]
     [ValidateAntiForgeryToken]
-    public async Task<IActionResult> Receber(long periciaId)
-    {
-        var peritoId = long.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);
-        var pericia = await db.Pericias
-            .Include(p => p.Vestigio)
-            .FirstOrDefaultAsync(p => p.Id == periciaId && p.PeritoId == peritoId && p.Situacao == SituacaoPericia.DESIGNADA);
-
-        if (pericia is null)
-        {
-            TempData["MensagemErro"] = "Perícia não encontrada ou já recebida.";
-            return RedirectToAction(nameof(Index));
-        }
-
-        var agora = DateTime.UtcNow;
-        pericia.Situacao = SituacaoPericia.RECEBIDA;
-        pericia.RecebidaEm = agora;
-        pericia.Vestigio.CustodianteAtualId = peritoId;
-        pericia.Vestigio.AtualizadoEm = agora;
-
-        await db.SaveChangesAsync();
-
-        TempData["MensagemSucesso"] = $"Vestígio {pericia.Vestigio.RotuloEvidencia} recebido para perícia.";
-        return RedirectToAction(nameof(Index));
-    }
-
-    [HttpPost("/processamento-pericial/romper-lacre")]
-    [ValidateAntiForgeryToken]
-    public async Task<IActionResult> RomperLacre(RomperLacreViewModel modelo, CancellationToken cancellationToken)
+    public async Task<IActionResult> PrepararRecebimento(long periciaId, CancellationToken cancellationToken)
     {
         if (!TryObterIntervenienteId(out var peritoId))
             return Forbid();
 
         try
         {
-            var resultado = await romperLacre.ExecutarAsync(
-                new RomperLacreCommand(peritoId, modelo.PericiaId, modelo.Justificativa), cancellationToken);
+            var preparacao = await receberPericia.PrepararAsync(
+                new ReceberPericiaCommand(peritoId, periciaId), cancellationToken);
+            return Ok(new
+            {
+                operation = preparacao.Operacao,
+                signerDid = preparacao.DidPerito,
+                walletEndpoint = configuration["AuthenticationDid:WalletEndpoint"] ?? "http://127.0.0.1:43123"
+            });
+        }
+        catch (Exception exception) when (exception is ValidacaoRecebimentoPericiaException
+            or RecursoRecebimentoPericiaNaoEncontradoException
+            or ConflitoRecebimentoPericiaException)
+        {
+            return BadRequest(new { message = exception.Message });
+        }
+    }
+
+    [HttpPost("/processamento-pericial/{periciaId:long}/receber/prova")]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> ConcluirRecebimento(
+        long periciaId,
+        [FromBody] EnviarOperacaoPericialRequest? request,
+        CancellationToken cancellationToken)
+    {
+        if (!TryObterIntervenienteId(out var peritoId))
+            return Forbid();
+        if (request is null)
+            return BadRequest(new { message = "Informe a operação de recebimento assinada pela wallet." });
+
+        try
+        {
+            var resultado = await receberPericia.ExecutarAsync(
+                new ConcluirRecebimentoPericiaCommand(peritoId, periciaId, request.Operation), cancellationToken);
             TempData["MensagemSucesso"] =
-                $"Lacre {resultado.NumeroLacre} rompido. Vestígio {resultado.RotuloEvidencia} liberado para exame. A ancoragem da credencial está pendente.";
+                $"Vestígio {resultado.RotuloEvidencia} recebido para perícia. A autorização foi confirmada no ledger.";
+            return Ok(new { redirectUrl = Url.Action(nameof(Index)) });
+        }
+        catch (IndisponibilidadeLedgerRecebimentoPericiaException exception)
+        {
+            return StatusCode(StatusCodes.Status503ServiceUnavailable, new { message = exception.Message });
+        }
+        catch (Exception exception) when (exception is ValidacaoRecebimentoPericiaException
+            or RecursoRecebimentoPericiaNaoEncontradoException
+            or ConflitoRecebimentoPericiaException)
+        {
+            return BadRequest(new { message = exception.Message });
+        }
+    }
+
+    [HttpPost("/processamento-pericial/{periciaId:long}/romper-lacre/comando")]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> PrepararRompimentoLacre(
+        long periciaId,
+        [FromBody] PrepararRompimentoLacreRequest? request,
+        CancellationToken cancellationToken)
+    {
+        if (!TryObterIntervenienteId(out var peritoId))
+            return Forbid();
+
+        try
+        {
+            var preparacao = await romperLacre.PrepararAsync(
+                new RomperLacreCommand(peritoId, periciaId, request?.Justificativa), cancellationToken);
+            return Ok(new
+            {
+                operation = preparacao.Operacao,
+                signerDid = preparacao.DidPerito,
+                walletEndpoint = configuration["AuthenticationDid:WalletEndpoint"] ?? "http://127.0.0.1:43123"
+            });
         }
         catch (Exception exception) when (exception is ValidacaoRompimentoLacreException
             or RecursoRompimentoLacreNaoEncontradoException
@@ -107,10 +146,42 @@ public class ProcessamentoPericialController(
             or LacreIntactoNaoEncontradoException
             or ConflitoRompimentoLacreException)
         {
-            TempData["MensagemErro"] = exception.Message;
+            return BadRequest(new { message = exception.Message });
         }
+    }
 
-        return RedirectToAction(nameof(Index));
+    [HttpPost("/processamento-pericial/{periciaId:long}/romper-lacre/prova")]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> ConcluirRompimentoLacre(
+        long periciaId,
+        [FromBody] EnviarOperacaoRompimentoLacreRequest? request,
+        CancellationToken cancellationToken)
+    {
+        if (!TryObterIntervenienteId(out var peritoId))
+            return Forbid();
+        if (request is null)
+            return BadRequest(new { message = "Informe a operação de rompimento assinada pela wallet." });
+
+        try
+        {
+            var resultado = await romperLacre.ExecutarAsync(new ConcluirRompimentoLacreCommand(
+                peritoId, periciaId, request.Justificativa, request.Operation), cancellationToken);
+            TempData["MensagemSucesso"] =
+                $"Lacre {resultado.NumeroLacre} rompido. Vestígio {resultado.RotuloEvidencia} liberado para exame. A autorização foi confirmada no ledger.";
+            return Ok(new { redirectUrl = Url.Action(nameof(Index)) });
+        }
+        catch (IndisponibilidadeLedgerRompimentoLacreException exception)
+        {
+            return StatusCode(StatusCodes.Status503ServiceUnavailable, new { message = exception.Message });
+        }
+        catch (Exception exception) when (exception is ValidacaoRompimentoLacreException
+            or RecursoRompimentoLacreNaoEncontradoException
+            or CredencialPermissaoInvalidaException
+            or LacreIntactoNaoEncontradoException
+            or ConflitoRompimentoLacreException)
+        {
+            return BadRequest(new { message = exception.Message });
+        }
     }
 
     [HttpPost("/processamento-pericial/{periciaId:long}/emitir-laudo/comando")]
@@ -262,4 +333,10 @@ public class ProcessamentoPericialController(
     public sealed record PrepararEmissaoLaudoRequest(string? Conteudo);
 
     public sealed record EnviarOperacaoLaudoRequest(string? Conteudo, JsonElement Operation);
+
+    public sealed record EnviarOperacaoPericialRequest(JsonElement Operation);
+
+    public sealed record PrepararRompimentoLacreRequest(string? Justificativa);
+
+    public sealed record EnviarOperacaoRompimentoLacreRequest(string? Justificativa, JsonElement Operation);
 }

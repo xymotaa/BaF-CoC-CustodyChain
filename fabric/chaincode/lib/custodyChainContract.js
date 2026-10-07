@@ -9,7 +9,7 @@ const PREFIXO_HISTORICO = 'HIST';
 const PREFIXO_GOVERNANCA = 'GOV';
 const PREFIXO_OPERACAO_ASSINADA = 'SOP';
 const MSP_ADMINISTRADOR = 'Org1MSP';
-const OPERACOES_ASSINADAS_SUPORTADAS = new Set(['LAUDO_EMITIR']);
+const OPERACOES_ASSINADAS_SUPORTADAS = new Set(['PERICIA_RECEBER', 'LACRE_ROMPER', 'LAUDO_EMITIR']);
 
 class CustodyChainContract extends Contract {
 
@@ -694,25 +694,32 @@ class CustodyChainContract extends Contract {
     }
 
     async _validarAutorizacaoOperacaoAssinada(ctx, operacao) {
-        if (operacao.operation !== 'LAUDO_EMITIR') {
-            throw new Error(`Política de autorização não implementada para a operação: ${operacao.operation}`);
-        }
-
         const payload = operacao.payload;
         if (!this._identificadorValido(payload.credentialId)
             || !/^[1-9][0-9]*$/.test(payload.processoId)
             || !/^[1-9][0-9]*$/.test(payload.assetId)
-            || !/^[1-9][0-9]*$/.test(payload.periciaId)
-            || typeof payload.numeroLaudo !== 'string' || !/^LAUDO-[0-9]{4}-[0-9]{6}$/.test(payload.numeroLaudo)
-            || typeof payload.hashLaudo !== 'string' || !/^[a-f0-9]{64}$/.test(payload.hashLaudo)
-            || typeof payload.hashVestigio !== 'string' || !/^[a-f0-9]{64}$/.test(payload.hashVestigio)) {
+            || !/^[1-9][0-9]*$/.test(payload.periciaId)) {
+            throw new Error(`Payload da operação ${operacao.operation} inválido.`);
+        }
+
+        if (operacao.operation === 'LAUDO_EMITIR'
+            && (typeof payload.numeroLaudo !== 'string' || !/^LAUDO-[0-9]{4}-[0-9]{6}$/.test(payload.numeroLaudo)
+                || typeof payload.hashLaudo !== 'string' || !/^[a-f0-9]{64}$/.test(payload.hashLaudo)
+                || typeof payload.hashVestigio !== 'string' || !/^[a-f0-9]{64}$/.test(payload.hashVestigio))) {
             throw new Error('Payload da operação LAUDO_EMITIR inválido.');
+        }
+
+        if (operacao.operation === 'LACRE_ROMPER'
+            && (!/^[1-9][0-9]*$/.test(payload.lacreId)
+                || typeof payload.numeroLacre !== 'string' || !payload.numeroLacre.trim()
+                || typeof payload.justificativa !== 'string' || !payload.justificativa.trim())) {
+            throw new Error('Payload da operação LACRE_ROMPER inválido.');
         }
 
         const chaveCredencial = ctx.stub.createCompositeKey(PREFIXO_CREDENCIAL, [payload.credentialId]);
         const bytes = await ctx.stub.getState(chaveCredencial);
         if (!bytes || bytes.length === 0) {
-            throw new Error('VC de permissão não encontrada para emitir o laudo.');
+            throw new Error('VC de permissão não encontrada para a operação.');
         }
 
         const credencial = JSON.parse(bytes.toString());
@@ -722,7 +729,7 @@ class CustodyChainContract extends Contract {
             || credencial.processoId !== payload.processoId || credencial.assetId !== payload.assetId
             || !Array.isArray(credencial.operacoes) || !credencial.operacoes.includes(operacao.operation)
             || (credencial.expiraEm && Date.parse(credencial.expiraEm) <= Date.parse(this._agora(ctx)))) {
-            throw new Error('VC de permissão não autoriza a emissão deste laudo.');
+            throw new Error(`VC de permissão não autoriza a operação: ${operacao.operation}`);
         }
     }
 

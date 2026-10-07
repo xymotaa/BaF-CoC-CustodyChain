@@ -7,56 +7,35 @@ using CustodyChain.Web.Services.Ledger;
 
 namespace CustodyChain.Web.Tests;
 
-public sealed class RomperLacreUseCaseTests
+public sealed class ReceberPericiaUseCaseTests
 {
     [Fact]
-    public async Task ExecutarAsync_ComProvaConfirmada_PersisteRompimentoAncorado()
+    public async Task ExecutarAsync_ComProvaConfirmada_PersisteRecebimento()
     {
-        var store = new RompimentoLacreStoreFake();
+        var store = new RecebimentoStoreFake();
         var ledger = new LedgerCaptura();
-        var useCase = CriarUseCase(store, ledger);
-        var preparacao = await useCase.PrepararAsync(new RomperLacreCommand(3, 17, " Embalagem aberta para exame "));
+        var useCase = new ReceberPericiaUseCase(store, ledger, new ClockFixo(), new NonceFixo());
+        var preparacao = await useCase.PrepararAsync(new ReceberPericiaCommand(3, 17));
 
-        var resultado = await useCase.ExecutarAsync(new ConcluirRompimentoLacreCommand(
-            3, 17, " Embalagem aberta para exame ", Assinar(preparacao.Operacao)));
+        var resultado = await useCase.ExecutarAsync(new ConcluirRecebimentoPericiaCommand(3, 17, Assinar(preparacao.Operacao)));
 
         Assert.Equal("RE-001", resultado.RotuloEvidencia);
-        Assert.False(resultado.AncoragemPendente);
-        var confirmado = Assert.IsType<RompimentoLacrePendente>(store.RompimentoPersistido);
-        Assert.Equal("Embalagem aberta para exame", confirmado.Justificativa);
-        Assert.Equal(preparacao.Operacao.GetProperty("operationId").GetString(), confirmado.OperacaoAssinadaId);
-        Assert.Equal(confirmado.OperacaoAssinadaId, ledger.OperacaoIdRecebida);
+        Assert.Equal(preparacao.Operacao.GetProperty("operationId").GetString(), store.Confirmado!.OperacaoAssinadaId);
+        Assert.Equal(store.Confirmado.OperacaoAssinadaId, ledger.OperacaoIdRecebida);
     }
 
     [Fact]
     public async Task ExecutarAsync_LedgerIndisponivel_NaoPersiste()
     {
-        var store = new RompimentoLacreStoreFake();
-        var useCase = CriarUseCase(store, new LedgerCaptura { Falhar = true });
-        var preparacao = await useCase.PrepararAsync(new RomperLacreCommand(3, 17, "Justificativa"));
+        var store = new RecebimentoStoreFake();
+        var useCase = new ReceberPericiaUseCase(store, new LedgerCaptura { Falhar = true }, new ClockFixo(), new NonceFixo());
+        var preparacao = await useCase.PrepararAsync(new ReceberPericiaCommand(3, 17));
 
-        await Assert.ThrowsAsync<IndisponibilidadeLedgerRompimentoLacreException>(() => useCase.ExecutarAsync(
-            new ConcluirRompimentoLacreCommand(3, 17, "Justificativa", Assinar(preparacao.Operacao))));
+        await Assert.ThrowsAsync<IndisponibilidadeLedgerRecebimentoPericiaException>(() =>
+            useCase.ExecutarAsync(new ConcluirRecebimentoPericiaCommand(3, 17, Assinar(preparacao.Operacao))));
 
-        Assert.Null(store.RompimentoPersistido);
+        Assert.Null(store.Confirmado);
     }
-
-    [Fact]
-    public async Task PrepararAsync_ComCredencialInvalida_NaoCriaOperacao()
-    {
-        var store = new RompimentoLacreStoreFake { Contexto = CriarContexto() with { CredencialValida = false } };
-        var useCase = CriarUseCase(store, new LedgerCaptura());
-
-        await Assert.ThrowsAsync<CredencialPermissaoInvalidaException>(
-            () => useCase.PrepararAsync(new RomperLacreCommand(3, 17, "Justificativa")));
-    }
-
-    private static RomperLacreUseCase CriarUseCase(RompimentoLacreStoreFake store, IServicoLedger ledger) =>
-        new(store, ledger, new ClockFixo(), new NonceFixo());
-
-    private static ContextoRompimentoLacre CriarContexto() =>
-        new(17, 42, "RE-001", "did:legal:expert:teste-001", true, 10,
-            "urn:uuid:11111111-1111-1111-1111-111111111111", 9, "L-001");
 
     private static JsonElement Assinar(JsonElement operacao)
     {
@@ -65,17 +44,14 @@ public sealed class RomperLacreUseCaseTests
         return JsonSerializer.SerializeToElement(node);
     }
 
-    private sealed class RompimentoLacreStoreFake : IRompimentoLacreStore
+    private sealed class RecebimentoStoreFake : IRecebimentoPericiaStore
     {
-        public ContextoRompimentoLacre? Contexto { get; init; } = CriarContexto();
-        public RompimentoLacrePendente? RompimentoPersistido { get; private set; }
-
-        public Task<ContextoRompimentoLacre?> ObterContextoAsync(
-            long periciaId, long peritoId, DateTime agora, CancellationToken cancellationToken) => Task.FromResult(Contexto);
-
-        public Task PersistirAsync(RompimentoLacrePendente rompimento, CancellationToken cancellationToken)
+        public RecebimentoPericiaConfirmado? Confirmado { get; private set; }
+        public Task<ContextoRecebimentoPericia?> ObterContextoAsync(long periciaId, long peritoId, DateTime agora, CancellationToken cancellationToken) =>
+            Task.FromResult<ContextoRecebimentoPericia?>(new(17, 42, 10, "RE-001", "did:legal:expert:teste-001", "urn:uuid:11111111-1111-1111-1111-111111111111"));
+        public Task PersistirAsync(RecebimentoPericiaConfirmado recebimento, CancellationToken cancellationToken)
         {
-            RompimentoPersistido = rompimento;
+            Confirmado = recebimento;
             return Task.CompletedTask;
         }
     }
@@ -84,14 +60,12 @@ public sealed class RomperLacreUseCaseTests
     {
         public bool Falhar { get; init; }
         public string? OperacaoIdRecebida { get; private set; }
-
         public Task<string> RegistrarOperacaoAssinadaV1Async(OperacaoAssinadaV1Dto dto, CancellationToken cancellationToken = default)
         {
             if (Falhar) throw new InvalidOperationException("Ledger indisponível.");
             OperacaoIdRecebida = dto.Operation.GetProperty("operationId").GetString();
             return Task.FromResult(OperacaoIdRecebida!);
         }
-
         public Task RegistrarDidV2PendenteAsync(RegistroDidPendenteDto dto, CancellationToken cancellationToken = default) => throw new NotSupportedException();
         public Task AtivarDidV2Async(string did, AtivacaoDidV2Dto dto, CancellationToken cancellationToken = default) => throw new NotSupportedException();
         public Task<string> GerarDidAsync(TipoAtor tipo) => throw new NotSupportedException();
