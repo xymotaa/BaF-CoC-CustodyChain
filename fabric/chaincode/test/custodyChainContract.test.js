@@ -341,7 +341,7 @@ test('autoriza recebimento e rompimento somente no escopo da VC pericial', async
     await registrarIdentidadeAtiva(ctx, signerDid, 'did:legal:expert', signer);
     const credential = criarVcPermissao(admin.privateKey, {
         processoId: '10', assetId: '42', operations: [
-            'PERICIA_RECEBER', 'LACRE_ROMPER', 'AMOSTRA_CONSUMIR', 'AMOSTRA_EXAURIR'
+            'PERICIA_RECEBER', 'LACRE_ROMPER', 'AMOSTRA_CONSUMIR', 'AMOSTRA_EXAURIR', 'AMOSTRA_FRACIONAR'
         ]
     }, signerDid);
     await contract.EmitirCredencialPermissaoV2(ctx, JSON.stringify(credential));
@@ -383,6 +383,15 @@ test('autoriza recebimento e rompimento somente no escopo da VC pericial', async
     assert.equal(await contract.RegistrarOperacaoAssinadaV1(ctx, JSON.stringify({
         ...exaurir, signature: assinar(signer.privateKey, exaurir)
     })), exaurir.operationId);
+
+    const fracionar = envelope('urn:uuid:eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee', 'AMOSTRA_FRACIONAR', {
+        credentialId: credential.id, processoId: '10', periciaId: '17', assetId: '42',
+        hashVestigio: 'a'.repeat(64), rotuloEvidenciaResultante: 'RE-002',
+        descricaoResultante: 'Fragmento analisado', quantidadeDescrita: '10 g', justificativa: 'Separação técnica'
+    });
+    assert.equal(await contract.RegistrarOperacaoAssinadaV1(ctx, JSON.stringify({
+        ...fracionar, signature: assinar(signer.privateKey, fracionar)
+    })), fracionar.operationId);
 
     const lacreInvalido = { ...romper, operationId: 'urn:uuid:bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb', payload: { ...romper.payload, lacreId: '0' } };
     await assert.rejects(

@@ -2,7 +2,7 @@ namespace CustodyChain.Web.Application.ProcessamentoPericial;
 
 public interface IFracionamentoAmostraStore
 {
-    Task<ContextoFracionamentoAmostra?> ObterContextoAsync(long periciaId, long peritoId, CancellationToken cancellationToken);
+    Task<ContextoFracionamentoAmostra?> ObterContextoAsync(long periciaId, long peritoId, DateTime agora, CancellationToken cancellationToken);
 
     Task<bool> RotuloEvidenciaExisteAsync(string rotuloEvidencia, CancellationToken cancellationToken);
 
@@ -17,7 +17,8 @@ public sealed record ContextoFracionamentoAmostra(
     long ProcessoId,
     short TipoVestigioId,
     string? HashSha256,
-    string DidPerito);
+    string DidPerito,
+    string CredencialId);
 
 public sealed record FracionamentoAmostraPendente(
     long PericiaId,
@@ -32,7 +33,8 @@ public sealed record FracionamentoAmostraPendente(
     string? QuantidadeDescrita,
     string Justificativa,
     DateTime ExecutadoEm,
-    string PayloadJson,
-    string PayloadHashSha256,
-    string CredencialId,
+    DateTime ConfirmadoEm,
+    string OperacaoAssinadaJson,
+    string OperacaoAssinadaId,
+    string OperacaoAssinadaHashSha256,
     string DidResponsavel);

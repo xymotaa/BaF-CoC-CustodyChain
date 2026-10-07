@@ -11,6 +11,7 @@ public sealed class FracionamentoAmostraStore(CustodyChainDbContext db) : IFraci
     public Task<ContextoFracionamentoAmostra?> ObterContextoAsync(
         long periciaId,
         long peritoId,
+        DateTime agora,
         CancellationToken cancellationToken) =>
         (from pericia in db.Pericias
          join perito in db.Intervenientes on peritoId equals perito.Id
@@ -18,6 +19,8 @@ public sealed class FracionamentoAmostraStore(CustodyChainDbContext db) : IFraci
              && pericia.PeritoId == peritoId
              && pericia.Situacao == SituacaoPericia.EM_EXECUCAO
              && perito.Situacao == SituacaoInterveniente.ATIVO
+             && pericia.Credencial != null && pericia.Credencial.Situacao == SituacaoCredencial.VIGENTE
+             && (pericia.Credencial.ValidaAte == null || pericia.Credencial.ValidaAte > agora)
          select new ContextoFracionamentoAmostra(
              pericia.Id,
              pericia.VestigioId,
@@ -26,7 +29,7 @@ public sealed class FracionamentoAmostraStore(CustodyChainDbContext db) : IFraci
              pericia.Vestigio.ProcessoId,
              pericia.Vestigio.TipoVestigioId,
              pericia.Vestigio.HashSha256,
-             perito.Did))
+             perito.Did, pericia.Credencial!.Identificador))
         .SingleOrDefaultAsync(cancellationToken);
 
     public Task<bool> RotuloEvidenciaExisteAsync(string rotuloEvidencia, CancellationToken cancellationToken) =>
@@ -39,6 +42,7 @@ public sealed class FracionamentoAmostraStore(CustodyChainDbContext db) : IFraci
         {
             var pericia = await db.Pericias
                 .Include(p => p.Vestigio)
+                .Include(p => p.Credencial)
                 .SingleOrDefaultAsync(p => p.Id == fracionamento.PericiaId
                     && p.PeritoId == fracionamento.PeritoId
                     && p.Situacao == SituacaoPericia.EM_EXECUCAO, cancellationToken);
@@ -46,7 +50,7 @@ public sealed class FracionamentoAmostraStore(CustodyChainDbContext db) : IFraci
                 && i.Situacao == SituacaoInterveniente.ATIVO, cancellationToken);
             var rotuloEmUso = await db.Vestigios.AnyAsync(v => v.RotuloEvidencia == fracionamento.RotuloEvidenciaResultante, cancellationToken);
 
-            if (pericia is null || !peritoAtivo || rotuloEmUso)
+            if (pericia is null || !peritoAtivo || !PossuiCredencialValida(pericia, fracionamento.ExecutadoEm) || rotuloEmUso)
                 throw new ConflitoFracionamentoAmostraException(
                     "A perícia, o responsável ou o rótulo do vestígio mudou enquanto o fracionamento era preparado. Atualize a página e tente novamente.");
 
@@ -83,31 +87,24 @@ public sealed class FracionamentoAmostraStore(CustodyChainDbContext db) : IFraci
             db.OperacoesAmostra.Add(operacao);
             await db.SaveChangesAsync(cancellationToken);
 
-            db.Credenciais.Add(new Credencial
-            {
-                Tipo = TipoCredencial.COC,
-                Identificador = fracionamento.CredencialId,
-                TitularId = fracionamento.PeritoId,
-                EmissorId = fracionamento.PeritoId,
-                VestigioId = origem.Id,
-                EmitidaEm = fracionamento.ExecutadoEm,
-                Situacao = SituacaoCredencial.PENDENTE,
-            });
             db.RegistrosLedger.Add(new RegistroLedger
             {
                 EntidadeOrigem = "OPERACAO_AMOSTRA",
                 RegistroOrigemId = operacao.Id,
                 VestigioId = origem.Id,
-                Evento = "FRACIONAMENTO",
-                PayloadJson = fracionamento.PayloadJson,
-                PayloadHashSha256 = fracionamento.PayloadHashSha256,
-                CredencialId = fracionamento.CredencialId,
+                Evento = "AMOSTRA_FRACIONAR",
+                PayloadJson = fracionamento.OperacaoAssinadaJson,
+                PayloadHashSha256 = fracionamento.OperacaoAssinadaHashSha256,
                 DidResponsavel = fracionamento.DidResponsavel,
-                ChaveIdempotencia = fracionamento.CredencialId,
-                Estado = EstadoRegistroLedger.PENDENTE,
-                Tentativas = 0,
+                ChaveIdempotencia = fracionamento.OperacaoAssinadaId,
+                OperacaoAssinadaId = fracionamento.OperacaoAssinadaId,
+                VersaoOperacaoAssinada = 1,
+                OperacaoAssinadaJson = fracionamento.OperacaoAssinadaJson,
+                OperacaoAssinadaHashSha256 = fracionamento.OperacaoAssinadaHashSha256,
+                Estado = EstadoRegistroLedger.ANCORADO,
+                Tentativas = 1,
                 CriadoEm = fracionamento.ExecutadoEm,
-                ProximaTentativaEm = fracionamento.ExecutadoEm,
+                AncoradoEm = fracionamento.ConfirmadoEm,
             });
             db.LogsAuditoria.Add(CriarLogFracionamento(operacao.Id, fracionamento));
 
@@ -121,6 +118,12 @@ public sealed class FracionamentoAmostraStore(CustodyChainDbContext db) : IFraci
                 "Não foi possível concluir o fracionamento porque o vestígio, a credencial ou o evento já existe.");
         }
     }
+
+    private static bool PossuiCredencialValida(Pericia pericia, DateTime agora) =>
+        pericia.Credencial is not null
+        && pericia.Credencial.Situacao == SituacaoCredencial.VIGENTE
+        && pericia.Credencial.VestigioId == pericia.VestigioId
+        && (pericia.Credencial.ValidaAte is null || pericia.Credencial.ValidaAte > agora);
 
     private LogAuditoria CriarLogFracionamento(long operacaoId, FracionamentoAmostraPendente fracionamento)
     {

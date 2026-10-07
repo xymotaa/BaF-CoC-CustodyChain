@@ -248,33 +248,42 @@ public class ProcessamentoPericialController(
         }
     }
 
-    [HttpPost("/processamento-pericial/fracionar")]
+    [HttpPost("/processamento-pericial/{periciaId:long}/fracionar/comando")]
     [ValidateAntiForgeryToken]
-    public async Task<IActionResult> Fracionar(FracionarViewModel modelo, CancellationToken cancellationToken)
+    public async Task<IActionResult> PrepararFracionamento(long periciaId, [FromBody] PrepararFracionamentoRequest? request, CancellationToken cancellationToken)
     {
         if (!TryObterIntervenienteId(out var peritoId))
             return Forbid();
 
         try
         {
-            var resultado = await fracionarAmostra.ExecutarAsync(new FracionarAmostraCommand(
+            var preparacao = await fracionarAmostra.PrepararAsync(new FracionarAmostraCommand(
                 peritoId,
-                modelo.PericiaId,
-                modelo.RotuloEvidenciaResultante,
-                modelo.DescricaoResultante,
-                modelo.QuantidadeDescrita,
-                modelo.Justificativa), cancellationToken);
-            TempData["MensagemSucesso"] =
-                $"Vestígio {resultado.RotuloEvidenciaOrigem} fracionado. Novo item: {resultado.RotuloEvidenciaResultante}. A ancoragem da credencial está pendente.";
+                periciaId, request?.RotuloEvidenciaResultante, request?.DescricaoResultante, request?.QuantidadeDescrita, request?.Justificativa), cancellationToken);
+            return Ok(new { operation = preparacao.Operacao, signerDid = preparacao.DidPerito, walletEndpoint = configuration["AuthenticationDid:WalletEndpoint"] ?? "http://127.0.0.1:43123" });
         }
         catch (Exception exception) when (exception is ValidacaoFracionamentoAmostraException
             or RecursoFracionamentoAmostraNaoEncontradoException
             or ConflitoFracionamentoAmostraException)
         {
-            TempData["MensagemErro"] = exception.Message;
+            return BadRequest(new { message = exception.Message });
         }
+    }
 
-        return RedirectToAction(nameof(Index));
+    [HttpPost("/processamento-pericial/{periciaId:long}/fracionar/prova")]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> ConcluirFracionamento(long periciaId, [FromBody] EnviarOperacaoFracionamentoRequest? request, CancellationToken cancellationToken)
+    {
+        if (!TryObterIntervenienteId(out var peritoId)) return Forbid();
+        if (request is null) return BadRequest(new { message = "Informe a operação assinada pela wallet." });
+        try
+        {
+            var resultado = await fracionarAmostra.ExecutarAsync(new ConcluirFracionamentoAmostraCommand(peritoId, periciaId, request.RotuloEvidenciaResultante, request.DescricaoResultante, request.QuantidadeDescrita, request.Justificativa, request.Operation), cancellationToken);
+            TempData["MensagemSucesso"] = $"Vestígio {resultado.RotuloEvidenciaOrigem} fracionado. Novo item: {resultado.RotuloEvidenciaResultante}. A autorização foi confirmada no ledger.";
+            return Ok(new { redirectUrl = Url.Action(nameof(Index)) });
+        }
+        catch (IndisponibilidadeLedgerFracionamentoAmostraException x) { return StatusCode(503, new { message = x.Message }); }
+        catch (Exception x) when (x is ValidacaoFracionamentoAmostraException or RecursoFracionamentoAmostraNaoEncontradoException or ConflitoFracionamentoAmostraException) { return BadRequest(new { message = x.Message }); }
     }
 
     [HttpPost("/processamento-pericial/unificar")]
@@ -391,4 +400,6 @@ public class ProcessamentoPericialController(
         string? QuantidadeDescrita,
         string? Justificativa,
         JsonElement Operation);
+    public sealed record PrepararFracionamentoRequest(string? RotuloEvidenciaResultante, string? DescricaoResultante, string? QuantidadeDescrita, string? Justificativa);
+    public sealed record EnviarOperacaoFracionamentoRequest(string? RotuloEvidenciaResultante, string? DescricaoResultante, string? QuantidadeDescrita, string? Justificativa, JsonElement Operation);
 }

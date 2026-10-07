@@ -13,3 +13,5 @@ public sealed class ConflitoFracionamentoAmostraException(string message, string
 }
 
 public sealed class AtorFracionamentoAmostraNaoAutorizadoException(string message) : Exception(message);
+
+public sealed class IndisponibilidadeLedgerFracionamentoAmostraException(string message, Exception innerException) : Exception(message, innerException);

@@ -10,7 +10,7 @@ const PREFIXO_GOVERNANCA = 'GOV';
 const PREFIXO_OPERACAO_ASSINADA = 'SOP';
 const MSP_ADMINISTRADOR = 'Org1MSP';
 const OPERACOES_ASSINADAS_SUPORTADAS = new Set([
-    'PERICIA_RECEBER', 'LACRE_ROMPER', 'LAUDO_EMITIR', 'AMOSTRA_CONSUMIR', 'AMOSTRA_EXAURIR'
+    'PERICIA_RECEBER', 'LACRE_ROMPER', 'LAUDO_EMITIR', 'AMOSTRA_CONSUMIR', 'AMOSTRA_EXAURIR', 'AMOSTRA_FRACIONAR'
 ]);
 
 class CustodyChainContract extends Contract {
@@ -722,6 +722,15 @@ class CustodyChainContract extends Contract {
             && ((payload.quantidadeDescrita !== null && typeof payload.quantidadeDescrita !== 'string')
                 || typeof payload.justificativa !== 'string' || !payload.justificativa.trim())) {
             throw new Error(`Payload da operação ${operacao.operation} inválido.`);
+        }
+
+        if (operacao.operation === 'AMOSTRA_FRACIONAR'
+            && ((payload.hashVestigio !== null && !/^[a-f0-9]{64}$/.test(payload.hashVestigio))
+                || typeof payload.rotuloEvidenciaResultante !== 'string' || !payload.rotuloEvidenciaResultante.trim()
+                || typeof payload.descricaoResultante !== 'string' || !payload.descricaoResultante.trim()
+                || (payload.quantidadeDescrita !== null && typeof payload.quantidadeDescrita !== 'string')
+                || typeof payload.justificativa !== 'string' || !payload.justificativa.trim())) {
+            throw new Error('Payload da operação AMOSTRA_FRACIONAR inválido.');
         }
 
         const chaveCredencial = ctx.stub.createCompositeKey(PREFIXO_CREDENCIAL, [payload.credentialId]);
