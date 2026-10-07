@@ -65,6 +65,33 @@ o retry recebe do ledger o mesmo resultado idempotente e conclui a projeção.
 Falha permanente fica em `FALHA` com diagnóstico e exige reprocessamento
 explícito; não se cria uma segunda operação silenciosamente.
 
+## Correção da fatia 3 — confirmação síncrona da autorização
+
+`SignedOperationV1` não será publicada pela outbox quando representar uma
+autorização humana com janela curta. O prazo de até cinco minutos vale para a
+primeira aceitação no gateway/Fabric; a aplicação .NET envia a operação já
+assinada de modo síncrono antes de concluir o laudo e a perícia localmente.
+
+Após receber o mesmo `operationId` do ledger, a transação MySQL grava o laudo,
+a mudança de estado e o envelope inteiro em `RegistroLedger` como `ANCORADO`.
+O worker não republica esse registro: ele permanece evidência local da
+autorização já confirmada. Se Fabric rejeitar ou estiver indisponível, nenhuma
+mudança de domínio é persistida e o usuário deve tentar novamente.
+
+O chaincode verifica a política `LAUDO_EMITIR` somente para uma operação nova:
+DID `PERITO` ativo, chave `capabilityInvocation`, VC não revogada/não expirada,
+titular, processo, vestígio e escopo da operação. Para recuperar o caso em que
+o Fabric confirmou e a transação MySQL falhou, ele procura primeiro o mesmo
+`operationId` e hash canônico; se coincidir, devolve o resultado já confirmado
+mesmo depois da expiração. Outro conteúdo com o mesmo identificador é conflito.
+
+Esta decisão mantém a expiração como proteção contra uma nova aceitação tardia,
+sem tornar o retry de um commit já confirmado impossível. Uma autorização
+confirmada sem conclusão local pode ficar órfã se o navegador for fechado após
+falha do MySQL; ela não produz efeito de domínio no Fabric e uma nova assinatura
+é necessária para reiniciar o fluxo. Uma recuperação durável de rascunhos fica
+fora desta fatia.
+
 ## Política distribuída
 
 As operações periciais exigem DID `PERITO`, VC vigente, escopo do mesmo
@@ -88,7 +115,7 @@ resposta do ledger e o commit local divergirem.
 - [x] Fatia 1 — designação de perícia com VC assinada e escopada;
 - [x] Fatia 2 — `SignedOperationV1`, persistência integral na outbox e vetores
   canônicos compartilhados;
-- [ ] Fatia 3 — tracer de autorização distribuída para `LAUDO_EMITIR`;
+- [ ] Fatia 3 — tracer síncrono de autorização distribuída para `LAUDO_EMITIR`;
 - [ ] Fatia 4 — demais operações periciais;
 - [ ] Fatia 5 — coleta, remessa, recebimento e guarda;
 - [ ] Fatia 6 — destinação final com segregação de funções;
