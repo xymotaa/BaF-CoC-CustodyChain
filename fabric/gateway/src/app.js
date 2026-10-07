@@ -17,7 +17,7 @@ const PORT = process.env.PORT || 3000;
 const SERVICE_TOKEN = process.env.GATEWAY_SERVICE_TOKEN || '';
 const LEGACY_IDENTITY_WRITES_ENABLED = process.env.ENABLE_LEGACY_IDENTITY_WRITES === 'true';
 const SUPPORTED_SIGNED_OPERATIONS = new Set([
-    'PERICIA_RECEBER', 'LACRE_ROMPER', 'LAUDO_EMITIR', 'AMOSTRA_CONSUMIR', 'AMOSTRA_EXAURIR', 'AMOSTRA_FRACIONAR'
+    'PERICIA_RECEBER', 'LACRE_ROMPER', 'LAUDO_EMITIR', 'AMOSTRA_CONSUMIR', 'AMOSTRA_EXAURIR', 'AMOSTRA_FRACIONAR', 'AMOSTRA_UNIFICAR'
 ]);
 const ALLOWED_ORIGINS = (process.env.ALLOWED_ORIGINS || 'http://localhost:5143')
     .split(',')
@@ -150,8 +150,8 @@ function verificarVcPermissao(credential, publicKeyMultibase) {
 function validarVcPermissao(credential) {
     const authorization = credential?.credentialSubject?.authorization;
     const allowedOperations = new Set([
-        'PERICIA_RECEBER', 'LACRE_ROMPER', 'LAUDO_EMITIR', 'AMOSTRA_FRACIONAR',
-        'AMOSTRA_UNIFICAR', 'AMOSTRA_CONSUMIR', 'AMOSTRA_EXAURIR'
+        'PERICIA_RECEBER', 'LACRE_ROMPER', 'LAUDO_EMITIR', 'AMOSTRA_FRACIONAR', 'AMOSTRA_UNIFICAR',
+        'AMOSTRA_CONSUMIR', 'AMOSTRA_EXAURIR'
     ]);
     const invalidAuthorization = authorization !== undefined
         && (!authorization || typeof authorization !== 'object' || Array.isArray(authorization)

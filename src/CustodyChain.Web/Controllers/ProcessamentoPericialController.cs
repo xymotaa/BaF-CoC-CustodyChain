@@ -286,22 +286,39 @@ public class ProcessamentoPericialController(
         catch (Exception x) when (x is ValidacaoFracionamentoAmostraException or RecursoFracionamentoAmostraNaoEncontradoException or ConflitoFracionamentoAmostraException) { return BadRequest(new { message = x.Message }); }
     }
 
-    [HttpPost("/processamento-pericial/unificar")]
+    [HttpPost("/processamento-pericial/{periciaId:long}/unificar/comando")]
     [ValidateAntiForgeryToken]
-    public async Task<IActionResult> Unificar(UnificarViewModel modelo, CancellationToken cancellationToken)
+    public async Task<IActionResult> PrepararUnificacao(long periciaId, [FromBody] PrepararUnificacaoRequest? request, CancellationToken cancellationToken)
     {
         if (!TryObterIntervenienteId(out var peritoId)) return Forbid();
         try
         {
-            var resultado = await unificarAmostras.ExecutarAsync(new UnificarAmostrasCommand(peritoId, modelo.PericiaId,
-                modelo.OutrosVestigiosOrigemIds, modelo.RotuloEvidenciaResultante, modelo.DescricaoResultante,
-                modelo.Justificativa), cancellationToken);
-            TempData["MensagemSucesso"] = $"{resultado.QuantidadeOrigens} vestígios unificados em {resultado.RotuloEvidenciaResultante}. A ancoragem da credencial está pendente.";
+            var preparacao = await unificarAmostras.PrepararAsync(new UnificarAmostrasCommand(peritoId, periciaId,
+                request?.OutrosVestigiosOrigemIds, request?.RotuloEvidenciaResultante, request?.DescricaoResultante,
+                request?.Justificativa), cancellationToken);
+            return Ok(new { operation = preparacao.Operacao, signerDid = preparacao.DidPerito, quantidadeOrigens = preparacao.QuantidadeOrigens, walletEndpoint = configuration["AuthenticationDid:WalletEndpoint"] ?? "http://127.0.0.1:43123" });
         }
         catch (Exception exception) when (exception is ValidacaoUnificacaoAmostrasException
             or RecursoUnificacaoAmostrasNaoEncontradoException or ConflitoUnificacaoAmostrasException)
-        { TempData["MensagemErro"] = exception.Message; }
-        return RedirectToAction(nameof(Index));
+        { return BadRequest(new { message = exception.Message }); }
+    }
+
+    [HttpPost("/processamento-pericial/{periciaId:long}/unificar/prova")]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> ConcluirUnificacao(long periciaId, [FromBody] EnviarOperacaoUnificacaoRequest? request, CancellationToken cancellationToken)
+    {
+        if (!TryObterIntervenienteId(out var peritoId)) return Forbid();
+        if (request is null) return BadRequest(new { message = "Informe a operação assinada pela wallet." });
+        try
+        {
+            var resultado = await unificarAmostras.ExecutarAsync(new ConcluirUnificacaoAmostrasCommand(peritoId, periciaId,
+                request.OutrosVestigiosOrigemIds, request.RotuloEvidenciaResultante, request.DescricaoResultante,
+                request.Justificativa, request.Operation), cancellationToken);
+            TempData["MensagemSucesso"] = $"{resultado.QuantidadeOrigens} vestígios unificados em {resultado.RotuloEvidenciaResultante}. A autorização foi confirmada no ledger.";
+            return Ok(new { redirectUrl = Url.Action(nameof(Index)) });
+        }
+        catch (IndisponibilidadeLedgerUnificacaoAmostrasException exception) { return StatusCode(503, new { message = exception.Message }); }
+        catch (Exception exception) when (exception is ValidacaoUnificacaoAmostrasException or RecursoUnificacaoAmostrasNaoEncontradoException or ConflitoUnificacaoAmostrasException) { return BadRequest(new { message = exception.Message }); }
     }
 
     [HttpPost("/processamento-pericial/{periciaId:long}/consumir-exaurir/comando")]
@@ -402,4 +419,6 @@ public class ProcessamentoPericialController(
         JsonElement Operation);
     public sealed record PrepararFracionamentoRequest(string? RotuloEvidenciaResultante, string? DescricaoResultante, string? QuantidadeDescrita, string? Justificativa);
     public sealed record EnviarOperacaoFracionamentoRequest(string? RotuloEvidenciaResultante, string? DescricaoResultante, string? QuantidadeDescrita, string? Justificativa, JsonElement Operation);
+    public sealed record PrepararUnificacaoRequest(string? OutrosVestigiosOrigemIds, string? RotuloEvidenciaResultante, string? DescricaoResultante, string? Justificativa);
+    public sealed record EnviarOperacaoUnificacaoRequest(string? OutrosVestigiosOrigemIds, string? RotuloEvidenciaResultante, string? DescricaoResultante, string? Justificativa, JsonElement Operation);
 }

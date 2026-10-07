@@ -341,7 +341,7 @@ test('autoriza recebimento e rompimento somente no escopo da VC pericial', async
     await registrarIdentidadeAtiva(ctx, signerDid, 'did:legal:expert', signer);
     const credential = criarVcPermissao(admin.privateKey, {
         processoId: '10', assetId: '42', operations: [
-            'PERICIA_RECEBER', 'LACRE_ROMPER', 'AMOSTRA_CONSUMIR', 'AMOSTRA_EXAURIR', 'AMOSTRA_FRACIONAR'
+            'PERICIA_RECEBER', 'LACRE_ROMPER', 'AMOSTRA_CONSUMIR', 'AMOSTRA_EXAURIR', 'AMOSTRA_FRACIONAR', 'AMOSTRA_UNIFICAR'
         ]
     }, signerDid);
     await contract.EmitirCredencialPermissaoV2(ctx, JSON.stringify(credential));
@@ -393,6 +393,34 @@ test('autoriza recebimento e rompimento somente no escopo da VC pericial', async
         ...fracionar, signature: assinar(signer.privateKey, fracionar)
     })), fracionar.operationId);
 
+    const credentialSecondSource = criarVcPermissao(admin.privateKey, {
+        processoId: '10', assetId: '43', operations: ['AMOSTRA_UNIFICAR']
+    }, signerDid, 'urn:uuid:66666666-6666-6666-6666-666666666666');
+    await contract.EmitirCredencialPermissaoV2(ctx, JSON.stringify(credentialSecondSource));
+    const unificar = envelope('urn:uuid:ffffffff-ffff-ffff-ffff-ffffffffffff', 'AMOSTRA_UNIFICAR', {
+        periciaId: '17',
+        origens: [
+            { credentialId: credential.id, processoId: '10', assetId: '42', hashVestigio: 'a'.repeat(64) },
+            { credentialId: credentialSecondSource.id, processoId: '10', assetId: '43', hashVestigio: 'b'.repeat(64) }
+        ],
+        rotuloEvidenciaResultante: 'RE-003', descricaoResultante: 'Item unificado', justificativa: 'Análise conjunta'
+    });
+    assert.equal(await contract.RegistrarOperacaoAssinadaV1(ctx, JSON.stringify({
+        ...unificar, signature: assinar(signer.privateKey, unificar)
+    })), unificar.operationId);
+
+    const unificarSemVcDaSegundaOrigem = {
+        ...unificar,
+        operationId: 'urn:uuid:12121212-1212-1212-1212-121212121212',
+        payload: { ...unificar.payload, origens: [unificar.payload.origens[0], { ...unificar.payload.origens[1], credentialId: credential.id }] }
+    };
+    await assert.rejects(
+        contract.RegistrarOperacaoAssinadaV1(ctx, JSON.stringify({
+            ...unificarSemVcDaSegundaOrigem, signature: assinar(signer.privateKey, unificarSemVcDaSegundaOrigem)
+        })),
+        /não autoriza/
+    );
+
     const lacreInvalido = { ...romper, operationId: 'urn:uuid:bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb', payload: { ...romper.payload, lacreId: '0' } };
     await assert.rejects(
         contract.RegistrarOperacaoAssinadaV1(ctx, JSON.stringify({
@@ -402,10 +430,10 @@ test('autoriza recebimento e rompimento somente no escopo da VC pericial', async
     );
 });
 
-function criarVcPermissao(privateKey, authorization, subjectDid = 'did:legal:expert:teste-vc') {
+function criarVcPermissao(privateKey, authorization, subjectDid = 'did:legal:expert:teste-vc', credentialId = 'urn:uuid:55555555-5555-5555-5555-555555555555') {
     const credential = {
         '@context': ['https://www.w3.org/2018/credentials/v1'],
-        id: 'urn:uuid:55555555-5555-5555-5555-555555555555',
+        id: credentialId,
         type: ['VerifiableCredential', 'CustodyChainPermissionCredential'],
         issuer: did,
         issuanceDate: '2027-01-15T08:00:00.000Z',
@@ -416,7 +444,7 @@ function criarVcPermissao(privateKey, authorization, subjectDid = 'did:legal:exp
             ...(authorization ? { authorization } : {})
         },
         credentialStatus: {
-            id: 'urn:uuid:55555555-5555-5555-5555-555555555555#status',
+            id: `${credentialId}#status`,
             type: 'CustodyChainLedgerStatusV1'
         }
     };

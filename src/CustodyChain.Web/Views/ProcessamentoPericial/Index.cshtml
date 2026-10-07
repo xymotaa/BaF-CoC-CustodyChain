@@ -125,26 +125,29 @@ else
 
                     <details class="operacao-amostra-detalhes">
                         <summary>Unificar com outro vestígio do mesmo conjunto (RC: @item.RotuloConjunto)</summary>
-                        <form asp-controller="ProcessamentoPericial" asp-action="Unificar" method="post" class="formulario-inline">
+                        <form class="formulario-inline" data-operacao-assinada-form data-pericia-id="@item.PericiaId"
+                              data-preparar-url="/processamento-pericial/@item.PericiaId/unificar/comando"
+                              data-concluir-url="/processamento-pericial/@item.PericiaId/unificar/prova">
                             @Html.AntiForgeryToken()
-                            <input type="hidden" name="PericiaId" value="@item.PericiaId" />
                             <div class="campo campo-inline">
-                                <label class="campo-rotulo">ID do(s) outro(s) vestígio(s) de origem (mesmo RC), separados por vírgula</label>
-                                <input name="OutrosVestigiosOrigemIds" class="campo-entrada mono" placeholder="ex: 6, 7" required />
+                                <label class="campo-rotulo" for="origens-unificacao-@item.PericiaId">ID do(s) outro(s) vestígio(s) de origem (mesmo RC), separados por vírgula</label>
+                                <input id="origens-unificacao-@item.PericiaId" name="OutrosVestigiosOrigemIds" class="campo-entrada mono" placeholder="ex: 6, 7" required />
                             </div>
                             <div class="campo campo-inline">
-                                <label class="campo-rotulo">Rótulo de evidência do item unificado</label>
-                                <input name="RotuloEvidenciaResultante" class="campo-entrada mono" required />
+                                <label class="campo-rotulo" for="rotulo-unificacao-@item.PericiaId">Rótulo de evidência do item unificado</label>
+                                <input id="rotulo-unificacao-@item.PericiaId" name="RotuloEvidenciaResultante" class="campo-entrada mono" required />
                             </div>
                             <div class="campo campo-inline">
-                                <label class="campo-rotulo">Descrição do item unificado</label>
-                                <input name="DescricaoResultante" class="campo-entrada" required />
+                                <label class="campo-rotulo" for="descricao-unificacao-@item.PericiaId">Descrição do item unificado</label>
+                                <input id="descricao-unificacao-@item.PericiaId" name="DescricaoResultante" class="campo-entrada" required />
                             </div>
                             <div class="campo campo-inline">
-                                <label class="campo-rotulo">Justificativa</label>
-                                <input name="Justificativa" class="campo-entrada" required />
+                                <label class="campo-rotulo" for="justificativa-unificacao-@item.PericiaId">Justificativa</label>
+                                <input id="justificativa-unificacao-@item.PericiaId" name="Justificativa" class="campo-entrada" required />
                             </div>
-                            <button type="submit" class="botao botao-secundario">Registrar unificação</button>
+                            <div class="campo campo-inline"><label class="campo-rotulo">Senha da wallet</label><input name="SenhaWallet" type="password" class="campo-entrada" autocomplete="current-password" required /></div>
+                            <div class="campo campo-inline"><label class="campo-rotulo">Código de pareamento</label><input name="CodigoPareamento" type="password" class="campo-entrada" autocomplete="off" required /></div>
+                            <button type="submit" class="botao botao-secundario">Assinar e unificar</button><p class="campo-ajuda" data-operacao-status role="status" aria-atomic="true"></p><div class="alerta alerta-erro" data-operacao-error role="alert" tabindex="-1" hidden></div>
                         </form>
                     </details>
 
@@ -289,6 +292,7 @@ else
                 const justification = form.querySelector('[name="Justificativa"]');
                 const type = form.querySelector('[name="Tipo"]');
                 const quantity = form.querySelector('[name="QuantidadeDescrita"]');
+                const otherSources = form.querySelector('[name="OutrosVestigiosOrigemIds"]');
                 const resultLabel = form.querySelector('[name="RotuloEvidenciaResultante"]');
                 const resultDescription = form.querySelector('[name="DescricaoResultante"]');
                 const status = form.querySelector('[data-operacao-status]');
@@ -316,6 +320,11 @@ else
                     password.required = true;
                     pairing.required = true;
                 }));
+                otherSources?.addEventListener('input', () => {
+                    signedOperation = null;
+                    password.required = true;
+                    pairing.required = true;
+                });
                 form.addEventListener('submit', async (event) => {
                     event.preventDefault();
                     error.hidden = true;
@@ -339,6 +348,7 @@ else
                             ...(justification ? { justificativa: justification.value } : {}),
                             ...(type ? { tipo: type.value } : {}),
                             ...(quantity ? { quantidadeDescrita: quantity.value } : {}),
+                            ...(otherSources ? { outrosVestigiosOrigemIds: otherSources.value } : {}),
                             ...(resultLabel ? { rotuloEvidenciaResultante: resultLabel.value } : {}),
                             ...(resultDescription ? { descricaoResultante: resultDescription.value } : {})
                         };

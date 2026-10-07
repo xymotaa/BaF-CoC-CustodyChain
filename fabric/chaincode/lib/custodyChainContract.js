@@ -10,7 +10,7 @@ const PREFIXO_GOVERNANCA = 'GOV';
 const PREFIXO_OPERACAO_ASSINADA = 'SOP';
 const MSP_ADMINISTRADOR = 'Org1MSP';
 const OPERACOES_ASSINADAS_SUPORTADAS = new Set([
-    'PERICIA_RECEBER', 'LACRE_ROMPER', 'LAUDO_EMITIR', 'AMOSTRA_CONSUMIR', 'AMOSTRA_EXAURIR', 'AMOSTRA_FRACIONAR'
+    'PERICIA_RECEBER', 'LACRE_ROMPER', 'LAUDO_EMITIR', 'AMOSTRA_CONSUMIR', 'AMOSTRA_EXAURIR', 'AMOSTRA_FRACIONAR', 'AMOSTRA_UNIFICAR'
 ]);
 
 class CustodyChainContract extends Contract {
@@ -697,6 +697,11 @@ class CustodyChainContract extends Contract {
 
     async _validarAutorizacaoOperacaoAssinada(ctx, operacao) {
         const payload = operacao.payload;
+        if (operacao.operation === 'AMOSTRA_UNIFICAR') {
+            await this._validarAutorizacaoUnificacao(ctx, operacao);
+            return;
+        }
+
         if (!this._identificadorValido(payload.credentialId)
             || !/^[1-9][0-9]*$/.test(payload.processoId)
             || !/^[1-9][0-9]*$/.test(payload.assetId)
@@ -744,6 +749,55 @@ class CustodyChainContract extends Contract {
             || credencial.status !== 'ATIVA' || credencial.revogada
             || credencial.did !== operacao.signerDid || credencial.perfil !== 'PERITO'
             || credencial.processoId !== payload.processoId || credencial.assetId !== payload.assetId
+            || !Array.isArray(credencial.operacoes) || !credencial.operacoes.includes(operacao.operation)
+            || (credencial.expiraEm && Date.parse(credencial.expiraEm) <= Date.parse(this._agora(ctx)))) {
+            throw new Error(`VC de permissão não autoriza a operação: ${operacao.operation}`);
+        }
+    }
+
+    async _validarAutorizacaoUnificacao(ctx, operacao) {
+        const payload = operacao.payload;
+        if (!/^[1-9][0-9]*$/.test(payload.periciaId)
+            || !Array.isArray(payload.origens) || payload.origens.length < 2 || payload.origens.length > 100
+            || typeof payload.rotuloEvidenciaResultante !== 'string' || !payload.rotuloEvidenciaResultante.trim()
+            || typeof payload.descricaoResultante !== 'string' || !payload.descricaoResultante.trim()
+            || typeof payload.justificativa !== 'string' || !payload.justificativa.trim()) {
+            throw new Error('Payload da operação AMOSTRA_UNIFICAR inválido.');
+        }
+
+        const assetIds = new Set();
+        const processoIds = new Set();
+        for (const origem of payload.origens) {
+            if (!origem || typeof origem !== 'object' || Array.isArray(origem)
+                || !this._identificadorValido(origem.credentialId)
+                || !/^[1-9][0-9]*$/.test(origem.processoId)
+                || !/^[1-9][0-9]*$/.test(origem.assetId)
+                || (origem.hashVestigio !== null && !/^[a-f0-9]{64}$/.test(origem.hashVestigio))
+                || assetIds.has(origem.assetId)) {
+                throw new Error('Origem da operação AMOSTRA_UNIFICAR inválida.');
+            }
+            assetIds.add(origem.assetId);
+            processoIds.add(origem.processoId);
+            await this._validarCredencialDaOperacao(ctx, operacao, origem);
+        }
+
+        if (processoIds.size !== 1) {
+            throw new Error('As origens da operação AMOSTRA_UNIFICAR pertencem a processos diferentes.');
+        }
+    }
+
+    async _validarCredencialDaOperacao(ctx, operacao, escopo) {
+        const chaveCredencial = ctx.stub.createCompositeKey(PREFIXO_CREDENCIAL, [escopo.credentialId]);
+        const bytes = await ctx.stub.getState(chaveCredencial);
+        if (!bytes || bytes.length === 0) {
+            throw new Error('VC de permissão não encontrada para a operação.');
+        }
+
+        const credencial = JSON.parse(bytes.toString());
+        if (credencial.tipo !== 'PERMISSAO' || credencial.formato !== 'VC_V1'
+            || credencial.status !== 'ATIVA' || credencial.revogada
+            || credencial.did !== operacao.signerDid || credencial.perfil !== 'PERITO'
+            || credencial.processoId !== escopo.processoId || credencial.assetId !== escopo.assetId
             || !Array.isArray(credencial.operacoes) || !credencial.operacoes.includes(operacao.operation)
             || (credencial.expiraEm && Date.parse(credencial.expiraEm) <= Date.parse(this._agora(ctx)))) {
             throw new Error(`VC de permissão não autoriza a operação: ${operacao.operation}`);

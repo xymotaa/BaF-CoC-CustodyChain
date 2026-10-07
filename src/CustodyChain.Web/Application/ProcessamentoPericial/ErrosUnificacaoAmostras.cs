@@ -10,3 +10,5 @@ public sealed class ConflitoUnificacaoAmostrasException(string message, string? 
     public string? Campo { get; } = campo;
 }
 public sealed class AtorUnificacaoAmostrasNaoAutorizadoException(string message) : Exception(message);
+public sealed class IndisponibilidadeLedgerUnificacaoAmostrasException(string message, Exception innerException)
+    : Exception(message, innerException);
