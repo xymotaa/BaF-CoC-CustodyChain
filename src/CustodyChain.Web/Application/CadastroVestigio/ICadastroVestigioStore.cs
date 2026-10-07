@@ -6,11 +6,11 @@ public interface ICadastroVestigioStore
     Task<bool> NumeroLacreExisteAsync(string numeroLacre, CancellationToken cancellationToken);
     Task<ProcessoCadastroVestigio?> ObterProcessoAtivoAsync(long processoId, CancellationToken cancellationToken);
     Task<bool> TipoVestigioExisteAsync(short tipoVestigioId, CancellationToken cancellationToken);
-    Task<AtorCadastroVestigio?> ObterAtorAtivoAsync(long intervenienteId, CancellationToken cancellationToken);
+    Task<AtorCadastroVestigio?> ObterAtorAtivoAsync(long intervenienteId, long processoId, DateTime agora, CancellationToken cancellationToken);
     Task<long> PersistirAsync(CadastroVestigioPendente cadastro, CancellationToken cancellationToken);
 }
 
-public sealed record AtorCadastroVestigio(long Id, string Did);
+public sealed record AtorCadastroVestigio(long Id, string Did, string CredencialId);
 public sealed record ProcessoCadastroVestigio(long Id, string Numero);
 
 public sealed record CadastroVestigioPendente(
@@ -28,7 +28,8 @@ public sealed record CadastroVestigioPendente(
     string? DescricaoIntercorrencia,
     string NumeroLacre,
     DateTime CriadoEm,
-    string PayloadJson,
-    string PayloadHashSha256,
-    string CredencialId,
+    DateTime ConfirmadoEm,
+    string OperacaoAssinadaJson,
+    string OperacaoAssinadaId,
+    string OperacaoAssinadaHashSha256,
     string DidResponsavel);

@@ -1,4 +1,5 @@
 using System.Security.Claims;
+using System.Text.Json;
 using CustodyChain.Web.Application.CadastroVestigio;
 using CustodyChain.Web.Models.ViewModels;
 using CustodyChain.Web.Security;
@@ -10,7 +11,8 @@ namespace CustodyChain.Web.Controllers;
 [Authorize(Policy = PoliticasAutorizacao.CadastrarVestigio)]
 public class VestigiosController(
     ICadastrarVestigio cadastrarVestigio,
-    ICadastroVestigioOpcoesQuery opcoesQuery) : Controller
+    ICadastroVestigioOpcoesQuery opcoesQuery,
+    IConfiguration configuration) : Controller
 {
     [HttpGet("/vestigios/cadastrar")]
     public async Task<IActionResult> Cadastrar(CancellationToken cancellationToken)
@@ -20,77 +22,106 @@ public class VestigiosController(
         return View(modelo);
     }
 
-    [HttpPost("/vestigios/cadastrar")]
+    [HttpPost("/vestigios/cadastrar/comando")]
     [ValidateAntiForgeryToken]
-    public async Task<IActionResult> Cadastrar(CadastroVestigioViewModel modelo, CancellationToken cancellationToken)
+    public async Task<IActionResult> PrepararCadastro(
+        [FromBody] CadastroVestigioViewModel? modelo,
+        CancellationToken cancellationToken)
     {
-        if (!ModelState.IsValid)
-        {
-            await CarregarOpcoesAsync(modelo, cancellationToken);
-            return View(modelo);
-        }
-
-        if (!long.TryParse(User.FindFirstValue(ClaimTypes.NameIdentifier), out var criadorId))
-        {
+        if (modelo is null || !TryObterCriador(out var criadorId))
             return Forbid();
-        }
 
         try
         {
-            var resultado = await cadastrarVestigio.ExecutarAsync(
-                new CadastrarVestigioCommand(
-                    criadorId,
-                    modelo.RotuloEvidencia!,
-                    modelo.RotuloConjunto!,
-                    modelo.NumeroEvidencia,
-                    modelo.ProcessoId!.Value,
-                    modelo.TipoVestigioId!.Value,
-                    modelo.Descricao!,
-                    modelo.LocalColeta,
-                    modelo.DataHoraColeta!.Value,
-                    modelo.MetodoColeta,
-                    modelo.NumeroLacre!,
-                    modelo.HouveIntercorrencia,
-                    modelo.DescricaoIntercorrencia),
-                cancellationToken);
+            var preparacao = await cadastrarVestigio.PrepararAsync(
+                CriarCommand(criadorId, modelo), cancellationToken);
 
-            TempData["MensagemSucesso"] = $"Vestígio {resultado.RotuloEvidencia} cadastrado. A ancoragem da credencial está pendente.";
-            return RedirectToAction(nameof(Cadastrar));
-        }
-        catch (ValidacaoCadastroVestigioException exception)
-        {
-            AdicionarErro(exception.Campo, exception.Message);
-        }
-        catch (ConflitoCadastroVestigioException exception)
-        {
-            AdicionarErro(exception.Campo, exception.Message);
-        }
-        catch (RecursoCadastroVestigioNaoEncontradoException exception)
-        {
-            ModelState.AddModelError(string.Empty, exception.Message);
+            return Ok(new
+            {
+                operation = preparacao.Operacao,
+                signerDid = preparacao.DidColetor,
+                walletEndpoint = configuration["AuthenticationDid:WalletEndpoint"] ?? "http://127.0.0.1:43123"
+            });
         }
         catch (AtorCadastroVestigioNaoAutorizadoException)
         {
             return Forbid();
         }
-
-        await CarregarOpcoesAsync(modelo, cancellationToken);
-        return View(modelo);
+        catch (Exception exception) when (exception is ValidacaoCadastroVestigioException
+                                          or ConflitoCadastroVestigioException
+                                          or RecursoCadastroVestigioNaoEncontradoException)
+        {
+            return BadRequest(new { message = exception.Message });
+        }
     }
+
+    [HttpPost("/vestigios/cadastrar/prova")]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> ConcluirCadastro(
+        [FromBody] CadastroVestigioComProvaRequest? requisicao,
+        CancellationToken cancellationToken)
+    {
+        if (requisicao is null || !TryObterCriador(out var criadorId))
+            return Forbid();
+
+        try
+        {
+            var resultado = await cadastrarVestigio.ExecutarAsync(
+                new ConcluirCadastroVestigioCommand(
+                    CriarCommand(criadorId, requisicao.Cadastro),
+                    requisicao.Operation),
+                cancellationToken);
+
+            TempData["MensagemSucesso"] =
+                $"Vestígio {resultado.RotuloEvidencia} cadastrado e confirmado no ledger.";
+            return Ok(new { redirectUrl = Url.Action(nameof(Cadastrar)) });
+        }
+        catch (AtorCadastroVestigioNaoAutorizadoException)
+        {
+            return Forbid();
+        }
+        catch (IndisponibilidadeLedgerCadastroVestigioException exception)
+        {
+            return StatusCode(503, new { message = exception.Message });
+        }
+        catch (Exception exception) when (exception is ValidacaoCadastroVestigioException
+                                          or ConflitoCadastroVestigioException
+                                          or RecursoCadastroVestigioNaoEncontradoException)
+        {
+            return BadRequest(new { message = exception.Message });
+        }
+    }
+
+    private bool TryObterCriador(out long criadorId) =>
+        long.TryParse(User.FindFirstValue(ClaimTypes.NameIdentifier), out criadorId);
+
+    private static CadastrarVestigioCommand CriarCommand(long criadorId, CadastroVestigioViewModel modelo) =>
+        new(
+            criadorId,
+            modelo.RotuloEvidencia ?? string.Empty,
+            modelo.RotuloConjunto ?? string.Empty,
+            modelo.NumeroEvidencia,
+            modelo.ProcessoId ?? 0,
+            modelo.TipoVestigioId ?? 0,
+            modelo.Descricao ?? string.Empty,
+            modelo.LocalColeta,
+            modelo.DataHoraColeta ?? default,
+            modelo.MetodoColeta,
+            modelo.NumeroLacre ?? string.Empty,
+            modelo.HouveIntercorrencia,
+            modelo.DescricaoIntercorrencia);
 
     private async Task CarregarOpcoesAsync(CadastroVestigioViewModel modelo, CancellationToken cancellationToken)
     {
         var processos = await opcoesQuery.ListarProcessosAtivosAsync(cancellationToken);
         var tipos = await opcoesQuery.ListarTiposAsync(cancellationToken);
-
         modelo.ProcessosDisponiveis = processos
-            .Select(p => new OpcaoProcessoViewModel(p.Id, p.Numero, p.NomeOperacao))
-            .ToList();
+            .Select(p => new OpcaoProcessoViewModel(p.Id, p.Numero, p.NomeOperacao)).ToList();
         modelo.TiposDisponiveis = tipos
-            .Select(t => new OpcaoTipoVestigioViewModel(t.Id, t.Descricao, t.Categoria))
-            .ToList();
+            .Select(t => new OpcaoTipoVestigioViewModel(t.Id, t.Descricao, t.Categoria)).ToList();
     }
-
-    private void AdicionarErro(string? campo, string mensagem) =>
-        ModelState.AddModelError(campo ?? string.Empty, mensagem);
 }
+
+public sealed record CadastroVestigioComProvaRequest(
+    CadastroVestigioViewModel Cadastro,
+    JsonElement Operation);

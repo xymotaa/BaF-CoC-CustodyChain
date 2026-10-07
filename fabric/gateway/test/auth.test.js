@@ -96,6 +96,20 @@ test('recusa escopo de VC com operação fora da política', () => {
     assert.throws(() => validarVcPermissao(credential), /Envelope/);
 });
 
+test('aceita VC de coleta sem ativo antes da criação do vestígio', () => {
+    const issuer = 'did:legal:admin:teste-vc';
+    assert.doesNotThrow(() => validarVcPermissao({
+        id: 'urn:uuid:22222222-2222-2222-2222-222222222222',
+        type: ['VerifiableCredential', 'CustodyChainPermissionCredential'],
+        issuer,
+        credentialSubject: {
+            id: 'did:legal:delegate:teste-coleta', perfil: 'COLETOR',
+            authorization: { processoId: '10', operations: ['COLETA_REGISTRAR'] }
+        },
+        proof: { verificationMethod: `${issuer}#auth-1` }
+    }));
+});
+
 test('valida vetor canônico da operação assinada', () => {
     const fs = require('node:fs');
     const path = require('node:path');

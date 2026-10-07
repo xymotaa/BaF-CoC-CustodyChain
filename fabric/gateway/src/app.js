@@ -17,7 +17,7 @@ const PORT = process.env.PORT || 3000;
 const SERVICE_TOKEN = process.env.GATEWAY_SERVICE_TOKEN || '';
 const LEGACY_IDENTITY_WRITES_ENABLED = process.env.ENABLE_LEGACY_IDENTITY_WRITES === 'true';
 const SUPPORTED_SIGNED_OPERATIONS = new Set([
-    'PERICIA_RECEBER', 'LACRE_ROMPER', 'LAUDO_EMITIR', 'AMOSTRA_CONSUMIR', 'AMOSTRA_EXAURIR', 'AMOSTRA_FRACIONAR', 'AMOSTRA_UNIFICAR'
+    'COLETA_REGISTRAR', 'PERICIA_RECEBER', 'LACRE_ROMPER', 'LAUDO_EMITIR', 'AMOSTRA_CONSUMIR', 'AMOSTRA_EXAURIR', 'AMOSTRA_FRACIONAR', 'AMOSTRA_UNIFICAR'
 ]);
 const ALLOWED_ORIGINS = (process.env.ALLOWED_ORIGINS || 'http://localhost:5143')
     .split(',')
@@ -157,7 +157,7 @@ function validarVcPermissao(credential) {
     const invalidAuthorization = authorization !== undefined
         && (!authorization || typeof authorization !== 'object' || Array.isArray(authorization)
             || !/^[1-9][0-9]*$/.test(authorization.processoId)
-            || !/^[1-9][0-9]*$/.test(authorization.assetId)
+            || (authorization.assetId !== undefined && !/^[1-9][0-9]*$/.test(authorization.assetId))
             || !Array.isArray(authorization.operations) || authorization.operations.length === 0
             || new Set(authorization.operations).size !== authorization.operations.length
             || authorization.operations.some((operation) => !allowedOperations.has(operation)));

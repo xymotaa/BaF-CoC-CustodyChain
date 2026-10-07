@@ -23,11 +23,25 @@ public sealed class CadastroVestigioStore(CustodyChainDbContext db) : ICadastroV
     public Task<bool> TipoVestigioExisteAsync(short tipoVestigioId, CancellationToken cancellationToken) =>
         db.TiposVestigio.AnyAsync(t => t.Id == tipoVestigioId, cancellationToken);
 
-    public Task<AtorCadastroVestigio?> ObterAtorAtivoAsync(long intervenienteId, CancellationToken cancellationToken) =>
-        db.Intervenientes
-            .Where(i => i.Id == intervenienteId && i.Situacao == SituacaoInterveniente.ATIVO)
-            .Select(i => new AtorCadastroVestigio(i.Id, i.Did))
-            .SingleOrDefaultAsync(cancellationToken);
+    public Task<AtorCadastroVestigio?> ObterAtorAtivoAsync(
+        long intervenienteId,
+        long processoId,
+        DateTime agora,
+        CancellationToken cancellationToken) =>
+        (from interveniente in db.Intervenientes
+         join perfil in db.Perfis on interveniente.PerfilId equals perfil.Id
+         join credencial in db.Credenciais on interveniente.Id equals credencial.TitularId
+         where interveniente.Id == intervenienteId
+               && interveniente.Situacao == SituacaoInterveniente.ATIVO
+               && perfil.Codigo == "COLETOR"
+               && credencial.Tipo == TipoCredencial.PERMISSAO
+               && credencial.ProcessoId == processoId
+               && credencial.VestigioId == null
+               && credencial.Situacao == SituacaoCredencial.VIGENTE
+               && (credencial.ValidaAte == null || credencial.ValidaAte > agora)
+         orderby credencial.EmitidaEm descending
+         select new AtorCadastroVestigio(interveniente.Id, interveniente.Did, credencial.Identificador))
+        .FirstOrDefaultAsync(cancellationToken);
 
     public async Task<long> PersistirAsync(CadastroVestigioPendente cadastro, CancellationToken cancellationToken)
     {
@@ -50,7 +64,7 @@ public sealed class CadastroVestigioStore(CustodyChainDbContext db) : ICadastroV
                 MetodoColeta = cadastro.MetodoColeta,
                 HouveIntercorrencia = cadastro.HouveIntercorrencia,
                 DescricaoIntercorrencia = cadastro.DescricaoIntercorrencia,
-                HashSha256 = cadastro.PayloadHashSha256,
+                HashSha256 = cadastro.OperacaoAssinadaHashSha256,
                 EtapaAtual = 4,
                 FaseAtual = FaseVestigio.EXTERNA,
                 Estado = EstadoVestigio.Coletado,
@@ -69,33 +83,24 @@ public sealed class CadastroVestigioStore(CustodyChainDbContext db) : ICadastroV
                 AplicadoEm = cadastro.CriadoEm,
             });
 
-            db.Credenciais.Add(new Credencial
-            {
-                Tipo = TipoCredencial.COC,
-                Identificador = cadastro.CredencialId,
-                TitularId = cadastro.CriadorId,
-                EmissorId = cadastro.CriadorId,
-                ProcessoId = cadastro.ProcessoId,
-                VestigioId = vestigio.Id,
-                EmitidaEm = cadastro.CriadoEm,
-                Situacao = SituacaoCredencial.PENDENTE,
-            });
-
             db.RegistrosLedger.Add(new RegistroLedger
             {
                 EntidadeOrigem = "VESTIGIO",
                 RegistroOrigemId = vestigio.Id,
                 VestigioId = vestigio.Id,
-                Evento = "COLETA",
-                PayloadJson = cadastro.PayloadJson,
-                PayloadHashSha256 = cadastro.PayloadHashSha256,
-                CredencialId = cadastro.CredencialId,
+                Evento = "COLETA_REGISTRAR",
+                PayloadJson = cadastro.OperacaoAssinadaJson,
+                PayloadHashSha256 = cadastro.OperacaoAssinadaHashSha256,
                 DidResponsavel = cadastro.DidResponsavel,
-                ChaveIdempotencia = cadastro.CredencialId,
-                Estado = EstadoRegistroLedger.PENDENTE,
-                Tentativas = 0,
+                ChaveIdempotencia = cadastro.OperacaoAssinadaId,
+                OperacaoAssinadaId = cadastro.OperacaoAssinadaId,
+                VersaoOperacaoAssinada = 1,
+                OperacaoAssinadaJson = cadastro.OperacaoAssinadaJson,
+                OperacaoAssinadaHashSha256 = cadastro.OperacaoAssinadaHashSha256,
+                Estado = EstadoRegistroLedger.ANCORADO,
+                Tentativas = 1,
                 CriadoEm = cadastro.CriadoEm,
-                ProximaTentativaEm = cadastro.CriadoEm,
+                AncoradoEm = cadastro.ConfirmadoEm,
             });
 
             db.LogsAuditoria.Add(CriarLogCadastro(vestigio.Id, cadastro));

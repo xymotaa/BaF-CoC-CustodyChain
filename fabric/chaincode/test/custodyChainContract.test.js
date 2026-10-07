@@ -208,6 +208,42 @@ test('emite VC de coleta por processo e recusa ativo nesse escopo', async () => 
     );
 });
 
+test('registra coleta somente com VC do coletor no escopo do processo', async () => {
+    const contract = new CustodyChainContract();
+    const ctx = contexto('Org1MSP');
+    const admin = gerarIdentidade(did, keyId);
+    await contract.BootstrapAdminDid(ctx, did, keyId, admin.publicKeyMultibase);
+    const coletorDid = 'did:legal:delegate:teste-operacao-coleta';
+    const coletor = gerarIdentidade(coletorDid, `${coletorDid}#key-1`);
+    await registrarIdentidadeAtiva(ctx, coletorDid, 'did:legal:delegate', coletor);
+    const credential = criarVcPermissao(admin.privateKey, {
+        processoId: '10', operations: ['COLETA_REGISTRAR']
+    }, coletorDid, 'urn:uuid:cccccccc-1111-1111-1111-111111111111', 'COLETOR');
+    await contract.EmitirCredencialPermissaoV2(ctx, JSON.stringify(credential));
+
+    const operation = {
+        type: 'CustodyChainSignedOperation', version: 1,
+        operationId: 'urn:uuid:cccccccc-2222-2222-2222-222222222222', operation: 'COLETA_REGISTRAR',
+        payload: {
+            credentialId: credential.id, processoId: '10', rotuloEvidencia: 'RE-001', rotuloConjunto: 'RC-001',
+            numeroEvidencia: null, tipoVestigioId: '1', descricao: 'Vestígio de teste', localColeta: 'Local A',
+            dataHoraColeta: '2027-01-15T07:00:00.000Z', metodoColeta: 'Manual', numeroLacre: 'L-001',
+            houveIntercorrencia: false, descricaoIntercorrencia: null
+        },
+        signerDid: coletorDid, keyId: coletor.keyId, algorithm: 'Ed25519',
+        canonicalization: 'custodychain-json-c14n-v1', audience: 'custodychain-ledger',
+        timestamp: '2027-01-15T08:00:00.000Z', expiresAt: '2027-01-15T08:05:00.000Z', nonce: '0123456789abcdefghijkl'
+    };
+    assert.equal(await contract.RegistrarOperacaoAssinadaV1(ctx, JSON.stringify({
+        ...operation, signature: assinar(coletor.privateKey, operation)
+    })), operation.operationId);
+
+    const foraDoEscopo = { ...operation, operationId: 'urn:uuid:cccccccc-3333-3333-3333-333333333333', payload: { ...operation.payload, processoId: '11' } };
+    await assert.rejects(contract.RegistrarOperacaoAssinadaV1(ctx, JSON.stringify({
+        ...foraDoEscopo, signature: assinar(coletor.privateKey, foraDoEscopo)
+    })), /não autoriza/);
+});
+
 test('recusa VC de permissão com prova modificada ou chave sem assertionMethod', async () => {
     const contract = new CustodyChainContract();
     const ctx = contexto('Org1MSP');

@@ -10,7 +10,7 @@ const PREFIXO_GOVERNANCA = 'GOV';
 const PREFIXO_OPERACAO_ASSINADA = 'SOP';
 const MSP_ADMINISTRADOR = 'Org1MSP';
 const OPERACOES_ASSINADAS_SUPORTADAS = new Set([
-    'PERICIA_RECEBER', 'LACRE_ROMPER', 'LAUDO_EMITIR', 'AMOSTRA_CONSUMIR', 'AMOSTRA_EXAURIR', 'AMOSTRA_FRACIONAR', 'AMOSTRA_UNIFICAR'
+    'COLETA_REGISTRAR', 'PERICIA_RECEBER', 'LACRE_ROMPER', 'LAUDO_EMITIR', 'AMOSTRA_CONSUMIR', 'AMOSTRA_EXAURIR', 'AMOSTRA_FRACIONAR', 'AMOSTRA_UNIFICAR'
 ]);
 
 class CustodyChainContract extends Contract {
@@ -693,6 +693,11 @@ class CustodyChainContract extends Contract {
 
     async _validarAutorizacaoOperacaoAssinada(ctx, operacao) {
         const payload = operacao.payload;
+        if (operacao.operation === 'COLETA_REGISTRAR') {
+            await this._validarAutorizacaoColeta(ctx, operacao);
+            return;
+        }
+
         if (operacao.operation === 'AMOSTRA_UNIFICAR') {
             await this._validarAutorizacaoUnificacao(ctx, operacao);
             return;
@@ -748,6 +753,45 @@ class CustodyChainContract extends Contract {
             || !Array.isArray(credencial.operacoes) || !credencial.operacoes.includes(operacao.operation)
             || (credencial.expiraEm && Date.parse(credencial.expiraEm) <= Date.parse(this._agora(ctx)))) {
             throw new Error(`VC de permissão não autoriza a operação: ${operacao.operation}`);
+        }
+    }
+
+    async _validarAutorizacaoColeta(ctx, operacao) {
+        const payload = operacao.payload;
+        const textoObrigatorio = (valor) => typeof valor === 'string' && valor.trim();
+        const textoOpcional = (valor) => valor === null || typeof valor === 'string';
+        if (!this._identificadorValido(payload.credentialId)
+            || !/^[1-9][0-9]*$/.test(payload.processoId)
+            || !/^[1-9][0-9]*$/.test(payload.tipoVestigioId)
+            || !textoObrigatorio(payload.rotuloEvidencia)
+            || !textoObrigatorio(payload.rotuloConjunto)
+            || !textoObrigatorio(payload.descricao)
+            || !textoObrigatorio(payload.numeroLacre)
+            || !Number.isFinite(Date.parse(payload.dataHoraColeta))
+            || !textoOpcional(payload.numeroEvidencia)
+            || !textoOpcional(payload.localColeta)
+            || !textoOpcional(payload.metodoColeta)
+            || typeof payload.houveIntercorrencia !== 'boolean'
+            || !textoOpcional(payload.descricaoIntercorrencia)
+            || (payload.houveIntercorrencia && !textoObrigatorio(payload.descricaoIntercorrencia))
+            || (!payload.houveIntercorrencia && payload.descricaoIntercorrencia !== null)) {
+            throw new Error('Payload da operação COLETA_REGISTRAR inválido.');
+        }
+
+        const chaveCredencial = ctx.stub.createCompositeKey(PREFIXO_CREDENCIAL, [payload.credentialId]);
+        const bytes = await ctx.stub.getState(chaveCredencial);
+        if (!bytes || bytes.length === 0) {
+            throw new Error('VC de permissão não encontrada para a operação.');
+        }
+
+        const credencial = JSON.parse(bytes.toString());
+        if (credencial.tipo !== 'PERMISSAO' || credencial.formato !== 'VC_V1'
+            || credencial.status !== 'ATIVA' || credencial.revogada
+            || credencial.did !== operacao.signerDid || credencial.perfil !== 'COLETOR'
+            || credencial.processoId !== payload.processoId || credencial.assetId !== null
+            || !Array.isArray(credencial.operacoes) || !credencial.operacoes.includes('COLETA_REGISTRAR')
+            || (credencial.expiraEm && Date.parse(credencial.expiraEm) <= Date.parse(this._agora(ctx)))) {
+            throw new Error('VC de permissão não autoriza a operação: COLETA_REGISTRAR');
         }
     }
 

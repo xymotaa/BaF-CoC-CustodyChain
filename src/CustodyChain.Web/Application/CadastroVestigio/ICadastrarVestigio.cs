@@ -1,10 +1,13 @@
 namespace CustodyChain.Web.Application.CadastroVestigio;
 
+using System.Text.Json;
+
 public interface ICadastrarVestigio
 {
-    Task<ResultadoCadastroVestigio> ExecutarAsync(
+    Task<PreparacaoCadastroVestigio> PrepararAsync(
         CadastrarVestigioCommand command,
         CancellationToken cancellationToken = default);
+    Task<ResultadoCadastroVestigio> ExecutarAsync(ConcluirCadastroVestigioCommand command, CancellationToken cancellationToken = default);
 }
 
 public sealed record CadastrarVestigioCommand(
@@ -21,6 +24,9 @@ public sealed record CadastrarVestigioCommand(
     string NumeroLacre,
     bool HouveIntercorrencia,
     string? DescricaoIntercorrencia);
+
+public sealed record ConcluirCadastroVestigioCommand(CadastrarVestigioCommand Cadastro, JsonElement OperacaoAssinada);
+public sealed record PreparacaoCadastroVestigio(JsonElement Operacao, string DidColetor);
 
 public sealed record ResultadoCadastroVestigio(
     long VestigioId,

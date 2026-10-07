@@ -13,3 +13,4 @@ public sealed class ConflitoCadastroVestigioException(string message, string? ca
 public sealed class RecursoCadastroVestigioNaoEncontradoException(string message) : Exception(message);
 
 public sealed class AtorCadastroVestigioNaoAutorizadoException(string message) : Exception(message);
+public sealed class IndisponibilidadeLedgerCadastroVestigioException(string message, Exception innerException) : Exception(message, innerException);
