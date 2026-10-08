@@ -28,8 +28,8 @@
 {
     <div class="painel-vazio">
         <span class="painel-vazio-icone"><svg width="28" height="28"><use href="#icone-movimentacao" /></svg></span>
-        <p>Nenhum vestígio sob sua custódia no estado Coletado.</p>
-        <p class="campo-ajuda">Cadastre um vestígio primeiro, ou aguarde receber a custódia de outro item.</p>
+        <p>Nenhum vestígio disponível para remessa.</p>
+        <p class="campo-ajuda">A primeira remessa exige coleta confirmada; as seguintes exigem custódia recebida e VC vigente.</p>
     </div>
 }
 else
@@ -78,8 +78,8 @@ else
         </section>
 
         <section class="cartao secao-formulario" aria-labelledby="assinatura-remessa-title">
-            <h2 id="assinatura-remessa-title">Assinatura da transferência inicial</h2>
-            <p class="campo-ajuda">A remessa somente será criada depois que a wallet do coletor assinar e o ledger confirmar a operação.</p>
+            <h2 id="assinatura-remessa-title">Assinatura da remessa</h2>
+            <p class="campo-ajuda">A wallet do custodiante ou coletor autorizado assina a remessa antes da confirmação no ledger.</p>
             <div class="grade-campos grade-2col">
                 <div class="campo">
                     <label for="senha-wallet" class="campo-rotulo">Senha da wallet</label>
@@ -182,7 +182,7 @@ else
                 button.disabled = true;
                 form.setAttribute('aria-busy', 'true');
                 try {
-                    status.textContent = 'Preparando a transferência inicial.';
+                    status.textContent = 'Preparando a remessa.';
                     var command = await post('/movimentacoes/criar/comando', payload());
                     status.textContent = 'Aguardando assinatura na wallet.';
                     var walletResponse = await fetch(command.walletEndpoint + '/v1/proofs/signed-operation', {

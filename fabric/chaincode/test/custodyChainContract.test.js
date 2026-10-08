@@ -262,6 +262,26 @@ test('registra coleta somente com VC do coletor no escopo do processo', async ()
         ...segundaRemessa, signature: assinar(coletor.privateKey, segundaRemessa)
     })), /já foi registrada/);
 
+    const credencialCustodia = criarVcPermissao(admin.privateKey, {
+        processoId: '10', assetId: '42', operations: ['REMESSA_CRIAR']
+    }, custodiaDid, 'urn:uuid:cccccccc-7777-7777-7777-777777777777', 'CUSTODIA');
+    await contract.EmitirCredencialPermissaoV2(ctx, JSON.stringify(credencialCustodia));
+    const destinoCustodiaDid = 'did:legal:custodian:teste-remessa-ordinaria';
+    const destinoCustodia = gerarIdentidade(destinoCustodiaDid, `${destinoCustodiaDid}#key-1`);
+    await registrarIdentidadeAtiva(ctx, destinoCustodiaDid, 'did:legal:custodian', destinoCustodia);
+    const remessaCustodia = {
+        ...remessa,
+        operationId: 'urn:uuid:cccccccc-8888-8888-8888-888888888888', signerDid: custodiaDid, keyId: custodia.keyId,
+        payload: {
+            transferType: 'CUSTODIA', assetRef: operation.payload.assetRef, assetId: '42', processoId: '10',
+            credentialId: credencialCustodia.id, origemDid: custodiaDid, destinoDid: destinoCustodiaDid,
+            dataHoraSaida: '2027-01-15T08:01:00.000Z', codigoRastreamento: null, coletaOperationId: null
+        }
+    };
+    assert.equal(await contract.RegistrarOperacaoAssinadaV1(ctx, JSON.stringify({
+        ...remessaCustodia, signature: assinar(custodia.privateKey, remessaCustodia)
+    })), remessaCustodia.operationId);
+
     const foraDoEscopo = { ...operation, operationId: 'urn:uuid:cccccccc-3333-3333-3333-333333333333', payload: { ...operation.payload, processoId: '11' } };
     await assert.rejects(contract.RegistrarOperacaoAssinadaV1(ctx, JSON.stringify({
         ...foraDoEscopo, signature: assinar(coletor.privateKey, foraDoEscopo)

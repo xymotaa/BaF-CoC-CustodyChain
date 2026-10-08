@@ -19,7 +19,15 @@ public sealed record ContextoRemessa(
     string DidOrigem,
     string DidDestino,
     string NomeDestino,
-    string ColetaOperationId);
+    TipoTransferenciaRemessa TipoTransferencia,
+    string? CredencialId,
+    string? ColetaOperationId);
+
+public enum TipoTransferenciaRemessa
+{
+    INICIAL,
+    CUSTODIA
+}
 
 public sealed record RemessaConfirmada(
     long VestigioId,
@@ -32,4 +40,5 @@ public sealed record RemessaConfirmada(
     string OperacaoAssinadaJson,
     string OperacaoAssinadaId,
     string OperacaoAssinadaHashSha256,
-    string DidResponsavel);
+    string DidResponsavel,
+    TipoTransferenciaRemessa TipoTransferencia);

@@ -41,7 +41,7 @@ public sealed class CriarRemessaUseCase(
         CancellationToken cancellationToken) =>
         await store.ObterContextoAsync(remessa.VestigioId, remessa.CriadorId, remessa.DestinoId, cancellationToken)
         ?? throw new RecursoRemessaNaoEncontradoException(
-            "Vestígio, coleta confirmada, coletor ou custódia inicial não está disponível para esta remessa.");
+            "Vestígio, permissão de custódia ou transferência inicial não está disponível para esta remessa.");
 
     private JsonElement CriarOperacao(CriarRemessaCommand remessa, ContextoRemessa contexto)
     {
@@ -54,15 +54,16 @@ public sealed class CriarRemessaUseCase(
             operation = "REMESSA_CRIAR",
             payload = new
             {
-                transferType = "INICIAL",
-                assetRef = contexto.AssetRef,
-                assetId = contexto.VestigioId.ToString(),
-                processoId = contexto.ProcessoId.ToString(),
+            transferType = contexto.TipoTransferencia.ToString(),
+            assetRef = contexto.AssetRef,
+            assetId = contexto.VestigioId.ToString(),
+            processoId = contexto.ProcessoId.ToString(),
+            credentialId = contexto.CredencialId,
                 origemDid = contexto.DidOrigem,
                 destinoDid = contexto.DidDestino,
                 dataHoraSaida = remessa.DataHoraSaida.ToString("O"),
                 codigoRastreamento = remessa.CodigoRastreamento,
-                coletaOperationId = contexto.ColetaOperationId
+            coletaOperationId = contexto.ColetaOperationId
             },
             signerDid = contexto.DidOrigem,
             keyId = $"{contexto.DidOrigem}#key-1",
@@ -96,7 +97,7 @@ public sealed class CriarRemessaUseCase(
         var payload = envelope.GetProperty("payload");
         var corresponde = Texto(envelope, "operation", "REMESSA_CRIAR")
             && Texto(envelope, "signerDid", contexto.DidOrigem)
-            && Texto(payload, "transferType", "INICIAL")
+            && Texto(payload, "transferType", contexto.TipoTransferencia.ToString())
             && Texto(payload, "assetRef", contexto.AssetRef)
             && Texto(payload, "assetId", contexto.VestigioId.ToString())
             && Texto(payload, "processoId", contexto.ProcessoId.ToString())
@@ -104,11 +105,12 @@ public sealed class CriarRemessaUseCase(
             && Texto(payload, "destinoDid", contexto.DidDestino)
             && Texto(payload, "dataHoraSaida", remessa.DataHoraSaida.ToString("O"))
             && TextoOuNulo(payload, "codigoRastreamento", remessa.CodigoRastreamento)
-            && Texto(payload, "coletaOperationId", contexto.ColetaOperationId);
+            && TextoOuNulo(payload, "credentialId", contexto.CredencialId)
+            && TextoOuNulo(payload, "coletaOperationId", contexto.ColetaOperationId);
 
         if (!corresponde)
             throw new ValidacaoRemessaException(
-                "A operação assinada não corresponde à coleta ou à remessa inicial disponível.");
+                "A operação assinada não corresponde à remessa disponível.");
     }
 
     private async Task ConfirmarNoLedgerAsync(OperacaoAssinadaV1 operacao, CancellationToken cancellationToken)
@@ -123,7 +125,7 @@ public sealed class CriarRemessaUseCase(
         catch (Exception exception) when (exception is not OperationCanceledException)
         {
             throw new IndisponibilidadeLedgerRemessaException(
-                "Não foi possível confirmar a remessa inicial no ledger. Reenvie a mesma prova.", exception);
+                "Não foi possível confirmar a remessa no ledger. Reenvie a mesma prova.", exception);
         }
     }
 
@@ -142,7 +144,8 @@ public sealed class CriarRemessaUseCase(
             operacao.Envelope.GetRawText(),
             operacao.OperationId,
             operacao.CalcularHashCanonicoSemAssinatura(),
-            contexto.DidOrigem);
+            contexto.DidOrigem,
+            contexto.TipoTransferencia);
 
     private static CriarRemessaCommand Normalizar(CriarRemessaCommand command)
     {

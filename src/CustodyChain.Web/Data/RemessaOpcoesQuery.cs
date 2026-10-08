@@ -8,7 +8,7 @@ public sealed class RemessaOpcoesQuery(CustodyChainDbContext db) : IRemessaOpcoe
 {
     public async Task<IReadOnlyList<OpcaoVestigioRemessa>> ListarVestigiosDisponiveisAsync(long criadorId, CancellationToken cancellationToken = default) =>
         await db.Vestigios
-            .Where(v => v.Estado == EstadoVestigio.Coletado
+            .Where(v => (v.Estado == EstadoVestigio.Coletado || v.Estado == EstadoVestigio.Recebido)
                         && v.CustodianteAtualId == criadorId
                         && v.AssetRef != null)
             .OrderBy(v => v.RotuloEvidencia)

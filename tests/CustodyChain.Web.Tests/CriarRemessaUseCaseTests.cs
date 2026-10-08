@@ -50,6 +50,20 @@ public sealed class CriarRemessaUseCaseTests
         Assert.Equal(nameof(CriarRemessaCommand.DestinoId), exception.Campo);
     }
 
+    [Fact]
+    public async Task PrepararAsync_ParaCustodia_UsaVcVinculadaAoVestigio()
+    {
+        var store = new RemessaStoreFake { TipoTransferencia = TipoTransferenciaRemessa.CUSTODIA };
+        var useCase = CriarUseCase(store, new LedgerCaptura());
+
+        var preparacao = await useCase.PrepararAsync(CriarCommand() with { CriadorId = 2, DestinoId = 4 });
+
+        var payload = preparacao.Operacao.GetProperty("payload");
+        Assert.Equal("CUSTODIA", payload.GetProperty("transferType").GetString());
+        Assert.Equal("urn:uuid:cccccccc-1111-1111-1111-111111111111", payload.GetProperty("credentialId").GetString());
+        Assert.Equal(JsonValueKind.Null, payload.GetProperty("coletaOperationId").ValueKind);
+    }
+
     private static CriarRemessaUseCase CriarUseCase(RemessaStoreFake store, IServicoLedger ledger) =>
         new(store, ledger, new ClockFixo(), new NonceFixo());
 
@@ -65,12 +79,18 @@ public sealed class CriarRemessaUseCaseTests
 
     private sealed class RemessaStoreFake : ICriarRemessaStore
     {
+        public TipoTransferenciaRemessa TipoTransferencia { get; init; } = TipoTransferenciaRemessa.INICIAL;
         public RemessaConfirmada? RemessaPersistida { get; private set; }
         public Task<ContextoRemessa?> ObterContextoAsync(long vestigioId, long criadorId, long destinoId, CancellationToken token) =>
             Task.FromResult<ContextoRemessa?>(new(
                 42, "urn:uuid:aaaaaaaa-1111-1111-1111-111111111111", 10, "RE-001",
-                "did:legal:delegate:teste-001", "did:legal:custodian:teste-001", "Central de Custódia",
-                "urn:uuid:bbbbbbbb-1111-1111-1111-111111111111"));
+                TipoTransferencia == TipoTransferenciaRemessa.CUSTODIA
+                    ? "did:legal:custodian:teste-001"
+                    : "did:legal:delegate:teste-001",
+                "did:legal:custodian:teste-002", "Central de Custódia",
+                TipoTransferencia,
+                TipoTransferencia == TipoTransferenciaRemessa.CUSTODIA ? "urn:uuid:cccccccc-1111-1111-1111-111111111111" : null,
+                TipoTransferencia == TipoTransferenciaRemessa.INICIAL ? "urn:uuid:bbbbbbbb-1111-1111-1111-111111111111" : null));
         public Task PersistirAsync(RemessaConfirmada remessa, CancellationToken token)
         {
             RemessaPersistida = remessa;

@@ -21,7 +21,7 @@ public sealed record CriarRemessaCommand(
     string? CodigoRastreamento);
 
 public sealed record ConcluirRemessaCommand(CriarRemessaCommand Remessa, JsonElement OperacaoAssinada);
-public sealed record PreparacaoRemessa(JsonElement Operacao, string DidColetor);
+public sealed record PreparacaoRemessa(JsonElement Operacao, string DidSignatario);
 
 public sealed record ResultadoCriarRemessa(
     string RotuloEvidencia,

@@ -700,7 +700,7 @@ class CustodyChainContract extends Contract {
         }
 
         if (operacao.operation === 'REMESSA_CRIAR') {
-            await this._validarTransferenciaInicial(ctx, operacao);
+            await this._validarAutorizacaoRemessa(ctx, operacao);
             return;
         }
 
@@ -802,6 +802,14 @@ class CustodyChainContract extends Contract {
         }
     }
 
+    async _validarAutorizacaoRemessa(ctx, operacao) {
+        if (operacao.payload.transferType === 'CUSTODIA') {
+            await this._validarRemessaCustodia(ctx, operacao);
+            return;
+        }
+        await this._validarTransferenciaInicial(ctx, operacao);
+    }
+
     async _validarTransferenciaInicial(ctx, operacao) {
         const payload = operacao.payload;
         const textoObrigatorio = (valor) => typeof valor === 'string' && valor.trim();
@@ -853,6 +861,46 @@ class CustodyChainContract extends Contract {
             destinoDid: payload.destinoDid,
             registradaEm: this._agora(ctx)
         })));
+    }
+
+    async _validarRemessaCustodia(ctx, operacao) {
+        const payload = operacao.payload;
+        const textoOpcional = (valor) => valor === null || typeof valor === 'string';
+        if (payload.transferType !== 'CUSTODIA'
+            || !this._identificadorValido(payload.assetRef)
+            || !this._identificadorValido(payload.credentialId)
+            || !/^[1-9][0-9]*$/.test(payload.assetId)
+            || !/^[1-9][0-9]*$/.test(payload.processoId)
+            || payload.origemDid !== operacao.signerDid
+            || !/^did:legal:custodian:[a-zA-Z0-9._-]{3,128}$/.test(payload.origemDid)
+            || !/^did:legal:custodian:[a-zA-Z0-9._-]{3,128}$/.test(payload.destinoDid)
+            || !Number.isFinite(Date.parse(payload.dataHoraSaida))
+            || !textoOpcional(payload.codigoRastreamento)
+            || payload.coletaOperationId !== null) {
+            throw new Error('Payload da operação REMESSA_CRIAR de custódia inválido.');
+        }
+
+        const chaveCredencial = ctx.stub.createCompositeKey(PREFIXO_CREDENCIAL, [payload.credentialId]);
+        const bytesCredencial = await ctx.stub.getState(chaveCredencial);
+        if (!bytesCredencial || bytesCredencial.length === 0) {
+            throw new Error('VC de custódia não encontrada para a remessa.');
+        }
+
+        const credencial = JSON.parse(bytesCredencial.toString());
+        if (credencial.tipo !== 'PERMISSAO' || credencial.formato !== 'VC_V1'
+            || credencial.status !== 'ATIVA' || credencial.revogada
+            || credencial.did !== operacao.signerDid || credencial.perfil !== 'CUSTODIA'
+            || credencial.processoId !== payload.processoId || credencial.assetId !== payload.assetId
+            || !Array.isArray(credencial.operacoes) || !credencial.operacoes.includes('REMESSA_CRIAR')
+            || (credencial.expiraEm && Date.parse(credencial.expiraEm) <= Date.parse(this._agora(ctx)))) {
+            throw new Error('VC de custódia não autoriza a operação: REMESSA_CRIAR');
+        }
+
+        const destino = await this._obterDocumentoDid(ctx, payload.destinoDid);
+        if (destino.version !== 2 || destino.status !== 'ATIVO' || destino.ativo !== true
+            || destino.metodoDid !== 'did:legal:custodian') {
+            throw new Error('O DID de custódia destinatário não está ativo.');
+        }
     }
 
     async _validarAutorizacaoUnificacao(ctx, operacao) {

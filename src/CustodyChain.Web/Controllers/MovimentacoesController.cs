@@ -38,7 +38,7 @@ public class MovimentacoesController(
             return Ok(new
             {
                 operation = preparacao.Operacao,
-                signerDid = preparacao.DidColetor,
+                signerDid = preparacao.DidSignatario,
                 walletEndpoint = configuration["AuthenticationDid:WalletEndpoint"] ?? "http://127.0.0.1:43123"
             });
         }
@@ -67,7 +67,7 @@ public class MovimentacoesController(
                 cancellationToken);
 
             TempData["MensagemSucesso"] =
-                $"Remessa inicial do vestígio {resultado.RotuloEvidencia} confirmada no ledger; aguardando {resultado.NomeDestino}.";
+                $"Remessa do vestígio {resultado.RotuloEvidencia} confirmada no ledger; aguardando {resultado.NomeDestino}.";
             return Ok(new { redirectUrl = Url.Action(nameof(Criar)) });
         }
         catch (AtorRemessaNaoAutorizadoException) { return Forbid(); }
