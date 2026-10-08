@@ -1,4 +1,5 @@
 using System.Security.Cryptography;
+using CustodyChain.Web.Application.Auditoria;
 using CustodyChain.Web.Data;
 using CustodyChain.Web.Models.ViewModels;
 using CustodyChain.Web.Services.Ledger;
@@ -81,11 +82,67 @@ public class AuditoriaController(CustodyChainDbContext db, IServicoLedger ledger
             return View(modelo);
         }
 
-        // A credencial CoC mais recente vinculada ao vestígio é a fonte
-        // do hash a conferir — o MySQL só localiza o identificador da
-        // credencial no ledger (Identificador), nunca o hash em si.
+        var operacaoColetaId = await db.RegistrosLedger
+            .Where(r => r.VestigioId == vestigio.Id
+                        && r.Evento == "COLETA_REGISTRAR"
+                        && r.Estado == Models.Entities.EstadoRegistroLedger.ANCORADO
+                        && r.OperacaoAssinadaId != null)
+            .OrderByDescending(r => r.AncoradoEm)
+            .Select(r => r.OperacaoAssinadaId)
+            .FirstOrDefaultAsync();
+
+        if (operacaoColetaId is not null)
+        {
+            return await VerificarColetaAssinadaAsync(modelo, vestigio, operacaoColetaId);
+        }
+
+        return await VerificarCoCHistoricaAsync(modelo, vestigio.Id);
+    }
+
+    private async Task<IActionResult> VerificarColetaAssinadaAsync(
+        VerificadorViewModel modelo,
+        Models.Entities.Vestigio vestigio,
+        string operacaoColetaId)
+    {
+        AtestacaoIntegridadeOperacao? atestacao;
+        try
+        {
+            var registrada = await ledger.ObterOperacaoAssinadaV1Async(operacaoColetaId);
+            atestacao = LeitorAtestacaoIntegridadeOperacao.LerColeta(
+                registrada.SignedOperation,
+                vestigio.AssetRef ?? string.Empty,
+                vestigio.RotuloEvidencia);
+        }
+        catch (Exception)
+        {
+            modelo.Conferido = false;
+            modelo.MensagemResultado = "Não foi possível consultar a operação assinada no ledger para conferir este vestígio. Tente novamente mais tarde.";
+            return View(nameof(Verificador), modelo);
+        }
+
+        if (atestacao is null)
+        {
+            modelo.Conferido = false;
+            modelo.MensagemResultado = "Este vestígio não possui atestação de conteúdo assinada para conferência.";
+            return View(nameof(Verificador), modelo);
+        }
+
+        var hashCalculado = await CalcularHashArquivoAsync(modelo.Arquivo!);
+        modelo.HashCalculado = hashCalculado;
+        modelo.HashRegistrado = atestacao.ContentHashSha256;
+        modelo.Conferido = hashCalculado == atestacao.ContentHashSha256;
+        modelo.MensagemResultado = modelo.Conferido.Value
+            ? "O hash do arquivo confere com a atestação assinada registrada no ledger."
+            : "O hash do arquivo NÃO confere com a atestação assinada registrada no ledger. A integridade não pode ser comprovada.";
+        return View(nameof(Verificador), modelo);
+    }
+
+    private async Task<IActionResult> VerificarCoCHistoricaAsync(VerificadorViewModel modelo, long vestigioId)
+    {
+        // CoC é um fallback exclusivo para registros que antecedem a coleta
+        // assinada; novos registros nunca usam esta fonte de integridade.
         var identificadorCredencial = await db.Credenciais
-            .Where(c => c.VestigioId == vestigio.Id && c.Tipo == Models.Entities.TipoCredencial.COC)
+            .Where(c => c.VestigioId == vestigioId && c.Tipo == Models.Entities.TipoCredencial.COC)
             .OrderByDescending(c => c.EmitidaEm)
             .Select(c => c.Identificador)
             .FirstOrDefaultAsync();
@@ -93,8 +150,8 @@ public class AuditoriaController(CustodyChainDbContext db, IServicoLedger ledger
         if (identificadorCredencial is null)
         {
             modelo.Conferido = false;
-            modelo.MensagemResultado = "Este vestígio não tem credencial de cadeia de custódia registrada no ledger para conferência.";
-            return View(modelo);
+            modelo.MensagemResultado = "Este vestígio não possui atestação de conteúdo verificável no ledger.";
+            return View(nameof(Verificador), modelo);
         }
 
         // RF (verificador independente): o hash a comparar vem direto do
@@ -111,16 +168,10 @@ public class AuditoriaController(CustodyChainDbContext db, IServicoLedger ledger
         {
             modelo.Conferido = false;
             modelo.MensagemResultado = "Não foi possível consultar o ledger para conferir este vestígio. Tente novamente mais tarde.";
-            return View(modelo);
+            return View(nameof(Verificador), modelo);
         }
 
-        byte[] bytesArquivo;
-        using (var memoria = new MemoryStream())
-        {
-            await modelo.Arquivo!.CopyToAsync(memoria);
-            bytesArquivo = memoria.ToArray();
-        }
-        var hashCalculado = Convert.ToHexStringLower(SHA256.HashData(bytesArquivo));
+        var hashCalculado = await CalcularHashArquivoAsync(modelo.Arquivo!);
 
         modelo.HashCalculado = hashCalculado;
         modelo.HashRegistrado = credencial.PayloadHashSha256;
@@ -146,6 +197,13 @@ public class AuditoriaController(CustodyChainDbContext db, IServicoLedger ledger
             modelo.MensagemResultado = "O hash do arquivo NÃO confere com o hash registrado no ledger. A integridade não pode ser comprovada.";
         }
 
-        return View(modelo);
+        return View(nameof(Verificador), modelo);
+    }
+
+    private static async Task<string> CalcularHashArquivoAsync(IFormFile arquivo)
+    {
+        await using var stream = arquivo.OpenReadStream();
+        var hash = await SHA256.HashDataAsync(stream);
+        return Convert.ToHexStringLower(hash);
     }
 }
