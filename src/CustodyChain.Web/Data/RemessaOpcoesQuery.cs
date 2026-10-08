@@ -8,7 +8,9 @@ public sealed class RemessaOpcoesQuery(CustodyChainDbContext db) : IRemessaOpcoe
 {
     public async Task<IReadOnlyList<OpcaoVestigioRemessa>> ListarVestigiosDisponiveisAsync(long criadorId, CancellationToken cancellationToken = default) =>
         await db.Vestigios
-            .Where(v => v.Estado == EstadoVestigio.Coletado && v.CustodianteAtualId == criadorId)
+            .Where(v => v.Estado == EstadoVestigio.Coletado
+                        && v.CustodianteAtualId == criadorId
+                        && v.AssetRef != null)
             .OrderBy(v => v.RotuloEvidencia)
             .Select(v => new OpcaoVestigioRemessa(v.Id, v.RotuloEvidencia, v.Descricao))
             .ToListAsync(cancellationToken);
@@ -16,7 +18,9 @@ public sealed class RemessaOpcoesQuery(CustodyChainDbContext db) : IRemessaOpcoe
     public async Task<IReadOnlyList<OpcaoDestinoRemessa>> ListarDestinosDisponiveisAsync(long criadorId, CancellationToken cancellationToken = default) =>
         await db.Intervenientes
             .Include(i => i.Perfil)
-            .Where(i => i.Situacao == SituacaoInterveniente.ATIVO && i.Id != criadorId)
+            .Where(i => i.Situacao == SituacaoInterveniente.ATIVO
+                        && i.Perfil.Codigo == "CUSTODIA"
+                        && i.Id != criadorId)
             .OrderBy(i => i.Perfil.Nome)
             .Select(i => new OpcaoDestinoRemessa(i.Id, i.Nome, i.Perfil.Nome))
             .ToListAsync(cancellationToken);

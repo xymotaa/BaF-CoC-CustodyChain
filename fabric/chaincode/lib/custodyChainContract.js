@@ -8,9 +8,10 @@ const PREFIXO_CREDENCIAL = 'CRED';
 const PREFIXO_HISTORICO = 'HIST';
 const PREFIXO_GOVERNANCA = 'GOV';
 const PREFIXO_OPERACAO_ASSINADA = 'SOP';
+const PREFIXO_TRANSFERENCIA_INICIAL = 'TRI';
 const MSP_ADMINISTRADOR = 'Org1MSP';
 const OPERACOES_ASSINADAS_SUPORTADAS = new Set([
-    'COLETA_REGISTRAR', 'PERICIA_RECEBER', 'LACRE_ROMPER', 'LAUDO_EMITIR', 'AMOSTRA_CONSUMIR', 'AMOSTRA_EXAURIR', 'AMOSTRA_FRACIONAR', 'AMOSTRA_UNIFICAR'
+    'COLETA_REGISTRAR', 'REMESSA_CRIAR', 'PERICIA_RECEBER', 'LACRE_ROMPER', 'LAUDO_EMITIR', 'AMOSTRA_CONSUMIR', 'AMOSTRA_EXAURIR', 'AMOSTRA_FRACIONAR', 'AMOSTRA_UNIFICAR'
 ]);
 
 class CustodyChainContract extends Contract {
@@ -698,6 +699,11 @@ class CustodyChainContract extends Contract {
             return;
         }
 
+        if (operacao.operation === 'REMESSA_CRIAR') {
+            await this._validarTransferenciaInicial(ctx, operacao);
+            return;
+        }
+
         if (operacao.operation === 'AMOSTRA_UNIFICAR') {
             await this._validarAutorizacaoUnificacao(ctx, operacao);
             return;
@@ -794,6 +800,59 @@ class CustodyChainContract extends Contract {
             || (credencial.expiraEm && Date.parse(credencial.expiraEm) <= Date.parse(this._agora(ctx)))) {
             throw new Error('VC de permissão não autoriza a operação: COLETA_REGISTRAR');
         }
+    }
+
+    async _validarTransferenciaInicial(ctx, operacao) {
+        const payload = operacao.payload;
+        const textoObrigatorio = (valor) => typeof valor === 'string' && valor.trim();
+        const textoOpcional = (valor) => valor === null || typeof valor === 'string';
+        if (payload.transferType !== 'INICIAL'
+            || !this._identificadorValido(payload.assetRef)
+            || !/^[1-9][0-9]*$/.test(payload.assetId)
+            || !/^[1-9][0-9]*$/.test(payload.processoId)
+            || payload.origemDid !== operacao.signerDid
+            || !/^did:legal:delegate:[a-zA-Z0-9._-]{3,128}$/.test(payload.origemDid)
+            || !/^did:legal:custodian:[a-zA-Z0-9._-]{3,128}$/.test(payload.destinoDid)
+            || !Number.isFinite(Date.parse(payload.dataHoraSaida))
+            || !textoOpcional(payload.codigoRastreamento)
+            || !this._identificadorValido(payload.coletaOperationId)) {
+            throw new Error('Payload da operação REMESSA_CRIAR inicial inválido.');
+        }
+
+        const chaveTransferencia = ctx.stub.createCompositeKey(PREFIXO_TRANSFERENCIA_INICIAL, [payload.assetRef]);
+        const transferenciaExistente = await ctx.stub.getState(chaveTransferencia);
+        if (transferenciaExistente && transferenciaExistente.length > 0) {
+            throw new Error('A transferência inicial deste ativo já foi registrada.');
+        }
+
+        const chaveColeta = ctx.stub.createCompositeKey(PREFIXO_OPERACAO_ASSINADA, [payload.coletaOperationId]);
+        const bytesColeta = await ctx.stub.getState(chaveColeta);
+        if (!bytesColeta || bytesColeta.length === 0) {
+            throw new Error('A coleta assinada não foi encontrada para a transferência inicial.');
+        }
+
+        const coleta = JSON.parse(bytesColeta.toString()).signedOperation;
+        if (coleta?.operation !== 'COLETA_REGISTRAR'
+            || coleta.signerDid !== operacao.signerDid
+            || coleta.payload?.assetRef !== payload.assetRef
+            || coleta.payload?.processoId !== payload.processoId) {
+            throw new Error('A coleta assinada não autoriza esta transferência inicial.');
+        }
+
+        const destino = await this._obterDocumentoDid(ctx, payload.destinoDid);
+        if (destino.version !== 2 || destino.status !== 'ATIVO' || destino.ativo !== true
+            || destino.metodoDid !== 'did:legal:custodian') {
+            throw new Error('O DID de custódia inicial não está ativo.');
+        }
+
+        await ctx.stub.putState(chaveTransferencia, Buffer.from(JSON.stringify({
+            assetRef: payload.assetRef,
+            operationId: operacao.operationId,
+            coletaOperationId: payload.coletaOperationId,
+            origemDid: operacao.signerDid,
+            destinoDid: payload.destinoDid,
+            registradaEm: this._agora(ctx)
+        })));
     }
 
     async _validarAutorizacaoUnificacao(ctx, operacao) {

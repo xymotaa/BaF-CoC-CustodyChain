@@ -13,3 +13,5 @@ public sealed class ConflitoRemessaException(string message, string? campo = nul
 public sealed class RecursoRemessaNaoEncontradoException(string message) : Exception(message);
 
 public sealed class AtorRemessaNaoAutorizadoException(string message) : Exception(message);
+
+public sealed class IndisponibilidadeLedgerRemessaException(string message, Exception innerException) : Exception(message, innerException);

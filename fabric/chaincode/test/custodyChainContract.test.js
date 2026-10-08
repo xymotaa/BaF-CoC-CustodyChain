@@ -238,6 +238,30 @@ test('registra coleta somente com VC do coletor no escopo do processo', async ()
         ...operation, signature: assinar(coletor.privateKey, operation)
     })), operation.operationId);
 
+    const custodiaDid = 'did:legal:custodian:teste-transferencia-inicial';
+    const custodia = gerarIdentidade(custodiaDid, `${custodiaDid}#key-1`);
+    await registrarIdentidadeAtiva(ctx, custodiaDid, 'did:legal:custodian', custodia);
+    const remessa = {
+        type: 'CustodyChainSignedOperation', version: 1,
+        operationId: 'urn:uuid:cccccccc-5555-5555-5555-555555555555', operation: 'REMESSA_CRIAR',
+        payload: {
+            transferType: 'INICIAL', assetRef: operation.payload.assetRef, assetId: '42', processoId: '10',
+            origemDid: coletorDid, destinoDid: custodiaDid, dataHoraSaida: '2027-01-15T08:00:00.000Z',
+            codigoRastreamento: 'RAST-001', coletaOperationId: operation.operationId
+        },
+        signerDid: coletorDid, keyId: coletor.keyId, algorithm: 'Ed25519',
+        canonicalization: 'custodychain-json-c14n-v1', audience: 'custodychain-ledger',
+        timestamp: '2027-01-15T08:00:00.000Z', expiresAt: '2027-01-15T08:05:00.000Z', nonce: 'abcdefghij0123456789kl'
+    };
+    assert.equal(await contract.RegistrarOperacaoAssinadaV1(ctx, JSON.stringify({
+        ...remessa, signature: assinar(coletor.privateKey, remessa)
+    })), remessa.operationId);
+
+    const segundaRemessa = { ...remessa, operationId: 'urn:uuid:cccccccc-6666-6666-6666-666666666666' };
+    await assert.rejects(contract.RegistrarOperacaoAssinadaV1(ctx, JSON.stringify({
+        ...segundaRemessa, signature: assinar(coletor.privateKey, segundaRemessa)
+    })), /já foi registrada/);
+
     const foraDoEscopo = { ...operation, operationId: 'urn:uuid:cccccccc-3333-3333-3333-333333333333', payload: { ...operation.payload, processoId: '11' } };
     await assert.rejects(contract.RegistrarOperacaoAssinadaV1(ctx, JSON.stringify({
         ...foraDoEscopo, signature: assinar(coletor.privateKey, foraDoEscopo)
