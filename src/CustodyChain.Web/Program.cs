@@ -93,25 +93,40 @@ builder.Services.AddSingleton(new ConfiguracaoAutenticacaoDid(
     builder.Configuration["AuthenticationDid:Audience"] ?? "custodychain-web",
     TimeSpan.FromMinutes(2)));
 
-// Ledger real: chama o gateway HTTP (fabric/gateway/), que fala com o
-// chaincode CustodyChain via Fabric Gateway (fabric/chaincode/). Troca o
-// LedgerFake usado durante o desenvolvimento das telas, sem alterar
-// nenhum controller — ambos implementam o mesmo IServicoLedger.
-var ledgerGatewayUrl = builder.Configuration["Ledger:GatewayUrl"] ?? "http://127.0.0.1:3000";
-var ledgerServiceToken = builder.Configuration["Ledger:ServiceToken"];
-builder.Services.AddHttpClient<IServicoLedger, ServicoLedgerFabric>(client =>
-{
-    client.BaseAddress = new Uri(ledgerGatewayUrl);
-    client.Timeout = TimeSpan.FromSeconds(30);
-    DidRegistryFabric.ConfigurarAutorizacao(client, ledgerServiceToken);
-});
+// Cada processo do gateway usa uma única identidade Fabric. O roteador abaixo
+// escolhe o cliente por DID somente no servidor; a escolha nunca vem do HTTP
+// do navegador e o chaincode ainda valida o MSP da transação.
+var ledgerOrg1Url = builder.Configuration["Ledger:Organizations:Org1MSP:GatewayUrl"]
+    ?? builder.Configuration["Ledger:GatewayUrl"]
+    ?? "http://127.0.0.1:3000";
+var ledgerOrg1Token = builder.Configuration["Ledger:Organizations:Org1MSP:ServiceToken"]
+    ?? builder.Configuration["Ledger:ServiceToken"];
+var ledgerOrg2Url = builder.Configuration["Ledger:Organizations:Org2MSP:GatewayUrl"];
+var ledgerOrg2Token = builder.Configuration["Ledger:Organizations:Org2MSP:ServiceToken"];
+
+ConfigurarGatewayFabric(OrganizacaoFabricDid.Org1Msp, ledgerOrg1Url, ledgerOrg1Token);
+ConfigurarGatewayFabric(OrganizacaoFabricDid.Org2Msp, ledgerOrg2Url, ledgerOrg2Token);
+builder.Services.AddScoped<IServicoLedger, ServicoLedgerPorOrganizacao>();
 builder.Services.AddHttpClient<DidRegistryFabric>(client =>
 {
-    client.BaseAddress = new Uri(ledgerGatewayUrl);
+    client.BaseAddress = new Uri(ledgerOrg1Url);
     client.Timeout = TimeSpan.FromSeconds(10);
-    DidRegistryFabric.ConfigurarAutorizacao(client, ledgerServiceToken);
+    DidRegistryFabric.ConfigurarAutorizacao(client, ledgerOrg1Token);
 });
 builder.Services.AddScoped<IDidRegistry>(services => services.GetRequiredService<DidRegistryFabric>());
+
+void ConfigurarGatewayFabric(string mspId, string? gatewayUrl, string? serviceToken)
+{
+    builder.Services.AddHttpClient(ServicoLedgerPorOrganizacao.NomeCliente(mspId), client =>
+    {
+        if (!string.IsNullOrWhiteSpace(gatewayUrl))
+        {
+            client.BaseAddress = new Uri(gatewayUrl);
+        }
+        client.Timeout = TimeSpan.FromSeconds(30);
+        DidRegistryFabric.ConfigurarAutorizacao(client, serviceToken);
+    });
+}
 
 // Armazenamento off-chain de anexos (P-01): IPFS privado local via
 // docker-compose. A API HTTP roda em 127.0.0.1:5001, não exposta fora

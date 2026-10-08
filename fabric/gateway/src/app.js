@@ -16,6 +16,12 @@ const PEER_HOST_ALIAS = process.env.PEER_HOST_ALIAS || 'peer0.org1.example.com';
 const PORT = process.env.PORT || 3000;
 const SERVICE_TOKEN = process.env.GATEWAY_SERVICE_TOKEN || '';
 const LEGACY_IDENTITY_WRITES_ENABLED = process.env.ENABLE_LEGACY_IDENTITY_WRITES === 'true';
+const MSP_POR_METODO_DID = new Map([
+    ['did:legal:admin', 'Org1MSP'],
+    ['did:legal:delegate', 'Org1MSP'],
+    ['did:legal:custodian', 'Org2MSP'],
+    ['did:legal:expert', 'Org2MSP']
+]);
 const SUPPORTED_SIGNED_OPERATIONS = new Set([
     'COLETA_REGISTRAR', 'REMESSA_CRIAR', 'PERICIA_RECEBER', 'LACRE_ROMPER', 'LAUDO_EMITIR', 'AMOSTRA_CONSUMIR', 'AMOSTRA_EXAURIR', 'AMOSTRA_FRACIONAR', 'AMOSTRA_UNIFICAR'
 ]);
@@ -197,6 +203,19 @@ function validarOperacaoAssinada(operation) {
     }
 }
 
+function validarMspDoDid(documentoDid) {
+    const mspEsperado = MSP_POR_METODO_DID.get(documentoDid?.metodoDid);
+    if (!mspEsperado) {
+        throw new Error(`DID sem política de organização Fabric: ${documentoDid?.metodoDid || 'ausente'}`);
+    }
+    if (documentoDid.organizationMspId && documentoDid.organizationMspId !== mspEsperado) {
+        throw new Error('Documento DID possui organização Fabric incompatível com sua política.');
+    }
+    if (MSP_ID !== mspEsperado) {
+        throw new Error(`Gateway configurado para ${MSP_ID}; o DID exige ${mspEsperado}.`);
+    }
+}
+
 function possuiNumeroNaoInteiro(value) {
     if (typeof value === 'number') return !Number.isSafeInteger(value);
     if (Array.isArray(value)) return value.some(possuiNumeroNaoInteiro);
@@ -248,7 +267,7 @@ app.use(cors({
 app.use(express.json());
 
 app.get('/saude', (_req, res) => {
-    res.json({ status: gateway ? 'conectado' : 'desconectado' });
+    res.json({ status: gateway ? 'conectado' : 'desconectado', mspId: MSP_ID });
 });
 
 app.use(autenticarServico);
@@ -357,6 +376,7 @@ app.post('/v2/dids/:did/rotate-key', async (req, res) => {
         const contrato = obterContrato();
         const documento = JSON.parse(decodificar(
             await contrato.evaluateTransaction('ResolverDid', command.subjectDid)));
+        validarMspDoDid(documento);
         const metodoAtual = documento.verificationMethod?.find(
             (metodo) => metodo.id === command.currentKeyId);
         if (!metodoAtual) throw new Error('A chave atual não existe no documento DID.');
@@ -427,6 +447,7 @@ app.post('/v2/credenciais/permissao', async (req, res) => {
         validarVcPermissao(credential);
         const contrato = obterContrato();
         const emissor = JSON.parse(decodificar(await contrato.evaluateTransaction('ResolverDid', credential.issuer)));
+        validarMspDoDid(emissor);
         const metodo = emissor.verificationMethod?.find((item) => item.id === credential.proof.verificationMethod);
         if (!emissor.assertionMethod?.includes(credential.proof.verificationMethod) || !metodo) {
             throw new Error('A chave do emissor não possui capacidade assertionMethod para emitir VC.');
@@ -447,6 +468,7 @@ app.post('/v2/operacoes', async (req, res) => {
         validarOperacaoAssinada(operation);
         const contrato = obterContrato();
         const signatario = JSON.parse(decodificar(await contrato.evaluateTransaction('ResolverDid', operation.signerDid)));
+        validarMspDoDid(signatario);
         const metodo = signatario.verificationMethod?.find((item) => item.id === operation.keyId);
         if (!metodo) {
             throw new Error('A chave do signatário não existe no documento DID.');
@@ -512,6 +534,7 @@ app.post('/v2/credenciais/:credencialId/revogar', async (req, res) => {
         }
         const contrato = obterContrato();
         const emissor = JSON.parse(decodificar(await contrato.evaluateTransaction('ResolverDid', command.issuerDid)));
+        validarMspDoDid(emissor);
         const metodo = emissor.verificationMethod?.find((item) => item.id === keyId);
         if (!emissor.assertionMethod?.includes(keyId) || !metodo) {
             throw new Error('A chave do emissor não possui capacidade assertionMethod para revogar VC.');
@@ -562,5 +585,5 @@ process.on('SIGINT', () => {
 module.exports = {
     app, autenticarServico, decodificar, tratarErro, validarComandoDid,
     verificarProvaDid, validarVcPermissao, verificarVcPermissao,
-    validarOperacaoAssinada
+    validarOperacaoAssinada, validarMspDoDid
 };

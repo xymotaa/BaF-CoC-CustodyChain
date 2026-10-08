@@ -113,6 +113,7 @@ test('registra DID titular pendente com prova de posse e o ativa com administrad
         ctx, JSON.stringify(activation), keyId, assinar(admin.privateKey, activation)));
     assert.equal(active.status, 'ATIVO');
     assert.equal(active.didEmissor, did);
+    assert.equal(active.organizationMspId, 'Org2MSP');
 });
 
 test('recusa ativação assinada por chave sem capabilityInvocation', async () => {
@@ -164,6 +165,16 @@ test('rotaciona chave DID com prova da chave atual e da nova chave', async () =>
         expiresAt: '2027-01-15T08:05:00.000Z', nonce: '0123456789abcdefghijkl'
     };
 
+    await assert.rejects(
+        contract.RotacionarChaveDidV2(
+            ctx,
+            JSON.stringify(command),
+            assinar(current.privateKey, command),
+            assinar(replacement.privateKey, command)),
+        /MSP não autorizado/
+    );
+    ctx.definirMsp('Org2MSP');
+
     const rotated = JSON.parse(await contract.RotacionarChaveDidV2(
         ctx,
         JSON.stringify(command),
@@ -213,6 +224,7 @@ test('recusa rotação sem prova de posse da nova chave', async () => {
         expiresAt: '2027-01-15T08:05:00.000Z', nonce: 'abcdefghijklmnopqrstuv'
     };
 
+    ctx.definirMsp('Org2MSP');
     await assert.rejects(contract.RotacionarChaveDidV2(
         ctx,
         JSON.stringify(command),
@@ -261,6 +273,7 @@ test('aceita retry histórico assinado por chave retirada e bloqueia operação 
         audience: 'custodychain-ledger', issuedAt: '2027-01-15T08:00:00.000Z',
         expiresAt: '2027-01-15T08:05:00.000Z', nonce: 'abcdefghijklmnopqrstuv'
     };
+    ctx.definirMsp('Org2MSP');
     await contract.RotacionarChaveDidV2(ctx, JSON.stringify(rotation),
         assinar(current.privateKey, rotation), assinar(replacement.privateKey, rotation));
     ctx.definirHorario('2027-01-15T09:00:00.000Z');
@@ -426,6 +439,7 @@ test('registra coleta somente com VC do coletor no escopo do processo', async ()
     const destinoCustodiaDid = 'did:legal:custodian:teste-remessa-ordinaria';
     const destinoCustodia = gerarIdentidade(destinoCustodiaDid, `${destinoCustodiaDid}#key-1`);
     await registrarIdentidadeAtiva(ctx, destinoCustodiaDid, 'did:legal:custodian', destinoCustodia);
+    ctx.definirMsp('Org2MSP');
     const remessaCustodia = {
         ...remessa,
         operationId: 'urn:uuid:cccccccc-8888-8888-8888-888888888888', signerDid: custodiaDid, keyId: custodia.keyId,
@@ -440,6 +454,7 @@ test('registra coleta somente com VC do coletor no escopo do processo', async ()
     })), remessaCustodia.operationId);
 
     const foraDoEscopo = { ...operation, operationId: 'urn:uuid:cccccccc-3333-3333-3333-333333333333', payload: { ...operation.payload, processoId: '11' } };
+    ctx.definirMsp('Org1MSP');
     await assert.rejects(contract.RegistrarOperacaoAssinadaV1(ctx, JSON.stringify({
         ...foraDoEscopo, signature: assinar(coletor.privateKey, foraDoEscopo)
     })), /não autoriza/);
@@ -542,6 +557,7 @@ test('registra operação assinada v1, preserva idempotência e recusa conflito'
         processoId: '10', assetId: '42', operations: ['LAUDO_EMITIR']
     }, signerDid);
     await contract.EmitirCredencialPermissaoV2(ctx, JSON.stringify(credential));
+    ctx.definirMsp('Org2MSP');
     const operation = {
         type: 'CustodyChainSignedOperation', version: 1,
         operationId: 'urn:uuid:77777777-7777-7777-7777-777777777777',
@@ -605,6 +621,7 @@ test('autoriza recebimento e rompimento somente no escopo da VC pericial', async
         ]
     }, signerDid);
     await contract.EmitirCredencialPermissaoV2(ctx, JSON.stringify(credential));
+    ctx.definirMsp('Org2MSP');
 
     const envelope = (operationId, operation, payload) => ({
         type: 'CustodyChainSignedOperation', version: 1, operationId, operation, payload,
@@ -656,7 +673,9 @@ test('autoriza recebimento e rompimento somente no escopo da VC pericial', async
     const credentialSecondSource = criarVcPermissao(admin.privateKey, {
         processoId: '10', assetId: '43', operations: ['AMOSTRA_UNIFICAR']
     }, signerDid, 'urn:uuid:66666666-6666-6666-6666-666666666666');
+    ctx.definirMsp('Org1MSP');
     await contract.EmitirCredencialPermissaoV2(ctx, JSON.stringify(credentialSecondSource));
+    ctx.definirMsp('Org2MSP');
     const unificar = envelope('urn:uuid:ffffffff-ffff-ffff-ffff-ffffffffffff', 'AMOSTRA_UNIFICAR', {
         periciaId: '17',
         origens: [
@@ -705,6 +724,7 @@ test('recebimento e recusa de remessa exigem VC de custódia e vinculam a remess
         processoId: '10', assetId: '42', operations: ['REMESSA_RECEBER', 'REMESSA_RECUSAR']
     }, destinoDid, 'urn:uuid:abababab-1111-1111-1111-111111111111', 'CUSTODIA');
     await contract.EmitirCredencialPermissaoV2(ctx, JSON.stringify(credential));
+    ctx.definirMsp('Org2MSP');
 
     const criarRemessaRegistrada = async (operationId) => {
         const remessa = {
@@ -767,6 +787,7 @@ test('guarda exige VC de custódia e recebimento assinado, uma vez por recebimen
         processoId: '10', assetId: '42', operations: ['GUARDA_REGISTRAR']
     }, custodianteDid, 'urn:uuid:cdcdcdcd-1111-1111-1111-111111111111', 'CUSTODIA');
     await contract.EmitirCredencialPermissaoV2(ctx, JSON.stringify(credential));
+    ctx.definirMsp('Org2MSP');
 
     const recebimentoOperationId = 'urn:uuid:cdcdcdcd-2222-2222-2222-222222222222';
     const recebimento = {
@@ -812,6 +833,7 @@ test('solicitação de destinação exige VC de custódia e guarda assinada, uma
         processoId: '10', assetId: '42', operations: ['DESTINACAO_SOLICITAR']
     }, custodianteDid, 'urn:uuid:dededede-1111-1111-1111-111111111111', 'CUSTODIA');
     await contract.EmitirCredencialPermissaoV2(ctx, JSON.stringify(credential));
+    ctx.definirMsp('Org2MSP');
 
     const guardaOperationId = 'urn:uuid:dededede-2222-2222-2222-222222222222';
     const assetRef = 'urn:uuid:dededede-3333-3333-3333-333333333333';
@@ -854,7 +876,8 @@ test('solicitação de destinação exige VC de custódia e guarda assinada, uma
     };
     await assert.rejects(contract.RegistrarOperacaoAssinadaV1(ctx, JSON.stringify({
         ...autoAprovacao, signature: assinar(custodiante.privateKey, autoAprovacao)
-    })), /Somente DID administrativo/);
+    })), /(Somente DID administrativo|MSP não autorizado)/);
+    ctx.definirMsp('Org1MSP');
     assert.equal(await contract.RegistrarOperacaoAssinadaV1(ctx, JSON.stringify({
         ...aprovacao, signature: assinar(admin.privateKey, aprovacao)
     })), aprovacao.operationId);
@@ -963,9 +986,11 @@ function base58(bytes) {
 
 function contexto(mspId) {
     const state = new Map();
+    let mspDaTransacao = mspId;
     let horarioAtual = new Date('2027-01-15T08:00:00.000Z');
     return {
-        clientIdentity: { getMSPID: () => mspId },
+        clientIdentity: { getMSPID: () => mspDaTransacao },
+        definirMsp: (novoMspId) => { mspDaTransacao = novoMspId; },
         definirHorario: (iso) => { horarioAtual = new Date(iso); },
         stub: {
             createCompositeKey: (prefix, values) => `${prefix}:${values.join(':')}`,

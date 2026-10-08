@@ -7,7 +7,7 @@ process.env.GATEWAY_SERVICE_TOKEN = 'token-de-teste-comprido';
 const crypto = require('node:crypto');
 const {
     autenticarServico, tratarErro, validarComandoDid, verificarProvaDid,
-    validarVcPermissao, verificarVcPermissao, validarOperacaoAssinada
+    validarVcPermissao, verificarVcPermissao, validarOperacaoAssinada, validarMspDoDid
 } = require('../src/app');
 
 test('middleware aceita bearer token configurado', () => {
@@ -122,6 +122,15 @@ test('valida vetor canônico da operação assinada', () => {
         ...operation,
         payload: { ...operation.payload, quantidade: 1.5 }
     }), /Envelope/);
+});
+
+test('gateway recusa DID de organização diferente da sua identidade Fabric', () => {
+    assert.doesNotThrow(() => validarMspDoDid({
+        did: 'did:legal:admin:teste', metodoDid: 'did:legal:admin', organizationMspId: 'Org1MSP'
+    }));
+    assert.throws(() => validarMspDoDid({
+        did: 'did:legal:expert:teste', metodoDid: 'did:legal:expert', organizationMspId: 'Org2MSP'
+    }), /Gateway configurado para Org1MSP/);
 });
 
 function canonicalizar(value) {

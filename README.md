@@ -60,21 +60,37 @@ O login não aceita mais uma senha simbólica. A aplicação cria um desafio
 descartável, a wallet local o assina com Ed25519 e o .NET valida a assinatura
 contra a chave pública do DID v2 armazenado no Fabric.
 
-Defina um segredo de serviço forte, igual no gateway e na aplicação (não o
-grave no repositório):
+Defina um segredo de serviço forte para cada gateway e configure a aplicação
+sem gravá-los no repositório. `Org1MSP` atende `ADMIN` e `COLETOR`; `Org2MSP`
+atende `CUSTODIA` e `PERITO`. Não há fallback de uma organização para a outra:
 
 ```bash
-export GATEWAY_SERVICE_TOKEN='<segredo-local-forte>'
-export Ledger__ServiceToken="$GATEWAY_SERVICE_TOKEN"
+export Ledger__Organizations__Org1MSP__GatewayUrl='http://127.0.0.1:3000'
+export Ledger__Organizations__Org2MSP__GatewayUrl='http://127.0.0.1:3001'
+export GATEWAY_ORG1_SERVICE_TOKEN='<segredo-org1>'
+export GATEWAY_ORG2_SERVICE_TOKEN='<segredo-org2>'
+export Ledger__Organizations__Org1MSP__ServiceToken="$GATEWAY_ORG1_SERVICE_TOKEN"
+export Ledger__Organizations__Org2MSP__ServiceToken="$GATEWAY_ORG2_SERVICE_TOKEN"
 ```
 
-Depois de subir a rede e instalar a versão atual do chaincode, inicie o
-gateway em outro terminal:
+Depois de subir a rede e instalar a versão atual do chaincode, inicie um
+processo de gateway para cada identidade Fabric. O primeiro usa os padrões da
+`Org1MSP`; o segundo declara todos os caminhos e o peer da `Org2MSP`:
 
 ```bash
 cd fabric/gateway
-npm start
+GATEWAY_SERVICE_TOKEN="$GATEWAY_ORG1_SERVICE_TOKEN" npm start
+
+MSP_ID=Org2MSP PORT=3001 PEER_ENDPOINT=localhost:9051 \
+PEER_HOST_ALIAS=peer0.org2.example.com \
+CRYPTO_PATH="$(pwd)/../network/organizations/peerOrganizations/org2.example.com" \
+TLS_CERT_PATH="$(pwd)/../network/organizations/peerOrganizations/org2.example.com/peers/peer0.org2.example.com/tls/ca.crt" \
+MSP_PATH="$(pwd)/../network/organizations/peerOrganizations/org2.example.com/users/User1@org2.example.com/msp" \
+GATEWAY_SERVICE_TOKEN="$GATEWAY_ORG2_SERVICE_TOKEN" npm start
 ```
+
+`GET /saude` informa também o `mspId` fixo do processo, permitindo conferir a
+configuração antes de enviar escritas.
 
 Crie uma única identidade administrativa na wallet. O comando solicita e
 confirma a senha sem exibi-la:
@@ -90,7 +106,7 @@ pelo gateway:
 
 ```bash
 curl -X POST http://127.0.0.1:3000/v2/bootstrap/admin \
-  -H "Authorization: Bearer $GATEWAY_SERVICE_TOKEN" \
+  -H "Authorization: Bearer $GATEWAY_ORG1_SERVICE_TOKEN" \
   -H 'Content-Type: application/json' \
   -d '{"did":"did:legal:admin:teste-001","verificationMethodId":"did:legal:admin:teste-001#auth-1","publicKeyMultibase":"<chave-publica-impressa>"}'
 ```
@@ -101,7 +117,7 @@ só é aceita pela `Org1MSP`, preserva o DID e vincula a chave pública da walle
 
 ```bash
 curl -X POST http://127.0.0.1:3000/v2/bootstrap/admin/legacy-migration \
-  -H "Authorization: Bearer $GATEWAY_SERVICE_TOKEN" \
+  -H "Authorization: Bearer $GATEWAY_ORG1_SERVICE_TOKEN" \
   -H 'Content-Type: application/json' \
   -d '{"did":"did:legal:admin:teste-001","verificationMethodId":"did:legal:admin:teste-001#auth-1","publicKeyMultibase":"<chave-publica-impressa>"}'
 ```

@@ -14,6 +14,16 @@ const PREFIXO_GUARDA = 'GUA';
 const PREFIXO_DESTINACAO_SOLICITACAO = 'DSR';
 const PREFIXO_DESTINACAO_APROVACAO = 'DSA';
 const MSP_ADMINISTRADOR = 'Org1MSP';
+// A identidade Fabric prova a organização que submeteu a transação. Ela não
+// substitui a assinatura DID, mas precisa ser compatível com o método DID do
+// signatário para impedir que um gateway de outra organização publique em seu
+// nome.
+const MSP_POR_METODO_DID = new Map([
+    ['did:legal:admin', 'Org1MSP'],
+    ['did:legal:delegate', 'Org1MSP'],
+    ['did:legal:custodian', 'Org2MSP'],
+    ['did:legal:expert', 'Org2MSP']
+]);
 const OPERACOES_ASSINADAS_SUPORTADAS = new Set([
     'COLETA_REGISTRAR', 'REMESSA_CRIAR', 'REMESSA_RECEBER', 'REMESSA_RECUSAR', 'GUARDA_REGISTRAR', 'DESTINACAO_SOLICITAR', 'DESTINACAO_APROVAR', 'PERICIA_RECEBER', 'LACRE_ROMPER', 'LAUDO_EMITIR', 'AMOSTRA_CONSUMIR', 'AMOSTRA_EXAURIR', 'AMOSTRA_FRACIONAR', 'AMOSTRA_UNIFICAR'
 ]);
@@ -83,6 +93,7 @@ class CustodyChainContract extends Contract {
             capabilityInvocation: [verificationMethodId],
             documentVersion: 1,
             keySequence: 1,
+            organizationMspId: MSP_ADMINISTRADOR,
             didEmissor: null,
             criadoEm: agora,
             ativadoEm: agora
@@ -136,6 +147,7 @@ class CustodyChainContract extends Contract {
             assertionMethod: [verificationMethodId],
             capabilityInvocation: [verificationMethodId],
             keySequence: 1,
+            organizationMspId: MSP_ADMINISTRADOR,
             didEmissor: null,
             criadoEm: legado.criadoEm || agora,
             ativadoEm: legado.ativadoEm || agora,
@@ -231,6 +243,7 @@ class CustodyChainContract extends Contract {
             assertionMethod: [comando.verificationMethodId],
             capabilityInvocation: [comando.verificationMethodId],
             keySequence: 1,
+            organizationMspId: this._obterMspDoMetodoDid(comando.metodoDid),
             didEmissor: null,
             criadoEm: agora,
             enrollmentId: comando.enrollmentId
@@ -313,6 +326,7 @@ class CustodyChainContract extends Contract {
         this._validarComandoRotacao(comando);
 
         const documento = await this._obterDocumentoDid(ctx, comando.subjectDid);
+        this._garantirOrganizacaoDoDid(ctx, documento);
         const metodoAtual = documento.verificationMethod?.find(
             (metodo) => metodo.id === comando.currentKeyId);
         if (!metodoAtual) {
@@ -451,6 +465,7 @@ class CustodyChainContract extends Contract {
         const existente = await ctx.stub.getState(chave);
         const documentoEmissor = await this._obterDocumentoDid(ctx, credencial.issuer);
         const documentoTitular = await this._obterDocumentoDid(ctx, credencial.credentialSubject.id);
+        this._garantirOrganizacaoDoDid(ctx, documentoEmissor);
         const metodo = documentoEmissor.verificationMethod?.find(
             (item) => item.id === credencial.proof.verificationMethod);
         if (!metodo || !documentoEmissor.assertionMethod?.includes(metodo.id)) {
@@ -517,6 +532,7 @@ class CustodyChainContract extends Contract {
         const chave = ctx.stub.createCompositeKey(PREFIXO_OPERACAO_ASSINADA, [operacao.operationId]);
         const existente = await ctx.stub.getState(chave);
         const documentoSignatario = await this._obterDocumentoDid(ctx, operacao.signerDid);
+        this._garantirOrganizacaoDoDid(ctx, documentoSignatario);
         const metodo = documentoSignatario.verificationMethod?.find((item) => item.id === operacao.keyId);
         if (!metodo) throw new Error('A chave do signatário não existe no documento DID.');
 
@@ -629,6 +645,7 @@ class CustodyChainContract extends Contract {
         }
 
         const emissor = await this._obterDocumentoDid(ctx, comando.issuerDid);
+        this._garantirOrganizacaoDoDid(ctx, emissor);
         const metodo = emissor.verificationMethod?.find((item) => item.id === keyId);
         if (emissor.version !== 2 || emissor.status !== 'ATIVO' || emissor.ativo !== true
             || !metodo || !emissor.assertionMethod?.includes(keyId)) {
@@ -1468,6 +1485,27 @@ class CustodyChainContract extends Contract {
         const mspId = ctx.clientIdentity.getMSPID();
         if (mspId !== MSP_ADMINISTRADOR) {
             throw new Error(`MSP não autorizado para governança de identidade: ${mspId}`);
+        }
+    }
+
+    _obterMspDoMetodoDid(metodoDid) {
+        const mspId = MSP_POR_METODO_DID.get(metodoDid);
+        if (!mspId) {
+            throw new Error(`Método DID sem política de organização Fabric: ${metodoDid}`);
+        }
+        return mspId;
+    }
+
+    _garantirOrganizacaoDoDid(ctx, documentoDid) {
+        const mspEsperado = this._obterMspDoMetodoDid(documentoDid.metodoDid);
+        // O atributo materializado é defensivo: documentos anteriores à fatia
+        // 8b continuam submetidos pela política determinística do método DID.
+        if (documentoDid.organizationMspId && documentoDid.organizationMspId !== mspEsperado) {
+            throw new Error('Documento DID possui organização Fabric incompatível com sua política.');
+        }
+        const mspAtual = ctx.clientIdentity.getMSPID();
+        if (mspAtual !== mspEsperado) {
+            throw new Error(`MSP não autorizado para o DID ${documentoDid.did}: esperado ${mspEsperado}, recebido ${mspAtual}`);
         }
     }
 
