@@ -16,7 +16,10 @@ public sealed class RevalidacaoCookieEvents(
     public override async Task ValidatePrincipal(CookieValidatePrincipalContext context)
     {
         var did = context.Principal?.FindFirstValue("did");
-        if (string.IsNullOrWhiteSpace(did))
+        var keyId = context.Principal?.FindFirstValue("did_key_id");
+        var versaoValida = int.TryParse(
+            context.Principal?.FindFirstValue("did_document_version"), out var documentVersion);
+        if (string.IsNullOrWhiteSpace(did) || string.IsNullOrWhiteSpace(keyId) || !versaoValida)
         {
             await RejeitarAsync(context);
             return;
@@ -29,7 +32,9 @@ public sealed class RevalidacaoCookieEvents(
                 .AnyAsync(i => i.Did == did && i.Situacao == SituacaoInterveniente.ATIVO);
             var documento = ativoLocal ? await didRegistry.ResolverAsync(did) : null;
             if (!ativoLocal || documento is null || !documento.Ativo
-                || !string.Equals(documento.Status, "ATIVO", StringComparison.Ordinal))
+                || !string.Equals(documento.Status, "ATIVO", StringComparison.Ordinal)
+                || documento.DocumentVersion != documentVersion
+                || !documento.Authentication.Contains(keyId, StringComparer.Ordinal))
             {
                 await RejeitarAsync(context);
             }

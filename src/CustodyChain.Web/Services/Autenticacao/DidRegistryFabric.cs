@@ -40,7 +40,9 @@ public sealed class DidRegistryFabric(HttpClient httpClient) : IDidRegistry
             dto.VerificationMethod
                 .Select(m => new MetodoVerificacaoDid(m.Id, m.Type, m.Controller, m.PublicKeyMultibase))
                 .ToArray(),
-            dto.Authentication);
+            dto.Authentication,
+            dto.DocumentVersion,
+            dto.CapabilityInvocation);
     }
 
     public static void ConfigurarAutorizacao(HttpClient client, string? serviceToken)
@@ -57,8 +59,10 @@ public sealed class DidRegistryFabric(HttpClient httpClient) : IDidRegistry
         int Version,
         string Status,
         bool Ativo,
+        int DocumentVersion,
         IReadOnlyList<MetodoVerificacaoDto> VerificationMethod,
-        IReadOnlyList<string> Authentication);
+        IReadOnlyList<string> Authentication,
+        IReadOnlyList<string>? CapabilityInvocation);
 
     private sealed record MetodoVerificacaoDto(
         string Id,

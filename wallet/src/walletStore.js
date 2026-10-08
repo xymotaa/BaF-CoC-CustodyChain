@@ -32,6 +32,40 @@ class WalletStore {
                 scrypt_p INTEGER NOT NULL,
                 created_at TEXT NOT NULL
             ) STRICT;
+
+            CREATE TABLE IF NOT EXISTS identity_keys (
+                did TEXT NOT NULL,
+                key_id TEXT NOT NULL,
+                public_key_multibase TEXT NOT NULL,
+                encrypted_private_key BLOB NOT NULL,
+                salt BLOB NOT NULL,
+                iv BLOB NOT NULL,
+                auth_tag BLOB NOT NULL,
+                scrypt_n INTEGER NOT NULL,
+                scrypt_r INTEGER NOT NULL,
+                scrypt_p INTEGER NOT NULL,
+                key_sequence INTEGER NOT NULL,
+                status TEXT NOT NULL CHECK (status IN ('ACTIVE', 'PENDING', 'RETIRED', 'COMPROMISED')),
+                candidate_id TEXT UNIQUE,
+                created_at TEXT NOT NULL,
+                activated_at TEXT,
+                retired_at TEXT,
+                PRIMARY KEY (did, key_id)
+            ) STRICT;
+
+            CREATE UNIQUE INDEX IF NOT EXISTS ux_identity_keys_active_did
+                ON identity_keys (did) WHERE status = 'ACTIVE';
+
+            INSERT OR IGNORE INTO identity_keys (
+                did, key_id, public_key_multibase, encrypted_private_key,
+                salt, iv, auth_tag, scrypt_n, scrypt_r, scrypt_p,
+                key_sequence, status, candidate_id, created_at, activated_at, retired_at
+            )
+            SELECT
+                did, key_id, public_key_multibase, encrypted_private_key,
+                salt, iv, auth_tag, scrypt_n, scrypt_r, scrypt_p,
+                1, 'ACTIVE', NULL, created_at, created_at, NULL
+            FROM identities;
         `);
     }
 
@@ -50,93 +84,202 @@ class WalletStore {
             throw new Error('A senha da wallet deve ter pelo menos 12 caracteres.');
         }
 
-        const { publicKey, privateKey } = crypto.generateKeyPairSync('ed25519');
-        const publicDer = publicKey.export({ format: 'der', type: 'spki' });
-        const publicKeyRaw = publicDer.subarray(SPKI_ED25519_PREFIX_LENGTH);
-        const publicKeyMultibase = encodeEd25519Multikey(publicKeyRaw);
-        const privateKeyDer = privateKey.export({ format: 'der', type: 'pkcs8' });
-        const salt = crypto.randomBytes(16);
-        const iv = crypto.randomBytes(12);
-        const encryptionKey = deriveKey(password, salt, SCRYPT_N, SCRYPT_R, SCRYPT_P);
-        const cipher = crypto.createCipheriv('aes-256-gcm', encryptionKey, iv);
-        cipher.setAAD(aad(did, keyId));
-        const encryptedPrivateKey = Buffer.concat([cipher.update(privateKeyDer), cipher.final()]);
-        const authTag = cipher.getAuthTag();
-        encryptionKey.fill(0);
-        privateKeyDer.fill(0);
+        if (this.database.prepare('SELECT 1 FROM identity_keys WHERE did = ?').get(did)) {
+            throw new Error('A identidade já existe nesta wallet.');
+        }
 
+        const key = createEncryptedKey({ did, keyId, password });
         this.database.prepare(`
-            INSERT INTO identities (
+            INSERT INTO identity_keys (
                 did, key_id, public_key_multibase, encrypted_private_key,
-                salt, iv, auth_tag, scrypt_n, scrypt_r, scrypt_p, created_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                salt, iv, auth_tag, scrypt_n, scrypt_r, scrypt_p,
+                key_sequence, status, candidate_id, created_at, activated_at, retired_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 'ACTIVE', NULL, ?, ?, NULL)
         `).run(
             did,
             keyId,
-            publicKeyMultibase,
-            encryptedPrivateKey,
-            salt,
-            iv,
-            authTag,
+            key.publicKeyMultibase,
+            key.encryptedPrivateKey,
+            key.salt,
+            key.iv,
+            key.authTag,
             SCRYPT_N,
             SCRYPT_R,
             SCRYPT_P,
-            new Date().toISOString()
+            key.createdAt,
+            key.createdAt
         );
 
-        return { did, keyId, algorithm: 'Ed25519', publicKeyMultibase };
+        return { did, keyId, algorithm: 'Ed25519', publicKeyMultibase: key.publicKeyMultibase };
     }
 
     listIdentities() {
         return this.database.prepare(`
             SELECT did, key_id AS keyId, public_key_multibase AS publicKeyMultibase, created_at AS createdAt
-            FROM identities ORDER BY created_at
+            FROM identity_keys WHERE status = 'ACTIVE' ORDER BY created_at
         `).all().map((identity) => ({ ...identity, algorithm: 'Ed25519' }));
     }
 
-    sign({ did, password, signingInput }) {
+    sign({ did, password, signingInput, keyId = null }) {
         if (typeof signingInput !== 'string' || signingInput.length === 0 || signingInput.length > 16384) {
             throw new Error('Conteúdo de assinatura inválido.');
         }
-        const identity = this.database.prepare('SELECT * FROM identities WHERE did = ?').get(did);
+        const identity = keyId
+            ? this.database.prepare(`
+                SELECT * FROM identity_keys
+                WHERE did = ? AND key_id = ? AND status IN ('ACTIVE', 'PENDING')
+            `).get(did, keyId)
+            : this.database.prepare(
+                "SELECT * FROM identity_keys WHERE did = ? AND status = 'ACTIVE'"
+            ).get(did);
         if (!identity) {
             throw new Error('Identidade não encontrada nesta wallet.');
         }
 
-        const encryptionKey = deriveKey(
-            password,
-            identity.salt,
-            identity.scrypt_n,
-            identity.scrypt_r,
-            identity.scrypt_p
-        );
-        let privateKeyDer;
-        try {
-            const decipher = crypto.createDecipheriv('aes-256-gcm', encryptionKey, identity.iv);
-            decipher.setAAD(aad(identity.did, identity.key_id));
-            decipher.setAuthTag(identity.auth_tag);
-            privateKeyDer = Buffer.concat([
-                decipher.update(identity.encrypted_private_key),
-                decipher.final()
-            ]);
-        } catch {
-            throw new Error('Senha da wallet inválida.');
-        } finally {
-            encryptionKey.fill(0);
+        return signWithKey(identity, password, signingInput);
+    }
+
+    createRotationCandidate({ did, password }) {
+        const activeKey = this.database.prepare(
+            "SELECT * FROM identity_keys WHERE did = ? AND status = 'ACTIVE'"
+        ).get(did);
+        if (!activeKey) {
+            throw new Error('Identidade ativa não encontrada nesta wallet.');
+        }
+        verifyPassword(activeKey, password);
+
+        const pending = this.database.prepare(
+            "SELECT * FROM identity_keys WHERE did = ? AND status = 'PENDING'"
+        ).get(did);
+        if (pending) {
+            return {
+                candidateId: pending.candidate_id,
+                did,
+                keyId: pending.key_id,
+                algorithm: 'Ed25519',
+                publicKeyMultibase: pending.public_key_multibase
+            };
         }
 
-        try {
-            const privateKey = crypto.createPrivateKey({ key: privateKeyDer, format: 'der', type: 'pkcs8' });
-            const message = Buffer.from(signingInput, 'base64url');
-            const signature = crypto.sign(null, message, privateKey);
+        const sequence = Number(this.database.prepare(
+            'SELECT COALESCE(MAX(key_sequence), 0) AS value FROM identity_keys WHERE did = ?'
+        ).get(did).value) + 1;
+        const keyPrefix = activeKey.key_id.startsWith(`${did}#auth-`) ? 'auth' : 'key';
+        const keyId = `${did}#${keyPrefix}-${sequence}`;
+        const candidateId = `urn:uuid:${crypto.randomUUID()}`;
+        const key = createEncryptedKey({ did, keyId, password });
+
+        this.database.prepare(`
+            INSERT INTO identity_keys (
+                did, key_id, public_key_multibase, encrypted_private_key,
+                salt, iv, auth_tag, scrypt_n, scrypt_r, scrypt_p,
+                key_sequence, status, candidate_id, created_at, activated_at, retired_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'PENDING', ?, ?, NULL, NULL)
+        `).run(
+            did, keyId, key.publicKeyMultibase, key.encryptedPrivateKey,
+            key.salt, key.iv, key.authTag, SCRYPT_N, SCRYPT_R, SCRYPT_P,
+            sequence, candidateId, key.createdAt
+        );
+
+        return {
+            candidateId,
+            did,
+            keyId,
+            algorithm: 'Ed25519',
+            publicKeyMultibase: key.publicKeyMultibase
+        };
+    }
+
+    signKeyRotation({ did, password, candidateId, command }) {
+        if (!command || typeof command !== 'object' || Array.isArray(command)
+            || command.type !== 'CustodyChainDidKeyRotation' || command.version !== 1
+            || command.subjectDid !== did
+            || command.algorithm !== 'Ed25519'
+            || command.canonicalization !== 'custodychain-json-c14n-v1') {
+            throw new Error('O comando de rotação não corresponde à identidade selecionada.');
+        }
+
+        const currentKey = this.database.prepare(
+            "SELECT * FROM identity_keys WHERE did = ? AND status = 'ACTIVE'"
+        ).get(did);
+        const candidateKey = this.database.prepare(
+            "SELECT * FROM identity_keys WHERE did = ? AND candidate_id = ? AND status = 'PENDING'"
+        ).get(did, candidateId);
+        if (!currentKey || !candidateKey
+            || command.currentKeyId !== currentKey.key_id
+            || command.newVerificationMethod?.id !== candidateKey.key_id
+            || command.newVerificationMethod?.controller !== did
+            || command.newVerificationMethod?.type !== 'Multikey'
+            || command.newVerificationMethod?.publicKeyMultibase !== candidateKey.public_key_multibase) {
+            throw new Error('As chaves do comando de rotação não correspondem à wallet.');
+        }
+
+        const signingInput = Buffer.from(canonicalize(command), 'utf8').toString('base64url');
+        const currentProof = signWithKey(currentKey, password, signingInput);
+        const newKeyProof = signWithKey(candidateKey, password, signingInput);
+        return {
+            currentKeyProof: currentProof,
+            newKeyProof
+        };
+    }
+
+    confirmKeyRotation({ did, candidateId = null, keyId }) {
+        const active = this.database.prepare(
+            "SELECT * FROM identity_keys WHERE did = ? AND key_id = ? AND status = 'ACTIVE'"
+        ).get(did, keyId);
+        if (active) {
             return {
-                did: identity.did,
-                keyId: identity.key_id,
+                did,
+                keyId,
                 algorithm: 'Ed25519',
-                signature: signature.toString('base64url')
+                publicKeyMultibase: active.public_key_multibase
             };
-        } finally {
-            privateKeyDer.fill(0);
+        }
+
+        const candidate = candidateId
+            ? this.database.prepare(`
+                SELECT * FROM identity_keys
+                WHERE did = ? AND candidate_id = ? AND key_id = ? AND status = 'PENDING'
+            `).get(did, candidateId, keyId)
+            : this.database.prepare(`
+                SELECT * FROM identity_keys
+                WHERE did = ? AND key_id = ? AND status = 'PENDING'
+            `).get(did, keyId);
+        if (!candidate) {
+            throw new Error('Candidata de rotação não encontrada nesta wallet.');
+        }
+
+        const timestamp = new Date().toISOString();
+        this.database.exec('BEGIN IMMEDIATE');
+        try {
+            this.database.prepare(`
+                UPDATE identity_keys SET status = 'RETIRED', retired_at = ?
+                WHERE did = ? AND status = 'ACTIVE'
+            `).run(timestamp, did);
+            this.database.prepare(`
+                UPDATE identity_keys SET status = 'ACTIVE', activated_at = ?, candidate_id = NULL
+                WHERE did = ? AND key_id = ? AND status = 'PENDING'
+            `).run(timestamp, did, keyId);
+            this.database.exec('COMMIT');
+        } catch (error) {
+            this.database.exec('ROLLBACK');
+            throw error;
+        }
+
+        return {
+            did,
+            keyId,
+            algorithm: 'Ed25519',
+            publicKeyMultibase: candidate.public_key_multibase
+        };
+    }
+
+    discardRotationCandidate({ did, candidateId }) {
+        const result = this.database.prepare(
+            "DELETE FROM identity_keys WHERE did = ? AND candidate_id = ? AND status = 'PENDING'"
+        ).run(did, candidateId);
+        if (result.changes !== 1) {
+            throw new Error('Candidata de rotação não encontrada nesta wallet.');
         }
     }
 
@@ -225,6 +368,76 @@ function canonicalize(value) {
             `${JSON.stringify(key)}:${canonicalize(value[key])}`).join(',')}}`;
     }
     throw new Error('Tipo inválido no comando DID.');
+}
+
+function createEncryptedKey({ did, keyId, password }) {
+    const { publicKey, privateKey } = crypto.generateKeyPairSync('ed25519');
+    const publicDer = publicKey.export({ format: 'der', type: 'spki' });
+    const publicKeyMultibase = encodeEd25519Multikey(publicDer.subarray(SPKI_ED25519_PREFIX_LENGTH));
+    const privateKeyDer = privateKey.export({ format: 'der', type: 'pkcs8' });
+    const salt = crypto.randomBytes(16);
+    const iv = crypto.randomBytes(12);
+    const encryptionKey = deriveKey(password, salt, SCRYPT_N, SCRYPT_R, SCRYPT_P);
+    try {
+        const cipher = crypto.createCipheriv('aes-256-gcm', encryptionKey, iv);
+        cipher.setAAD(aad(did, keyId));
+        const encryptedPrivateKey = Buffer.concat([cipher.update(privateKeyDer), cipher.final()]);
+        return {
+            publicKeyMultibase,
+            encryptedPrivateKey,
+            salt,
+            iv,
+            authTag: cipher.getAuthTag(),
+            createdAt: new Date().toISOString()
+        };
+    } finally {
+        encryptionKey.fill(0);
+        privateKeyDer.fill(0);
+    }
+}
+
+function decryptPrivateKey(identity, password) {
+    const encryptionKey = deriveKey(
+        password,
+        identity.salt,
+        identity.scrypt_n,
+        identity.scrypt_r,
+        identity.scrypt_p
+    );
+    try {
+        const decipher = crypto.createDecipheriv('aes-256-gcm', encryptionKey, identity.iv);
+        decipher.setAAD(aad(identity.did, identity.key_id));
+        decipher.setAuthTag(identity.auth_tag);
+        return Buffer.concat([
+            decipher.update(identity.encrypted_private_key),
+            decipher.final()
+        ]);
+    } catch {
+        throw new Error('Senha da wallet inválida.');
+    } finally {
+        encryptionKey.fill(0);
+    }
+}
+
+function verifyPassword(identity, password) {
+    const privateKeyDer = decryptPrivateKey(identity, password);
+    privateKeyDer.fill(0);
+}
+
+function signWithKey(identity, password, signingInput) {
+    const privateKeyDer = decryptPrivateKey(identity, password);
+    try {
+        const privateKey = crypto.createPrivateKey({ key: privateKeyDer, format: 'der', type: 'pkcs8' });
+        const signature = crypto.sign(null, Buffer.from(signingInput, 'base64url'), privateKey);
+        return {
+            did: identity.did,
+            keyId: identity.key_id,
+            algorithm: 'Ed25519',
+            signature: signature.toString('base64url')
+        };
+    } finally {
+        privateKeyDer.fill(0);
+    }
 }
 
 function deriveKey(password, salt, n, r, p) {

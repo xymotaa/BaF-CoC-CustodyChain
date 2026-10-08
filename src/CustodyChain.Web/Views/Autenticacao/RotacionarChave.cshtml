@@ -1,0 +1,154 @@
+@model CustodyChain.Web.Models.ViewModels.RotacionarChaveDidViewModel
+@{
+    ViewData["Title"] = "Rotacionar chave da identidade";
+}
+
+<div class="pagina-cabecalho">
+    <h1>Rotacionar chave da identidade</h1>
+    <p class="campo-ajuda">A wallet cria a nova chave e prova a posse das duas chaves. Nenhuma chave privada é enviada ao CustodyChain.</p>
+</div>
+
+<section id="rotation-panel" class="cartao painel-rotacao"
+         data-wallet-endpoint="@Model.WalletEndpoint" data-did="@Model.Did">
+    @Html.AntiForgeryToken()
+    <dl class="resumo-identidade">
+        <dt>DID</dt><dd class="mono">@Model.Did</dd>
+        <dt>Chave atual</dt><dd class="mono">@Model.KeyIdAtual</dd>
+        <dt>Versão do documento</dt><dd>@Model.DocumentVersion</dd>
+        <dt>Nova chave</dt><dd id="new-key" class="mono">Será criada pela wallet após a confirmação.</dd>
+    </dl>
+
+    <div class="alerta alerta-aviso">
+        Após a confirmação, esta sessão será encerrada e a chave atual não poderá assinar novas operações.
+    </div>
+    <div id="rotation-error" class="alerta alerta-erro" role="alert" tabindex="-1" hidden></div>
+
+    <div class="campo">
+        <label class="campo-rotulo" for="wallet-password">Senha da wallet</label>
+        <input id="wallet-password" class="campo-entrada" type="password"
+               autocomplete="current-password" required />
+    </div>
+    <div class="campo">
+        <label class="campo-rotulo" for="pairing-token">Código de pareamento</label>
+        <input id="pairing-token" class="campo-entrada" type="password" autocomplete="off" required />
+    </div>
+    <label class="confirmacao-rotacao" for="rotation-confirmation">
+        <input id="rotation-confirmation" type="checkbox" />
+        Entendo que precisarei entrar novamente usando a nova chave.
+    </label>
+
+    <button id="rotate" class="botao botao-primario" type="button">Criar e ativar nova chave</button>
+    <p id="rotation-status" role="status" aria-live="polite" class="campo-ajuda"></p>
+</section>
+
+@section Scripts {
+    <script>
+        (() => {
+            const panel = document.getElementById('rotation-panel');
+            const button = document.getElementById('rotate');
+            const error = document.getElementById('rotation-error');
+            const status = document.getElementById('rotation-status');
+            const password = document.getElementById('wallet-password');
+            const pairing = document.getElementById('pairing-token');
+            const confirmation = document.getElementById('rotation-confirmation');
+            const newKey = document.getElementById('new-key');
+            const token = document.querySelector('input[name="__RequestVerificationToken"]').value;
+            const walletEndpoint = panel.dataset.walletEndpoint;
+            const did = panel.dataset.did;
+
+            const applicationPost = async (url, body) => {
+                const response = await fetch(url, {
+                    method: 'POST', credentials: 'same-origin',
+                    headers: { 'Content-Type': 'application/json', 'RequestVerificationToken': token },
+                    body: JSON.stringify(body)
+                });
+                const payload = await response.json().catch(() => ({}));
+                if (!response.ok) throw new Error(payload.message || payload.error || 'Não foi possível rotacionar a chave.');
+                return payload;
+            };
+            const walletPost = async (path, body) => {
+                const response = await fetch(`${walletEndpoint}${path}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'X-Wallet-Pairing-Token': pairing.value },
+                    body: JSON.stringify(body)
+                });
+                const payload = response.status === 204 ? {} : await response.json().catch(() => ({}));
+                if (!response.ok) throw new Error(payload.message || 'A wallet recusou a rotação.');
+                return payload;
+            };
+
+            button.addEventListener('click', async () => {
+                error.hidden = true;
+                if (!password.value || !pairing.value || !confirmation.checked) {
+                    error.textContent = 'Informe a senha, o código de pareamento e confirme a troca da chave.';
+                    error.hidden = false;
+                    error.focus();
+                    return;
+                }
+
+                button.disabled = true;
+                let candidate = null;
+                let ledgerConfirmed = false;
+                try {
+                    status.textContent = 'Criando a nova chave na wallet.';
+                    candidate = await walletPost('/v1/key-rotations/candidates', { did, password: password.value });
+                    newKey.textContent = candidate.keyId;
+
+                    status.textContent = 'Preparando o comando de rotação.';
+                    const command = await applicationPost('/identidade/chave/rotacao/comando', {
+                        keyId: candidate.keyId,
+                        publicKeyMultibase: candidate.publicKeyMultibase
+                    });
+
+                    status.textContent = 'Assinando com a chave atual e a nova chave.';
+                    const proofs = await walletPost('/v1/proofs/did-key-rotation', {
+                        did, password: password.value, candidateId: candidate.candidateId, command
+                    });
+                    password.value = '';
+
+                    status.textContent = 'Confirmando a rotação no ledger.';
+                    const result = await applicationPost('/identidade/chave/rotacao/prova', {
+                        command,
+                        currentKeyProof: proofs.currentKeyProof,
+                        newKeyProof: proofs.newKeyProof
+                    });
+                    ledgerConfirmed = true;
+
+                    status.textContent = 'Ativando a nova chave na wallet.';
+                    await walletPost('/v1/key-rotations/confirm', {
+                        did, candidateId: candidate.candidateId, keyId: result.keyId
+                    });
+                    status.textContent = 'Chave rotacionada. Redirecionando para uma nova autenticação.';
+                    window.location.assign(result.redirectUrl);
+                } catch (exception) {
+                    password.value = '';
+                    error.textContent = ledgerConfirmed
+                        ? `${exception.message} O ledger confirmou a rotação; não tente criar outra chave antes de reconciliar a wallet.`
+                        : `${exception.message} A chave candidata foi preservada para uma nova tentativa segura.`;
+                    error.hidden = false;
+                    error.focus();
+                } finally {
+                    button.disabled = false;
+                }
+            });
+        })();
+    </script>
+}
+
+@section Styles {
+    <style>
+        .pagina-cabecalho { margin-bottom: 1.5rem; }
+        .painel-rotacao { max-width: 720px; padding: 1.5rem; }
+        .resumo-identidade { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: .65rem 1rem; margin: 0 0 1.5rem; }
+        .resumo-identidade dt { color: var(--cor-texto-fraco); }
+        .resumo-identidade dd { margin: 0; overflow-wrap: anywhere; }
+        .painel-rotacao .campo { margin-bottom: 1rem; }
+        .confirmacao-rotacao { display: flex; align-items: flex-start; gap: .65rem; margin: 1.25rem 0; line-height: 1.5; }
+        .confirmacao-rotacao input { width: 1.1rem; height: 1.1rem; margin-top: .2rem; }
+        .painel-rotacao .botao { min-height: 44px; }
+        @@media (max-width: 640px) {
+            .resumo-identidade { grid-template-columns: 1fr; gap: .25rem; }
+            .resumo-identidade dd { margin-bottom: .75rem; }
+        }
+    </style>
+}

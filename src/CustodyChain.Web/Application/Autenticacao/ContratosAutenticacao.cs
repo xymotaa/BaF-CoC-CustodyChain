@@ -12,7 +12,9 @@ public sealed record DocumentoDidAutenticacao(
     string Status,
     bool Ativo,
     IReadOnlyList<MetodoVerificacaoDid> VerificationMethod,
-    IReadOnlyList<string> Authentication);
+    IReadOnlyList<string> Authentication,
+    int DocumentVersion = 1,
+    IReadOnlyList<string>? CapabilityInvocation = null);
 
 public sealed record DesafioAutenticacao(
     string ChallengeId,
@@ -39,7 +41,9 @@ public sealed record IdentidadeAutenticada(
     string Nome,
     string Did,
     string PerfilCodigo,
-    string PerfilNome);
+    string PerfilNome,
+    string? KeyId = null,
+    int DocumentVersion = 1);
 
 public sealed record ConfiguracaoAutenticacaoDid(
     string Audience,

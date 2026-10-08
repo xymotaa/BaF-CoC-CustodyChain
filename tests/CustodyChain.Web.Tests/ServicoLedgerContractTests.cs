@@ -73,6 +73,31 @@ public sealed class ServicoLedgerContractTests
     }
 
     [Fact]
+    public async Task ServicoLedgerFabric_EnviaDuasProvasParaRotacaoDeChave()
+    {
+        var handler = new HandlerCapturandoRequisicao();
+        using var httpClient = new HttpClient(handler) { BaseAddress = new Uri("http://ledger.local") };
+        var ledger = new ServicoLedgerFabric(httpClient);
+        using var document = JsonDocument.Parse("""
+            {"type":"CustodyChainDidKeyRotation","subjectDid":"did:legal:expert:teste"}
+            """);
+
+        var resultado = await ledger.RotacionarChaveDidV2Async(
+            "did:legal:expert:teste",
+            new RotacaoChaveDidV2Dto(
+                document.RootElement.Clone(),
+                new ProvaChaveDidLedgerDto("did:legal:expert:teste#key-1", "Ed25519", "atual"),
+                new ProvaChaveDidLedgerDto("did:legal:expert:teste#key-2", "Ed25519", "nova")));
+
+        Assert.Equal("/v2/dids/did%3Alegal%3Aexpert%3Ateste/rotate-key", handler.Path);
+        Assert.Equal(3, resultado.DocumentVersion);
+        Assert.Equal("did:legal:expert:teste#key-2", resultado.KeyId);
+        using var corpo = JsonDocument.Parse(handler.Body!);
+        Assert.Equal("atual", corpo.RootElement.GetProperty("currentKeyProof").GetProperty("signature").GetString());
+        Assert.Equal("nova", corpo.RootElement.GetProperty("newKeyProof").GetProperty("signature").GetString());
+    }
+
+    [Fact]
     public async Task ServicoLedgerFabric_ConsultaOperacaoAssinadaRegistradaNoLedger()
     {
         var handler = new HandlerCapturandoRequisicao();
@@ -98,7 +123,15 @@ public sealed class ServicoLedgerContractTests
             Path = request.RequestUri!.AbsolutePath;
             Body = request.Content is null ? null : await request.Content.ReadAsStringAsync(cancellationToken);
 
-            var content = Path == "/v2/operacoes/urn%3Auuid%3A11111111-1111-1111-1111-111111111111"
+            var content = Path == "/v2/dids/did%3Alegal%3Aexpert%3Ateste/rotate-key"
+                ? JsonContent.Create(new
+                {
+                    id = "did:legal:expert:teste",
+                    did = "did:legal:expert:teste",
+                    documentVersion = 3,
+                    authentication = new[] { "did:legal:expert:teste#key-2" }
+                })
+                : Path == "/v2/operacoes/urn%3Auuid%3A11111111-1111-1111-1111-111111111111"
                 ? JsonContent.Create(new
                 {
                     signedOperation = new { operation = "COLETA_REGISTRAR" }

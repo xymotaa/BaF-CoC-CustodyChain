@@ -53,9 +53,10 @@ public sealed class ConcluirAutenticacaoUseCase(
                 "A wallet não produziu uma assinatura válida para este desafio.");
         }
 
-        return await identidadeStore.ObterAtivaAsync(prova.Did, cancellationToken)
+        var identidade = await identidadeStore.ObterAtivaAsync(prova.Did, cancellationToken)
             ?? throw new AutenticacaoException(
                 CodigosErroAutenticacao.CredencialIndisponivel,
                 "A credencial DID não corresponde a um interveniente ativo.");
+        return identidade with { KeyId = prova.KeyId, DocumentVersion = documento.DocumentVersion };
     }
 }

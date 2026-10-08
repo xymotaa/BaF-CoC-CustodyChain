@@ -44,6 +44,28 @@ public class ServicoLedgerFabric(HttpClient httpClient) : IServicoLedger
         await LancarSeFalhaAsync(resposta);
     }
 
+    public async Task<DocumentoDidRotacionadoDto> RotacionarChaveDidV2Async(
+        string did,
+        RotacaoChaveDidV2Dto dto,
+        CancellationToken cancellationToken = default)
+    {
+        var resposta = await httpClient.PostAsJsonAsync(
+            $"/v2/dids/{Uri.EscapeDataString(did)}/rotate-key", new
+            {
+                command = dto.Command,
+                currentKeyProof = dto.CurrentKeyProof,
+                newKeyProof = dto.NewKeyProof
+            }, OpcoesJson, cancellationToken);
+        await LancarSeFalhaAsync(resposta);
+
+        var documento = await resposta.Content.ReadFromJsonAsync<DocumentoRotacionadoGatewayDto>(
+            OpcoesJson, cancellationToken)
+            ?? throw new InvalidOperationException("Resposta vazia do gateway ao rotacionar a chave DID.");
+        var keyId = documento.Authentication.FirstOrDefault()
+            ?? throw new InvalidOperationException("Documento DID rotacionado sem chave de autenticação ativa.");
+        return new DocumentoDidRotacionadoDto(documento.Id ?? documento.Did, documento.DocumentVersion, keyId);
+    }
+
     public async Task<string> GerarDidAsync(TipoAtor tipo)
     {
         var metodoDid = $"did:legal:{tipo.ToString().ToLowerInvariant()}";
@@ -197,6 +219,12 @@ public class ServicoLedgerFabric(HttpClient httpClient) : IServicoLedger
 
     private record OperacaoAssinadaGatewayDto(
         [property: JsonPropertyName("operationId")] string OperationId);
+
+    private record DocumentoRotacionadoGatewayDto(
+        string? Id,
+        string Did,
+        int DocumentVersion,
+        IReadOnlyList<string> Authentication);
 
     private record EventoHistoricoGatewayDto(
         [property: JsonPropertyName("assetId")] string AssetId,

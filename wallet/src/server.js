@@ -93,7 +93,8 @@ const server = http.createServer(async (req, res) => {
             const signature = store.sign({
                 did: body.did,
                 password: body.password,
-                signingInput: body.signingInput
+                signingInput: body.signingInput,
+                keyId: body.keyId
             });
             return json(res, 200, signature, origin);
         }
@@ -120,6 +121,42 @@ const server = http.createServer(async (req, res) => {
                 actorField: 'actorDid'
             });
             return json(res, 200, proof, origin);
+        }
+
+        if (req.method === 'POST' && req.url === '/v1/key-rotations/candidates') {
+            const body = await readJson(req);
+            const candidate = store.createRotationCandidate({
+                did: body.did,
+                password: body.password
+            });
+            return json(res, 201, candidate, origin);
+        }
+
+        if (req.method === 'POST' && req.url === '/v1/proofs/did-key-rotation') {
+            const body = await readJson(req);
+            const proof = store.signKeyRotation({
+                did: body.did,
+                password: body.password,
+                candidateId: body.candidateId,
+                command: body.command
+            });
+            return json(res, 200, proof, origin);
+        }
+
+        if (req.method === 'POST' && req.url === '/v1/key-rotations/confirm') {
+            const body = await readJson(req);
+            const identity = store.confirmKeyRotation({
+                did: body.did,
+                candidateId: body.candidateId,
+                keyId: body.keyId
+            });
+            return json(res, 200, identity, origin);
+        }
+
+        if (req.method === 'POST' && req.url === '/v1/key-rotations/discard') {
+            const body = await readJson(req);
+            store.discardRotationCandidate({ did: body.did, candidateId: body.candidateId });
+            return json(res, 204, null, origin);
         }
 
         if (req.method === 'POST' && req.url === '/v1/proofs/verifiable-credential') {

@@ -1,4 +1,5 @@
 using System.ComponentModel.DataAnnotations;
+using System.Text.Json;
 
 namespace CustodyChain.Web.Models.ViewModels;
 
@@ -93,3 +94,18 @@ public class GestaoCredenciaisViewModel
 public record RevogarCredencialViewModel(long Id, string Identificador, string TitularNome, string EmissorDid, string WalletEndpoint);
 
 public record EnviarProvaRevogacaoVcRequest(object Command, string KeyId, string Signature);
+
+public record RotacionarChaveDidViewModel(
+    string Did,
+    string KeyIdAtual,
+    int DocumentVersion,
+    string WalletEndpoint);
+
+public record CriarComandoRotacaoDidRequest(string KeyId, string PublicKeyMultibase);
+
+public record ProvaChaveDidDto(string KeyId, string Algorithm, string Signature);
+
+public record EnviarProvaRotacaoDidRequest(
+    JsonElement Command,
+    ProvaChaveDidDto CurrentKeyProof,
+    ProvaChaveDidDto NewKeyProof);

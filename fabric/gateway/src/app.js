@@ -85,7 +85,9 @@ function tratarErro(res, erro) {
         ? detalhes.map((detalhe) => detalhe.message || String(detalhe)).join(' ')
         : detalhes || (erro && erro.message) || 'Erro desconhecido no gateway.';
     const status = mensagem.includes('não encontrado') ? 404
-        : mensagem.includes('já existe') || mensagem.includes('já foi concluído') || mensagem.includes('já foi concluída') ? 409
+        : mensagem.includes('já existe') || mensagem.includes('já foi concluído')
+            || mensagem.includes('já foi concluída') || mensagem.includes('Conflito de idempotência')
+            || mensagem.includes('versão do documento DID mudou') ? 409
             : mensagem.includes('inválid') || mensagem.includes('não autorizado') ? 400
                 : 500;
     res.status(status).json({ error: mensagem });
@@ -338,6 +340,43 @@ app.post('/v2/dids/:did/activate', async (req, res) => {
     }
 });
 
+app.post('/v2/dids/:did/rotate-key', async (req, res) => {
+    try {
+        const { command, currentKeyProof, newKeyProof } = req.body;
+        validarComandoDid(command, 'CustodyChainDidKeyRotation');
+        if (command.subjectDid !== req.params.did
+            || command.algorithm !== 'Ed25519'
+            || command.canonicalization !== 'custodychain-json-c14n-v1'
+            || currentKeyProof?.keyId !== command.currentKeyId
+            || currentKeyProof?.algorithm !== 'Ed25519'
+            || newKeyProof?.keyId !== command.newVerificationMethod?.id
+            || newKeyProof?.algorithm !== 'Ed25519') {
+            throw new Error('Provas de rotação DID inválidas.');
+        }
+
+        const contrato = obterContrato();
+        const documento = JSON.parse(decodificar(
+            await contrato.evaluateTransaction('ResolverDid', command.subjectDid)));
+        const metodoAtual = documento.verificationMethod?.find(
+            (metodo) => metodo.id === command.currentKeyId);
+        if (!metodoAtual) throw new Error('A chave atual não existe no documento DID.');
+        verificarProvaDid(command, currentKeyProof.signature, metodoAtual.publicKeyMultibase);
+        verificarProvaDid(
+            command,
+            newKeyProof.signature,
+            command.newVerificationMethod?.publicKeyMultibase);
+
+        const resultado = await contrato.submitTransaction(
+            'RotacionarChaveDidV2',
+            JSON.stringify(command),
+            currentKeyProof.signature,
+            newKeyProof.signature);
+        res.json(JSON.parse(decodificar(resultado)));
+    } catch (erro) {
+        tratarErro(res, erro);
+    }
+});
+
 app.post('/dids', async (req, res) => {
     if (!LEGACY_IDENTITY_WRITES_ENABLED) {
         return res.status(410).json({ error: 'Criação de DID v1 desabilitada; use o contrato v2 com prova de posse.' });
@@ -409,9 +448,8 @@ app.post('/v2/operacoes', async (req, res) => {
         const contrato = obterContrato();
         const signatario = JSON.parse(decodificar(await contrato.evaluateTransaction('ResolverDid', operation.signerDid)));
         const metodo = signatario.verificationMethod?.find((item) => item.id === operation.keyId);
-        if (signatario.status !== 'ATIVO' || signatario.ativo !== true
-            || !signatario.capabilityInvocation?.includes(operation.keyId) || !metodo) {
-            throw new Error('A chave do signatário não possui capabilityInvocation para publicar a operação.');
+        if (!metodo) {
+            throw new Error('A chave do signatário não existe no documento DID.');
         }
         const { signature, ...semAssinatura } = operation;
         verificarProvaDid(semAssinatura, signature, metodo.publicKeyMultibase);

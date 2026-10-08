@@ -61,6 +61,8 @@ public class AutenticacaoDidUseCaseTests
         var replay = await Assert.ThrowsAsync<AutenticacaoException>(() => sut.ExecutarAsync(prova));
 
         Assert.Equal(Did, identidade.Did);
+        Assert.Equal(KeyId, identidade.KeyId);
+        Assert.Equal(1, identidade.DocumentVersion);
         Assert.Equal(CodigosErroAutenticacao.DesafioInvalido, replay.Codigo);
     }
 

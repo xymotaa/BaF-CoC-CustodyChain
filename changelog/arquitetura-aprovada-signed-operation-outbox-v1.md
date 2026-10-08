@@ -132,4 +132,7 @@ resposta do ledger e o commit local divergirem.
 - [x] Fatia 6a — `DESTINACAO_SOLICITAR` assinada pelo custodiante, vinculada à guarda;
 - [x] Fatia 6b — `DESTINACAO_APROVAR` assinada por administrador distinto;
 - [ ] Fatia 7 — remoção completa dos contratos CoC legados;
-- [ ] Fatia 8 — rotação/recuperação de chaves e identidade Fabric por organização.
+- [x] Fatia 8a — rotação de chave com dupla prova e histórico criptográfico;
+- [ ] Fatia 8b — identidade Fabric por organização;
+- [ ] Fatia 8c — recuperação administrativa de chave;
+- [ ] Fatia 8d — migração operacional e endurecimento.

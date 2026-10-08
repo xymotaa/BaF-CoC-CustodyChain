@@ -165,6 +165,147 @@ test('assina vetor canônico de operação sem alterar o envelope', () => {
     }
 });
 
+test('rotaciona a chave somente com prova da chave atual e da candidata', () => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'custodychain-wallet-'));
+    const store = new WalletStore(path.join(directory, 'wallet.db'));
+    const did = 'did:legal:expert:rotacao-unitaria';
+    const password = 'senha-local-forte';
+
+    try {
+        const current = store.createIdentity({ did, password });
+        const candidate = store.createRotationCandidate({ did, password });
+        const command = {
+            type: 'CustodyChainDidKeyRotation',
+            version: 1,
+            commandId: 'urn:uuid:11111111-2222-3333-4444-555555555555',
+            subjectDid: did,
+            expectedDocumentVersion: 2,
+            currentKeyId: current.keyId,
+            newVerificationMethod: {
+                id: candidate.keyId,
+                type: 'Multikey',
+                controller: did,
+                publicKeyMultibase: candidate.publicKeyMultibase
+            },
+            algorithm: 'Ed25519',
+            audience: 'custodychain-ledger',
+            canonicalization: 'custodychain-json-c14n-v1',
+            issuedAt: '2027-01-15T08:00:00.000Z',
+            expiresAt: '2027-01-15T08:05:00.000Z',
+            nonce: '0123456789abcdefghijkl'
+        };
+
+        const proofs = store.signKeyRotation({
+            did, password, candidateId: candidate.candidateId, command
+        });
+        assert.equal(proofs.currentKeyProof.keyId, current.keyId);
+        assert.equal(proofs.newKeyProof.keyId, candidate.keyId);
+        assertProof(command, proofs.currentKeyProof.signature, current.publicKeyMultibase);
+        assertProof(command, proofs.newKeyProof.signature, candidate.publicKeyMultibase);
+
+        const activated = store.confirmKeyRotation({
+            did, candidateId: candidate.candidateId, keyId: candidate.keyId
+        });
+        assert.equal(activated.keyId, candidate.keyId);
+        assert.equal(store.listIdentities()[0].keyId, candidate.keyId);
+        assert.equal(store.sign({
+            did, password, signingInput: Buffer.from('novo desafio').toString('base64url')
+        }).keyId, candidate.keyId);
+    } finally {
+        store.close();
+        fs.rmSync(directory, { recursive: true, force: true });
+    }
+});
+
+test('reutiliza candidata pendente e preserva a chave ativa quando a rotação é descartada', () => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'custodychain-wallet-'));
+    const store = new WalletStore(path.join(directory, 'wallet.db'));
+    const did = 'did:legal:custodian:rotacao-descartada';
+    const password = 'senha-local-forte';
+
+    try {
+        const current = store.createIdentity({ did, password });
+        const candidate = store.createRotationCandidate({ did, password });
+        const repeated = store.createRotationCandidate({ did, password });
+        assert.equal(repeated.candidateId, candidate.candidateId);
+        assert.throws(() => store.createRotationCandidate({ did, password: 'senha-incorreta' }), /Senha/);
+
+        store.discardRotationCandidate({ did, candidateId: candidate.candidateId });
+        assert.equal(store.listIdentities()[0].keyId, current.keyId);
+        assert.doesNotThrow(() => store.createRotationCandidate({ did, password }));
+    } finally {
+        store.close();
+        fs.rmSync(directory, { recursive: true, force: true });
+    }
+});
+
+test('reconcilia candidata pendente indicada pelo desafio de autenticação', () => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'custodychain-wallet-'));
+    const store = new WalletStore(path.join(directory, 'wallet.db'));
+    const did = 'did:legal:expert:rotacao-reconciliada';
+    const password = 'senha-local-forte';
+
+    try {
+        store.createIdentity({ did, password });
+        const candidate = store.createRotationCandidate({ did, password });
+        const signingInput = Buffer.from('desafio da chave indicada pelo ledger').toString('base64url');
+        const proof = store.sign({ did, password, signingInput, keyId: candidate.keyId });
+        assert.equal(proof.keyId, candidate.keyId);
+
+        const reconciled = store.confirmKeyRotation({ did, keyId: candidate.keyId });
+        assert.equal(reconciled.keyId, candidate.keyId);
+        assert.equal(store.listIdentities()[0].keyId, candidate.keyId);
+    } finally {
+        store.close();
+        fs.rmSync(directory, { recursive: true, force: true });
+    }
+});
+
+test('migra a chave única legada sem recifrar o material privado', () => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'custodychain-wallet-'));
+    const databasePath = path.join(directory, 'wallet.db');
+    const did = 'did:legal:admin:migracao-legada';
+    const password = 'senha-local-forte';
+    let store = new WalletStore(databasePath);
+
+    try {
+        const identity = store.createAdminIdentity({ did, password });
+        store.database.exec(`
+            INSERT INTO identities (
+                did, key_id, public_key_multibase, encrypted_private_key,
+                salt, iv, auth_tag, scrypt_n, scrypt_r, scrypt_p, created_at
+            )
+            SELECT
+                did, key_id, public_key_multibase, encrypted_private_key,
+                salt, iv, auth_tag, scrypt_n, scrypt_r, scrypt_p, created_at
+            FROM identity_keys;
+            DELETE FROM identity_keys;
+        `);
+        store.close();
+
+        store = new WalletStore(databasePath);
+        assert.equal(store.listIdentities()[0].keyId, identity.keyId);
+        assert.equal(store.sign({
+            did, password, signingInput: Buffer.from('desafio legado').toString('base64url')
+        }).keyId, identity.keyId);
+    } finally {
+        store.close();
+        fs.rmSync(directory, { recursive: true, force: true });
+    }
+});
+
+function assertProof(command, signature, publicKeyMultibase) {
+    const publicKey = crypto.createPublicKey({
+        key: Buffer.concat([
+            Buffer.from('302a300506032b6570032100', 'hex'),
+            decodeMultikey(publicKeyMultibase).subarray(2)
+        ]),
+        format: 'der', type: 'spki'
+    });
+    assert.equal(crypto.verify(null, Buffer.from(canonicalize(command)), publicKey,
+        Buffer.from(signature, 'base64url')), true);
+}
+
 function decodeMultikey(value) {
     const alphabet = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';
     const bytes = [0];

@@ -184,6 +184,7 @@
                             did,
                             password,
                             signingInput: desafio.signingInput,
+                            keyId: desafio.keyId,
                             purpose: 'authentication'
                         })
                     });
@@ -196,6 +197,20 @@
                     throw new Error(payload.message || 'A wallet recusou a assinatura. Confira a senha e o pareamento.');
                 }
                 return payload;
+            };
+
+            const reconciliarChaveNaWallet = async (did, keyId, pairingToken) => {
+                const response = await fetch(`${form.dataset.walletEndpoint}/v1/key-rotations/confirm`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-Wallet-Pairing-Token': pairingToken
+                    },
+                    body: JSON.stringify({ did, keyId })
+                });
+                if (!response.ok) {
+                    throw new Error('A autenticação foi aceita, mas a wallet não reconciliou a chave ativa.');
+                }
             };
 
             form.addEventListener('submit', async (event) => {
@@ -231,6 +246,7 @@
                         keyId: assinatura.keyId,
                         signature: assinatura.signature
                     });
+                    await reconciliarChaveNaWallet(did, assinatura.keyId, pairingInput.value);
 
                     status.textContent = 'Identidade comprovada. Redirecionando…';
                     window.location.assign(resultado.redirectUrl);

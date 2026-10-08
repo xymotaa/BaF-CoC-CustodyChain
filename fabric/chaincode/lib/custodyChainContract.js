@@ -74,12 +74,15 @@ class CustodyChainContract extends Contract {
                 id: verificationMethodId,
                 type: 'Multikey',
                 controller: did,
-                publicKeyMultibase
+                publicKeyMultibase,
+                status: 'ACTIVE',
+                validFrom: agora
             }],
             authentication: [verificationMethodId],
             assertionMethod: [verificationMethodId],
             capabilityInvocation: [verificationMethodId],
             documentVersion: 1,
+            keySequence: 1,
             didEmissor: null,
             criadoEm: agora,
             ativadoEm: agora
@@ -125,11 +128,14 @@ class CustodyChainContract extends Contract {
                 id: verificationMethodId,
                 type: 'Multikey',
                 controller: did,
-                publicKeyMultibase
+                publicKeyMultibase,
+                status: 'ACTIVE',
+                validFrom: legado.ativadoEm || agora
             }],
             authentication: [verificationMethodId],
             assertionMethod: [verificationMethodId],
             capabilityInvocation: [verificationMethodId],
+            keySequence: 1,
             didEmissor: null,
             criadoEm: legado.criadoEm || agora,
             ativadoEm: legado.ativadoEm || agora,
@@ -217,11 +223,14 @@ class CustodyChainContract extends Contract {
                 id: comando.verificationMethodId,
                 type: 'Multikey',
                 controller: comando.did,
-                publicKeyMultibase: comando.publicKeyMultibase
+                publicKeyMultibase: comando.publicKeyMultibase,
+                status: 'PENDING',
+                validFrom: null
             }],
             authentication: [comando.verificationMethodId],
             assertionMethod: [comando.verificationMethodId],
             capabilityInvocation: [comando.verificationMethodId],
+            keySequence: 1,
             didEmissor: null,
             criadoEm: agora,
             enrollmentId: comando.enrollmentId
@@ -283,12 +292,101 @@ class CustodyChainContract extends Contract {
         documento.ativo = true;
         documento.didEmissor = comando.actorDid;
         documento.ativadoEm = this._agora(ctx);
+        for (const metodo of documento.verificationMethod || []) {
+            if (metodo.id === documento.authentication?.[0]) {
+                metodo.status = 'ACTIVE';
+                metodo.validFrom = documento.ativadoEm;
+            }
+        }
         documento.documentVersion += 1;
         await ctx.stub.putState(chaveDid, Buffer.from(JSON.stringify(documento)));
         await ctx.stub.putState(chaveComando, Buffer.from(JSON.stringify({
             hash: this._hashComando(comando),
             did: comando.subjectDid,
             criadoEm: documento.ativadoEm
+        })));
+        return JSON.stringify(documento);
+    }
+
+    async RotacionarChaveDidV2(ctx, comandoJson, assinaturaAtual, assinaturaNova) {
+        const comando = this._lerComando(comandoJson, 'CustodyChainDidKeyRotation');
+        this._validarComandoRotacao(comando);
+
+        const documento = await this._obterDocumentoDid(ctx, comando.subjectDid);
+        const metodoAtual = documento.verificationMethod?.find(
+            (metodo) => metodo.id === comando.currentKeyId);
+        if (!metodoAtual) {
+            throw new Error('Método de verificação atual não encontrado no documento DID.');
+        }
+
+        this._verificarAssinatura(comando, assinaturaAtual, metodoAtual.publicKeyMultibase);
+        this._verificarAssinatura(
+            comando,
+            assinaturaNova,
+            comando.newVerificationMethod.publicKeyMultibase);
+
+        const chaveComando = ctx.stub.createCompositeKey(PREFIXO_GOVERNANCA, ['command', comando.commandId]);
+        const comandoExistente = await ctx.stub.getState(chaveComando);
+        const hash = this._hashComando(comando);
+        if (comandoExistente && comandoExistente.length > 0) {
+            const existente = JSON.parse(comandoExistente.toString());
+            if (existente.hash !== hash) {
+                throw new Error('Conflito de idempotência para o comando de rotação DID.');
+            }
+            return this.ResolverDid(ctx, comando.subjectDid);
+        }
+
+        this._validarJanelaComando(ctx, comando);
+        if (documento.version !== 2 || documento.status !== 'ATIVO' || documento.ativo !== true) {
+            throw new Error('Somente um DID v2 ativo pode rotacionar sua chave.');
+        }
+        if (documento.documentVersion !== comando.expectedDocumentVersion) {
+            throw new Error('A versão do documento DID mudou; reinicie a rotação.');
+        }
+        if (!documento.capabilityInvocation?.includes(comando.currentKeyId)) {
+            throw new Error('A chave atual não possui capabilityInvocation para rotacionar o DID.');
+        }
+        if (documento.verificationMethod.some(
+            (metodo) => metodo.id === comando.newVerificationMethod.id)) {
+            throw new Error('A nova chave já existe no documento DID.');
+        }
+
+        const sequenciaAtual = this._obterSequenciaChave(documento);
+        const prefixo = comando.currentKeyId.startsWith(`${comando.subjectDid}#auth-`) ? 'auth' : 'key';
+        if (comando.newVerificationMethod.id !== `${comando.subjectDid}#${prefixo}-${sequenciaAtual + 1}`) {
+            throw new Error('O identificador da nova chave não segue a sequência esperada.');
+        }
+
+        const agora = this._agora(ctx);
+        metodoAtual.status = 'RETIRED';
+        metodoAtual.validUntil = agora;
+        metodoAtual.retirementReason = 'ROTATION';
+        documento.verificationMethod.push({
+            id: comando.newVerificationMethod.id,
+            type: comando.newVerificationMethod.type,
+            controller: comando.newVerificationMethod.controller,
+            publicKeyMultibase: comando.newVerificationMethod.publicKeyMultibase,
+            status: 'ACTIVE',
+            validFrom: agora
+        });
+        documento.authentication = this._substituirCapacidade(
+            documento.authentication, comando.currentKeyId, comando.newVerificationMethod.id);
+        documento.assertionMethod = this._substituirCapacidade(
+            documento.assertionMethod, comando.currentKeyId, comando.newVerificationMethod.id);
+        documento.capabilityInvocation = this._substituirCapacidade(
+            documento.capabilityInvocation, comando.currentKeyId, comando.newVerificationMethod.id);
+        documento.keySequence = sequenciaAtual + 1;
+        documento.documentVersion += 1;
+        documento.atualizadoEm = agora;
+        documento.ultimaRotacaoEm = agora;
+
+        const chaveDid = ctx.stub.createCompositeKey(PREFIXO_DID, [comando.subjectDid]);
+        await ctx.stub.putState(chaveDid, Buffer.from(JSON.stringify(documento)));
+        await ctx.stub.putState(chaveComando, Buffer.from(JSON.stringify({
+            hash,
+            did: comando.subjectDid,
+            criadoEm: agora,
+            tipo: 'ROTACAO_CHAVE'
         })));
         return JSON.stringify(documento);
     }
@@ -420,9 +518,7 @@ class CustodyChainContract extends Contract {
         const existente = await ctx.stub.getState(chave);
         const documentoSignatario = await this._obterDocumentoDid(ctx, operacao.signerDid);
         const metodo = documentoSignatario.verificationMethod?.find((item) => item.id === operacao.keyId);
-        if (!metodo || !documentoSignatario.capabilityInvocation?.includes(metodo.id)) {
-            throw new Error('A chave do signatário não possui capabilityInvocation para publicar a operação.');
-        }
+        if (!metodo) throw new Error('A chave do signatário não existe no documento DID.');
 
         const { signature, ...operacaoSemAssinatura } = operacao;
         this._verificarAssinatura(operacaoSemAssinatura, signature, metodo.publicKeyMultibase);
@@ -434,6 +530,10 @@ class CustodyChainContract extends Contract {
                 return operacao.operationId;
             }
             throw new Error(`Conflito de idempotência para a operação: ${operacao.operationId}`);
+        }
+
+        if (!documentoSignatario.capabilityInvocation?.includes(metodo.id)) {
+            throw new Error('A chave do signatário não possui capabilityInvocation para publicar a operação.');
         }
 
         this._validarJanelaOperacaoAssinada(ctx, operacao);
@@ -1294,6 +1394,23 @@ class CustodyChainContract extends Contract {
         }
     }
 
+    _validarComandoRotacao(comando) {
+        const novoMetodo = comando.newVerificationMethod;
+        if (!/^did:legal:(admin|custodian|delegate|expert|judge):[a-zA-Z0-9._-]{3,128}$/.test(comando.subjectDid)
+            || !Number.isInteger(comando.expectedDocumentVersion) || comando.expectedDocumentVersion < 1
+            || typeof comando.currentKeyId !== 'string'
+            || !comando.currentKeyId.startsWith(`${comando.subjectDid}#`)
+            || !novoMetodo || typeof novoMetodo !== 'object' || Array.isArray(novoMetodo)
+            || typeof novoMetodo.id !== 'string' || !novoMetodo.id.startsWith(`${comando.subjectDid}#`)
+            || novoMetodo.type !== 'Multikey' || novoMetodo.controller !== comando.subjectDid
+            || !this._chavePublicaMultibaseValida(novoMetodo.publicKeyMultibase)
+            || comando.algorithm !== 'Ed25519'
+            || comando.canonicalization !== 'custodychain-json-c14n-v1'
+            || typeof comando.nonce !== 'string' || !/^[A-Za-z0-9_-]{22,128}$/.test(comando.nonce)) {
+            throw new Error('Conteúdo do comando de rotação DID inválido.');
+        }
+    }
+
     _validarComandoRevogacao(comando, keyId) {
         if (!this._identificadorValido(comando.credentialId)
             || !/^did:legal:admin:[a-zA-Z0-9._-]{3,128}$/.test(comando.issuerDid)
@@ -1326,6 +1443,27 @@ class CustodyChainContract extends Contract {
         return typeof valor === 'string' && /^urn:uuid:[0-9a-fA-F-]{36}$/.test(valor);
     }
 
+    _obterSequenciaChave(documento) {
+        if (Number.isInteger(documento.keySequence) && documento.keySequence > 0) {
+            return documento.keySequence;
+        }
+        return Math.max(1, ...(documento.verificationMethod || []).map((metodo) => {
+            const resultado = /#(?:key|auth)-(\d+)$/.exec(metodo.id);
+            return resultado ? Number(resultado[1]) : 0;
+        }));
+    }
+
+    _substituirCapacidade(capacidades, chaveAtual, chaveNova) {
+        const resultado = (capacidades || []).filter((chave) => chave !== chaveAtual);
+        if ((capacidades || []).includes(chaveAtual)) resultado.push(chaveNova);
+        return resultado;
+    }
+
+    _chavePublicaMultibaseValida(publicKeyMultibase) {
+        return typeof publicKeyMultibase === 'string'
+            && /^z[1-9A-HJ-NP-Za-km-z]{40,64}$/.test(publicKeyMultibase);
+    }
+
     _garantirOrganizacaoAdministradora(ctx) {
         const mspId = ctx.clientIdentity.getMSPID();
         if (mspId !== MSP_ADMINISTRADOR) {
@@ -1340,7 +1478,7 @@ class CustodyChainContract extends Contract {
         if (verificationMethodId !== `${did}#auth-1`) {
             throw new Error('Identificador do método de verificação inválido.');
         }
-        if (!/^z[1-9A-HJ-NP-Za-km-z]{40,64}$/.test(publicKeyMultibase)) {
+        if (!this._chavePublicaMultibaseValida(publicKeyMultibase)) {
             throw new Error('Chave pública Multikey inválida.');
         }
     }

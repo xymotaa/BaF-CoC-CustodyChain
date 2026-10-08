@@ -136,6 +136,146 @@ test('recusa ativação assinada por chave sem capabilityInvocation', async () =
     );
 });
 
+test('rotaciona chave DID com prova da chave atual e da nova chave', async () => {
+    const contract = new CustodyChainContract();
+    const ctx = contexto('Org1MSP');
+    const holderDid = 'did:legal:expert:rotacao-chaincode';
+    const current = gerarIdentidade(holderDid, `${holderDid}#key-1`);
+    const replacement = gerarIdentidade(holderDid, `${holderDid}#key-2`);
+    await registrarIdentidadeAtiva(ctx, holderDid, 'did:legal:expert', current);
+    const stateKey = ctx.stub.createCompositeKey('DID', [holderDid]);
+    const original = JSON.parse((await ctx.stub.getState(stateKey)).toString());
+    original.documentVersion = 2;
+    original.keySequence = 1;
+    original.authentication = [current.keyId];
+    original.assertionMethod = [current.keyId];
+    await ctx.stub.putState(stateKey, Buffer.from(JSON.stringify(original)));
+
+    const command = {
+        type: 'CustodyChainDidKeyRotation', version: 1,
+        commandId: 'urn:uuid:12121212-1212-1212-1212-121212121212',
+        subjectDid: holderDid, expectedDocumentVersion: 2, currentKeyId: current.keyId,
+        newVerificationMethod: {
+            id: replacement.keyId, type: 'Multikey', controller: holderDid,
+            publicKeyMultibase: replacement.publicKeyMultibase
+        },
+        algorithm: 'Ed25519', canonicalization: 'custodychain-json-c14n-v1',
+        audience: 'custodychain-ledger', issuedAt: '2027-01-15T08:00:00.000Z',
+        expiresAt: '2027-01-15T08:05:00.000Z', nonce: '0123456789abcdefghijkl'
+    };
+
+    const rotated = JSON.parse(await contract.RotacionarChaveDidV2(
+        ctx,
+        JSON.stringify(command),
+        assinar(current.privateKey, command),
+        assinar(replacement.privateKey, command)));
+
+    assert.equal(rotated.documentVersion, 3);
+    assert.equal(rotated.keySequence, 2);
+    assert.deepEqual(rotated.authentication, [replacement.keyId]);
+    assert.deepEqual(rotated.assertionMethod, [replacement.keyId]);
+    assert.deepEqual(rotated.capabilityInvocation, [replacement.keyId]);
+    assert.equal(rotated.verificationMethod[0].status, 'RETIRED');
+    assert.equal(rotated.verificationMethod[1].status, 'ACTIVE');
+
+    ctx.definirHorario('2027-01-15T09:00:00.000Z');
+    const repeated = JSON.parse(await contract.RotacionarChaveDidV2(
+        ctx,
+        JSON.stringify(command),
+        assinar(current.privateKey, command),
+        assinar(replacement.privateKey, command)));
+    assert.equal(repeated.documentVersion, 3);
+});
+
+test('recusa rotação sem prova de posse da nova chave', async () => {
+    const contract = new CustodyChainContract();
+    const ctx = contexto('Org1MSP');
+    const holderDid = 'did:legal:custodian:rotacao-sem-posse';
+    const current = gerarIdentidade(holderDid, `${holderDid}#key-1`);
+    const replacement = gerarIdentidade(holderDid, `${holderDid}#key-2`);
+    const attacker = gerarIdentidade(holderDid, `${holderDid}#key-3`);
+    await registrarIdentidadeAtiva(ctx, holderDid, 'did:legal:custodian', current);
+    const stateKey = ctx.stub.createCompositeKey('DID', [holderDid]);
+    const document = JSON.parse((await ctx.stub.getState(stateKey)).toString());
+    document.documentVersion = 1;
+    document.keySequence = 1;
+    await ctx.stub.putState(stateKey, Buffer.from(JSON.stringify(document)));
+    const command = {
+        type: 'CustodyChainDidKeyRotation', version: 1,
+        commandId: 'urn:uuid:13131313-1313-1313-1313-131313131313',
+        subjectDid: holderDid, expectedDocumentVersion: 1, currentKeyId: current.keyId,
+        newVerificationMethod: {
+            id: replacement.keyId, type: 'Multikey', controller: holderDid,
+            publicKeyMultibase: replacement.publicKeyMultibase
+        },
+        algorithm: 'Ed25519', canonicalization: 'custodychain-json-c14n-v1',
+        audience: 'custodychain-ledger', issuedAt: '2027-01-15T08:00:00.000Z',
+        expiresAt: '2027-01-15T08:05:00.000Z', nonce: 'abcdefghijklmnopqrstuv'
+    };
+
+    await assert.rejects(contract.RotacionarChaveDidV2(
+        ctx,
+        JSON.stringify(command),
+        assinar(current.privateKey, command),
+        assinar(attacker.privateKey, command)), /assinatura/);
+});
+
+test('aceita retry histórico assinado por chave retirada e bloqueia operação nova', async () => {
+    const contract = new CustodyChainContract();
+    const ctx = contexto('Org1MSP');
+    const holderDid = 'did:legal:expert:retry-apos-rotacao';
+    const current = gerarIdentidade(holderDid, `${holderDid}#key-1`);
+    const replacement = gerarIdentidade(holderDid, `${holderDid}#key-2`);
+    await registrarIdentidadeAtiva(ctx, holderDid, 'did:legal:expert', current);
+    const didKey = ctx.stub.createCompositeKey('DID', [holderDid]);
+    const document = JSON.parse((await ctx.stub.getState(didKey)).toString());
+    document.documentVersion = 1;
+    document.keySequence = 1;
+    document.authentication = [current.keyId];
+    document.assertionMethod = [current.keyId];
+    await ctx.stub.putState(didKey, Buffer.from(JSON.stringify(document)));
+
+    const operation = {
+        type: 'CustodyChainSignedOperation', version: 1,
+        operationId: 'urn:uuid:14141414-1414-1414-1414-141414141414', operation: 'LAUDO_EMITIR',
+        payload: {}, signerDid: holderDid, keyId: current.keyId, algorithm: 'Ed25519',
+        canonicalization: 'custodychain-json-c14n-v1', audience: 'custodychain-ledger',
+        timestamp: '2027-01-15T08:00:00.000Z', expiresAt: '2027-01-15T08:05:00.000Z',
+        nonce: '0123456789abcdefghijkl'
+    };
+    const signed = { ...operation, signature: assinar(current.privateKey, operation) };
+    const operationKey = ctx.stub.createCompositeKey('SOP', [operation.operationId]);
+    await ctx.stub.putState(operationKey, Buffer.from(JSON.stringify({
+        operationHashSha256: contract._hashComando(operation)
+    })));
+
+    const rotation = {
+        type: 'CustodyChainDidKeyRotation', version: 1,
+        commandId: 'urn:uuid:15151515-1515-1515-1515-151515151515', subjectDid: holderDid,
+        expectedDocumentVersion: 1, currentKeyId: current.keyId,
+        newVerificationMethod: {
+            id: replacement.keyId, type: 'Multikey', controller: holderDid,
+            publicKeyMultibase: replacement.publicKeyMultibase
+        },
+        algorithm: 'Ed25519', canonicalization: 'custodychain-json-c14n-v1',
+        audience: 'custodychain-ledger', issuedAt: '2027-01-15T08:00:00.000Z',
+        expiresAt: '2027-01-15T08:05:00.000Z', nonce: 'abcdefghijklmnopqrstuv'
+    };
+    await contract.RotacionarChaveDidV2(ctx, JSON.stringify(rotation),
+        assinar(current.privateKey, rotation), assinar(replacement.privateKey, rotation));
+    ctx.definirHorario('2027-01-15T09:00:00.000Z');
+
+    assert.equal(await contract.RegistrarOperacaoAssinadaV1(ctx, JSON.stringify(signed)), operation.operationId);
+    const newOperation = {
+        ...operation,
+        operationId: 'urn:uuid:16161616-1616-1616-1616-161616161616',
+        timestamp: '2027-01-15T09:00:00.000Z', expiresAt: '2027-01-15T09:05:00.000Z'
+    };
+    await assert.rejects(contract.RegistrarOperacaoAssinadaV1(ctx, JSON.stringify({
+        ...newOperation, signature: assinar(current.privateKey, newOperation)
+    })), /capabilityInvocation/);
+});
+
 test('emite VC de permissão assinada pelo DID emissor e preserva idempotência', async () => {
     const contract = new CustodyChainContract();
     const ctx = contexto('Org1MSP');
