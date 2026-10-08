@@ -9,9 +9,10 @@ const PREFIXO_HISTORICO = 'HIST';
 const PREFIXO_GOVERNANCA = 'GOV';
 const PREFIXO_OPERACAO_ASSINADA = 'SOP';
 const PREFIXO_TRANSFERENCIA_INICIAL = 'TRI';
+const PREFIXO_RESPOSTA_REMESSA = 'TRR';
 const MSP_ADMINISTRADOR = 'Org1MSP';
 const OPERACOES_ASSINADAS_SUPORTADAS = new Set([
-    'COLETA_REGISTRAR', 'REMESSA_CRIAR', 'PERICIA_RECEBER', 'LACRE_ROMPER', 'LAUDO_EMITIR', 'AMOSTRA_CONSUMIR', 'AMOSTRA_EXAURIR', 'AMOSTRA_FRACIONAR', 'AMOSTRA_UNIFICAR'
+    'COLETA_REGISTRAR', 'REMESSA_CRIAR', 'REMESSA_RECEBER', 'REMESSA_RECUSAR', 'PERICIA_RECEBER', 'LACRE_ROMPER', 'LAUDO_EMITIR', 'AMOSTRA_CONSUMIR', 'AMOSTRA_EXAURIR', 'AMOSTRA_FRACIONAR', 'AMOSTRA_UNIFICAR'
 ]);
 
 class CustodyChainContract extends Contract {
@@ -704,6 +705,11 @@ class CustodyChainContract extends Contract {
             return;
         }
 
+        if (operacao.operation === 'REMESSA_RECEBER' || operacao.operation === 'REMESSA_RECUSAR') {
+            await this._validarRespostaRemessa(ctx, operacao);
+            return;
+        }
+
         if (operacao.operation === 'AMOSTRA_UNIFICAR') {
             await this._validarAutorizacaoUnificacao(ctx, operacao);
             return;
@@ -900,6 +906,80 @@ class CustodyChainContract extends Contract {
         if (destino.version !== 2 || destino.status !== 'ATIVO' || destino.ativo !== true
             || destino.metodoDid !== 'did:legal:custodian') {
             throw new Error('O DID de custódia destinatário não está ativo.');
+        }
+    }
+
+    async _validarRespostaRemessa(ctx, operacao) {
+        const payload = operacao.payload;
+        const textoObrigatorio = (valor) => typeof valor === 'string' && valor.trim();
+        const textoOpcional = (valor) => valor === null || typeof valor === 'string';
+        if (!this._identificadorValido(payload.credentialId)
+            || !this._identificadorValido(payload.remessaOperationId)
+            || !this._identificadorValido(payload.assetRef)
+            || !/^[1-9][0-9]*$/.test(payload.assetId)
+            || !/^[1-9][0-9]*$/.test(payload.processoId)
+            || !/^did:legal:custodian:[a-zA-Z0-9._-]{3,128}$/.test(payload.origemDid)
+            || payload.destinoDid !== operacao.signerDid
+            || !/^did:legal:custodian:[a-zA-Z0-9._-]{3,128}$/.test(payload.destinoDid)) {
+            throw new Error(`Payload da operação ${operacao.operation} inválido.`);
+        }
+
+        if (operacao.operation === 'REMESSA_RECEBER'
+            && (!textoOpcional(payload.numeroLacreEsperado)
+                || !textoObrigatorio(payload.numeroLacreConferido)
+                || typeof payload.lacreConfere !== 'boolean'
+                || payload.lacreConfere !== (payload.numeroLacreEsperado !== null
+                    && payload.numeroLacreEsperado === payload.numeroLacreConferido))) {
+            throw new Error('Conferência de lacre da operação REMESSA_RECEBER inválida.');
+        }
+        if (operacao.operation === 'REMESSA_RECUSAR' && !textoObrigatorio(payload.motivoRecusa)) {
+            throw new Error('Motivo da operação REMESSA_RECUSAR inválido.');
+        }
+
+        const chaveResposta = ctx.stub.createCompositeKey(PREFIXO_RESPOSTA_REMESSA, [payload.remessaOperationId]);
+        const respostaExistente = await ctx.stub.getState(chaveResposta);
+        if (respostaExistente && respostaExistente.length > 0) {
+            throw new Error('Esta remessa já possui recebimento ou recusa registrada.');
+        }
+
+        const chaveRemessa = ctx.stub.createCompositeKey(PREFIXO_OPERACAO_ASSINADA, [payload.remessaOperationId]);
+        const bytesRemessa = await ctx.stub.getState(chaveRemessa);
+        if (!bytesRemessa || bytesRemessa.length === 0) {
+            throw new Error('A remessa assinada não foi encontrada.');
+        }
+        const remessa = JSON.parse(bytesRemessa.toString()).signedOperation;
+        if (remessa?.operation !== 'REMESSA_CRIAR'
+            || remessa.payload?.assetRef !== payload.assetRef
+            || remessa.payload?.assetId !== payload.assetId
+            || remessa.payload?.processoId !== payload.processoId
+            || remessa.payload?.origemDid !== payload.origemDid
+            || remessa.payload?.destinoDid !== operacao.signerDid) {
+            throw new Error('A remessa assinada não autoriza esta resposta.');
+        }
+
+        await this._validarCredencialCustodia(ctx, operacao, payload);
+        await ctx.stub.putState(chaveResposta, Buffer.from(JSON.stringify({
+            remessaOperationId: payload.remessaOperationId,
+            operationId: operacao.operationId,
+            operation: operacao.operation,
+            respondidaEm: this._agora(ctx)
+        })));
+    }
+
+    async _validarCredencialCustodia(ctx, operacao, payload) {
+        const chaveCredencial = ctx.stub.createCompositeKey(PREFIXO_CREDENCIAL, [payload.credentialId]);
+        const bytesCredencial = await ctx.stub.getState(chaveCredencial);
+        if (!bytesCredencial || bytesCredencial.length === 0) {
+            throw new Error('VC de custódia não encontrada para a operação.');
+        }
+        const credencial = JSON.parse(bytesCredencial.toString());
+        if (credencial.tipo !== 'PERMISSAO' || credencial.formato !== 'VC_V1'
+            || credencial.status !== 'ATIVA' || credencial.revogada
+            || credencial.did !== operacao.signerDid || credencial.perfil !== 'CUSTODIA'
+            || credencial.processoId !== payload.processoId || credencial.assetId !== payload.assetId
+            || !Array.isArray(credencial.operacoes) || !credencial.operacoes.includes(operacao.operation)
+            || (credencial.expiraEm && Date.parse(credencial.expiraEm) <= Date.parse(this._agora(ctx)))) {
+            throw new Error(`VC de custódia não autoriza a operação: ${operacao.operation}`);
         }
     }
 

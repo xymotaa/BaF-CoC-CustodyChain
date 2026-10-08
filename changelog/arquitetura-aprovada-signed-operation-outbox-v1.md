@@ -125,7 +125,7 @@ resposta do ledger e o commit local divergirem.
 - [x] Fatia 5b.1 — `assetRef` imutável vinculado à coleta assinada;
 - [x] Fatia 5c.1 — `REMESSA_CRIAR` inicial, assinada pelo coletor e vinculada à coleta;
 - [x] Fatia 5c.2 — `REMESSA_CRIAR` ordinária por `CUSTODIA`;
-- [ ] Fatia 5d — `REMESSA_RECEBER` e `REMESSA_RECUSAR`;
+- [x] Fatia 5d — `REMESSA_RECEBER` e `REMESSA_RECUSAR`;
 - [ ] Fatia 5e — `GUARDA_REGISTRAR`;
 - [ ] Fatia 6 — destinação final com segregação de funções;
 - [ ] Fatia 7 — remoção completa dos contratos CoC legados;

@@ -10,3 +10,5 @@ public sealed class ConflitoRecebimentoException(string message) : Exception(mes
 public sealed class RecursoRecebimentoNaoEncontradoException(string message) : Exception(message);
 
 public sealed class AtorRecebimentoNaoAutorizadoException(string message) : Exception(message);
+
+public sealed class IndisponibilidadeLedgerRecebimentoException(string message, Exception innerException) : Exception(message, innerException);

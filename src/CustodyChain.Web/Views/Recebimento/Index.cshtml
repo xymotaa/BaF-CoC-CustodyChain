@@ -61,29 +61,119 @@ else
                 </dl>
 
                 <div class="item-recebimento-acoes">
-                    <form asp-controller="Recebimento" asp-action="Confirmar" method="post" class="formulario-inline">
+                    <form method="post" class="formulario-inline" data-recebimento-operacao="confirmar">
                         @Html.AntiForgeryToken()
                         <input type="hidden" name="MovimentacaoId" value="@item.MovimentacaoId" />
                         <div class="campo campo-inline">
                             <label class="campo-rotulo">Número do lacre conferido</label>
                             <input name="NumeroLacreConferido" class="campo-entrada mono" required />
                         </div>
-                        <button type="submit" class="botao botao-primario">Confirmar recebimento</button>
+                        <div class="campo campo-inline">
+                            <label class="campo-rotulo" for="senha-wallet-confirmar-@item.MovimentacaoId">Senha da wallet</label>
+                            <input id="senha-wallet-confirmar-@item.MovimentacaoId" name="SenhaWallet" type="password" autocomplete="current-password" class="campo-entrada" required />
+                        </div>
+                        <div class="campo campo-inline">
+                            <label class="campo-rotulo" for="pareamento-confirmar-@item.MovimentacaoId">Código de pareamento</label>
+                            <input id="pareamento-confirmar-@item.MovimentacaoId" name="CodigoPareamento" type="password" autocomplete="one-time-code" class="campo-entrada" required />
+                        </div>
+                        <p class="campo-ajuda" data-operacao-status role="status" aria-live="polite"></p>
+                        <p class="campo-erro" data-operacao-error role="alert" tabindex="-1" hidden></p>
+                        <button type="submit" class="botao botao-primario">Assinar e confirmar recebimento</button>
                     </form>
 
-                    <form asp-controller="Recebimento" asp-action="Recusar" method="post" class="formulario-inline">
+                    <form method="post" class="formulario-inline" data-recebimento-operacao="recusar">
                         @Html.AntiForgeryToken()
                         <input type="hidden" name="MovimentacaoId" value="@item.MovimentacaoId" />
                         <div class="campo campo-inline">
                             <label class="campo-rotulo">Motivo da recusa</label>
                             <input name="MotivoRecusa" class="campo-entrada" />
                         </div>
-                        <button type="submit" class="botao botao-secundario">Recusar</button>
+                        <div class="campo campo-inline">
+                            <label class="campo-rotulo" for="senha-wallet-recusar-@item.MovimentacaoId">Senha da wallet</label>
+                            <input id="senha-wallet-recusar-@item.MovimentacaoId" name="SenhaWallet" type="password" autocomplete="current-password" class="campo-entrada" required />
+                        </div>
+                        <div class="campo campo-inline">
+                            <label class="campo-rotulo" for="pareamento-recusar-@item.MovimentacaoId">Código de pareamento</label>
+                            <input id="pareamento-recusar-@item.MovimentacaoId" name="CodigoPareamento" type="password" autocomplete="one-time-code" class="campo-entrada" required />
+                        </div>
+                        <p class="campo-ajuda" data-operacao-status role="status" aria-live="polite"></p>
+                        <p class="campo-erro" data-operacao-error role="alert" tabindex="-1" hidden></p>
+                        <button type="submit" class="botao botao-secundario">Assinar e recusar recebimento</button>
                     </form>
                 </div>
             </section>
         }
     </div>
+}
+
+@section Scripts {
+    <script>
+        (function () {
+            document.querySelectorAll('[data-recebimento-operacao]').forEach(function (form) {
+                var tipo = form.dataset.recebimentoOperacao;
+                var button = form.querySelector('button[type="submit"]');
+                var password = form.querySelector('[name="SenhaWallet"]');
+                var pairing = form.querySelector('[name="CodigoPareamento"]');
+                var status = form.querySelector('[data-operacao-status]');
+                var error = form.querySelector('[data-operacao-error]');
+                var antiForgery = form.querySelector('input[name="__RequestVerificationToken"]').value;
+
+                function payload() {
+                    var value = function (name) { return form.querySelector('[name="' + name + '"]').value; };
+                    var dados = { movimentacaoId: Number(value('MovimentacaoId')) || 0 };
+                    if (tipo === 'confirmar') dados.numeroLacreConferido = value('NumeroLacreConferido');
+                    else dados.motivoRecusa = value('MotivoRecusa');
+                    return dados;
+                }
+
+                async function post(url, body) {
+                    var response = await fetch(url, {
+                        method: 'POST', credentials: 'same-origin',
+                        headers: { 'Content-Type': 'application/json', 'RequestVerificationToken': antiForgery },
+                        body: JSON.stringify(body)
+                    });
+                    var responseBody = await response.json().catch(function () { return {}; });
+                    if (!response.ok) throw new Error(responseBody.message || 'Não foi possível confirmar esta operação.');
+                    return responseBody;
+                }
+
+                form.addEventListener('submit', async function (event) {
+                    event.preventDefault();
+                    error.hidden = true;
+                    if (!form.checkValidity()) { form.reportValidity(); return; }
+
+                    button.disabled = true;
+                    form.setAttribute('aria-busy', 'true');
+                    try {
+                        status.textContent = 'Preparando a operação.';
+                        var dados = payload();
+                        var command = await post('/recebimento/' + tipo + '/comando', dados);
+                        status.textContent = 'Aguardando assinatura na wallet.';
+                        var walletResponse = await fetch(command.walletEndpoint + '/v1/proofs/signed-operation', {
+                            method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Wallet-Pairing-Token': pairing.value },
+                            body: JSON.stringify({ did: command.signerDid, password: password.value, operation: command.operation })
+                        });
+                        var wallet = await walletResponse.json().catch(function () { return {}; });
+                        if (!walletResponse.ok) throw new Error(wallet.message || 'A wallet recusou a assinatura.');
+                        password.value = '';
+                        status.textContent = 'Confirmando a operação no ledger.';
+                        var request = tipo === 'confirmar' ? { recebimento: dados, operation: wallet.operation } : { recusa: dados, operation: wallet.operation };
+                        var result = await post('/recebimento/' + tipo + '/prova', request);
+                        window.location.assign(result.redirectUrl);
+                    } catch (exception) {
+                        password.value = '';
+                        status.textContent = '';
+                        error.textContent = exception.message;
+                        error.hidden = false;
+                        error.focus();
+                    } finally {
+                        button.disabled = false;
+                        form.removeAttribute('aria-busy');
+                    }
+                });
+            });
+        })();
+    </script>
 }
 
 @section Styles {

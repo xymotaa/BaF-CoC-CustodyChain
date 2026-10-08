@@ -533,6 +533,71 @@ test('autoriza recebimento e rompimento somente no escopo da VC pericial', async
     );
 });
 
+test('recebimento e recusa de remessa exigem VC de custódia e vinculam a remessa assinada', async () => {
+    const contract = new CustodyChainContract();
+    const ctx = contexto('Org1MSP');
+    const admin = gerarIdentidade(did, keyId);
+    await contract.BootstrapAdminDid(ctx, did, keyId, admin.publicKeyMultibase);
+    const origemDid = 'did:legal:custodian:teste-origem-remessa';
+    const origem = gerarIdentidade(origemDid, `${origemDid}#key-1`);
+    const destinoDid = 'did:legal:custodian:teste-destino-remessa';
+    const destino = gerarIdentidade(destinoDid, `${destinoDid}#key-1`);
+    await registrarIdentidadeAtiva(ctx, origemDid, 'did:legal:custodian', origem);
+    await registrarIdentidadeAtiva(ctx, destinoDid, 'did:legal:custodian', destino);
+    const credential = criarVcPermissao(admin.privateKey, {
+        processoId: '10', assetId: '42', operations: ['REMESSA_RECEBER', 'REMESSA_RECUSAR']
+    }, destinoDid, 'urn:uuid:abababab-1111-1111-1111-111111111111', 'CUSTODIA');
+    await contract.EmitirCredencialPermissaoV2(ctx, JSON.stringify(credential));
+
+    const criarRemessaRegistrada = async (operationId) => {
+        const remessa = {
+            type: 'CustodyChainSignedOperation', version: 1, operationId, operation: 'REMESSA_CRIAR',
+            payload: {
+                transferType: 'CUSTODIA', assetRef: 'urn:uuid:abababab-2222-2222-2222-222222222222', assetId: '42', processoId: '10',
+                credentialId: 'urn:uuid:abababab-3333-3333-3333-333333333333', origemDid, destinoDid,
+                dataHoraSaida: '2027-01-15T08:00:00.000Z', codigoRastreamento: null, coletaOperationId: null
+            },
+            signerDid: origemDid, keyId: origem.keyId, algorithm: 'Ed25519', canonicalization: 'custodychain-json-c14n-v1',
+            audience: 'custodychain-ledger', timestamp: '2027-01-15T08:00:00.000Z', expiresAt: '2027-01-15T08:05:00.000Z', nonce: '0123456789abcdefghijkl', signature: 'A'.repeat(86)
+        };
+        await ctx.stub.putState(ctx.stub.createCompositeKey('SOP', [operationId]), Buffer.from(JSON.stringify({ signedOperation: remessa })));
+    };
+    const resposta = (operationId, operation, remessaOperationId, campos) => ({
+        type: 'CustodyChainSignedOperation', version: 1, operationId, operation,
+        payload: {
+            credentialId: credential.id, remessaOperationId, assetRef: 'urn:uuid:abababab-2222-2222-2222-222222222222',
+            assetId: '42', processoId: '10', origemDid, destinoDid, ...campos
+        },
+        signerDid: destinoDid, keyId: destino.keyId, algorithm: 'Ed25519', canonicalization: 'custodychain-json-c14n-v1',
+        audience: 'custodychain-ledger', timestamp: '2027-01-15T08:00:00.000Z', expiresAt: '2027-01-15T08:05:00.000Z', nonce: '0123456789abcdefghijkl'
+    });
+
+    const remessaRecebida = 'urn:uuid:abababab-4444-4444-4444-444444444444';
+    await criarRemessaRegistrada(remessaRecebida);
+    const receber = resposta('urn:uuid:abababab-5555-5555-5555-555555555555', 'REMESSA_RECEBER', remessaRecebida, {
+        numeroLacreEsperado: 'L-001', numeroLacreConferido: 'L-001', lacreConfere: true
+    });
+    assert.equal(await contract.RegistrarOperacaoAssinadaV1(ctx, JSON.stringify({
+        ...receber, signature: assinar(destino.privateKey, receber)
+    })), receber.operationId);
+
+    const recusaDuplicada = resposta('urn:uuid:abababab-6666-6666-6666-666666666666', 'REMESSA_RECUSAR', remessaRecebida, {
+        motivoRecusa: 'Embalagem danificada'
+    });
+    await assert.rejects(contract.RegistrarOperacaoAssinadaV1(ctx, JSON.stringify({
+        ...recusaDuplicada, signature: assinar(destino.privateKey, recusaDuplicada)
+    })), /já possui recebimento ou recusa/);
+
+    const remessaRecusada = 'urn:uuid:abababab-7777-7777-7777-777777777777';
+    await criarRemessaRegistrada(remessaRecusada);
+    const recusar = resposta('urn:uuid:abababab-8888-8888-8888-888888888888', 'REMESSA_RECUSAR', remessaRecusada, {
+        motivoRecusa: 'Embalagem danificada'
+    });
+    assert.equal(await contract.RegistrarOperacaoAssinadaV1(ctx, JSON.stringify({
+        ...recusar, signature: assinar(destino.privateKey, recusar)
+    })), recusar.operationId);
+});
+
 function criarVcPermissao(privateKey, authorization, subjectDid = 'did:legal:expert:teste-vc', credentialId = 'urn:uuid:55555555-5555-5555-5555-555555555555', perfil = 'PERITO') {
     const credential = {
         '@context': ['https://www.w3.org/2018/credentials/v1'],
