@@ -98,8 +98,8 @@ As operações periciais exigem DID `PERITO`, VC vigente, escopo do mesmo
 processo/vestígio e permissão nominal. Coleta exige `COLETOR`; movimentações,
 guarda e solicitação de destinação exigem `CUSTODIA`; emissão/revogação de VC
 exige `ADMIN`. A destinação preserva segregação: `DESTINACAO_SOLICITAR`
-referencia guarda confirmada e VC de custódia; `DESTINACAO_APROVAR` será
-assinada por DID administrativo distinto do solicitante.
+referencia guarda confirmada e VC de custódia; `DESTINACAO_APROVAR` é assinada
+por DID administrativo distinto do solicitante.
 
 O .NET controla sessão, UX e pré-condições. O gateway valida transporte e
 prova. O chaincode decide a autorização distribuída. A identidade Fabric deve
@@ -130,6 +130,6 @@ resposta do ledger e o commit local divergirem.
 - [x] Fatia 5d — `REMESSA_RECEBER` e `REMESSA_RECUSAR`;
 - [x] Fatia 5e — `GUARDA_REGISTRAR`;
 - [x] Fatia 6a — `DESTINACAO_SOLICITAR` assinada pelo custodiante, vinculada à guarda;
-- [ ] Fatia 6b — `DESTINACAO_APROVAR` assinada por administrador distinto;
+- [x] Fatia 6b — `DESTINACAO_APROVAR` assinada por administrador distinto;
 - [ ] Fatia 7 — remoção completa dos contratos CoC legados;
 - [ ] Fatia 8 — rotação/recuperação de chaves e identidade Fabric por organização.

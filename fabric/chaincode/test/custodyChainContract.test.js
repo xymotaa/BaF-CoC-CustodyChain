@@ -680,10 +680,32 @@ test('solicitação de destinação exige VC de custódia e guarda assinada, uma
         ...solicitacao, signature: assinar(custodiante.privateKey, solicitacao)
     })), solicitacao.operationId);
 
-    const duplicada = { ...solicitacao, operationId: 'urn:uuid:dededede-6666-6666-6666-666666666666' };
+    const aprovacao = {
+        type: 'CustodyChainSignedOperation', version: 1, operationId: 'urn:uuid:dededede-6666-6666-6666-666666666666', operation: 'DESTINACAO_APROVAR',
+        payload: {
+            destinacaoOperationId: solicitacao.operationId, assetRef, assetId: '42', processoId: '10', tipo: 'DESCARTE',
+            autorizacaoCid: 'bafyautorizacao', autorizacaoHashSha256: 'a'.repeat(64)
+        },
+        signerDid: did, keyId, algorithm: 'Ed25519', canonicalization: 'custodychain-json-c14n-v1',
+        audience: 'custodychain-ledger', timestamp: '2027-01-15T08:00:00.000Z', expiresAt: '2027-01-15T08:05:00.000Z', nonce: 'abcdefghijklmnopqrstuvwx'
+    };
+    const autoAprovacao = {
+        ...aprovacao,
+        operationId: 'urn:uuid:dededede-7777-7777-7777-777777777777',
+        signerDid: custodianteDid,
+        keyId: custodiante.keyId
+    };
     await assert.rejects(contract.RegistrarOperacaoAssinadaV1(ctx, JSON.stringify({
-        ...duplicada, signature: assinar(custodiante.privateKey, duplicada)
-    })), /já possui solicitação/);
+        ...autoAprovacao, signature: assinar(custodiante.privateKey, autoAprovacao)
+    })), /Somente DID administrativo/);
+    assert.equal(await contract.RegistrarOperacaoAssinadaV1(ctx, JSON.stringify({
+        ...aprovacao, signature: assinar(admin.privateKey, aprovacao)
+    })), aprovacao.operationId);
+
+    const duplicada = { ...aprovacao, operationId: 'urn:uuid:dededede-8888-8888-8888-888888888888' };
+    await assert.rejects(contract.RegistrarOperacaoAssinadaV1(ctx, JSON.stringify({
+        ...duplicada, signature: assinar(admin.privateKey, duplicada)
+    })), /já foi aprovada/);
 });
 
 function criarVcPermissao(privateKey, authorization, subjectDid = 'did:legal:expert:teste-vc', credentialId = 'urn:uuid:55555555-5555-5555-5555-555555555555', perfil = 'PERITO') {

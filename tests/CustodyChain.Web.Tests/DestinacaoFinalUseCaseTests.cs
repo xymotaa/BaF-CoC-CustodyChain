@@ -64,6 +64,38 @@ public sealed class DestinacaoFinalUseCaseTests
         Assert.Null(store.SolicitacaoPersistida);
     }
 
+    [Fact]
+    public async Task Aprovar_AssinadaEConfirmada_PersisteSomenteAposLedger()
+    {
+        var store = new StoreFake();
+        var ledger = new LedgerCaptura();
+        var useCase = new AprovarDestinacaoUseCase(store, ledger, new ClockAtual(), new NonceFixo());
+
+        var preparacao = await useCase.PrepararAsync(new PrepararAprovacaoDestinacaoCommand(4, 17));
+        var resultado = await useCase.ExecutarAsync(new ConcluirAprovacaoDestinacaoCommand(
+            4, 17, Assinar(preparacao.Operacao)));
+
+        Assert.Equal("DESCARTE", resultado.Tipo);
+        Assert.False(resultado.AncoragemPendente);
+        Assert.Equal("DESTINACAO_APROVAR", ledger.OperacaoRecebida!.Value.GetProperty("operation").GetString());
+        Assert.Equal("did:legal:admin:teste-001#auth-1", ledger.OperacaoRecebida.Value.GetProperty("keyId").GetString());
+        var aprovacao = Assert.IsType<AprovacaoDestinacaoPendente>(store.AprovacaoPersistida);
+        Assert.Equal("urn:uuid:solicitacao-1111-1111-1111-111111111111", aprovacao.SolicitacaoOperationId);
+    }
+
+    [Fact]
+    public async Task Aprovar_QuandoLedgerFalha_NaoPersisteAprovacao()
+    {
+        var store = new StoreFake();
+        var useCase = new AprovarDestinacaoUseCase(store, new LedgerCaptura { Falhar = true }, new ClockAtual(), new NonceFixo());
+        var preparacao = await useCase.PrepararAsync(new PrepararAprovacaoDestinacaoCommand(4, 17));
+
+        await Assert.ThrowsAsync<IndisponibilidadeLedgerDestinacaoFinalException>(() => useCase.ExecutarAsync(
+            new ConcluirAprovacaoDestinacaoCommand(4, 17, Assinar(preparacao.Operacao))));
+
+        Assert.Null(store.AprovacaoPersistida);
+    }
+
     private static SolicitarDestinacaoUseCase CriarUseCase(StoreFake store, ArmazenamentoFake armazenamento, LedgerCaptura ledger) =>
         new(store, armazenamento, ledger, new ClockAtual(), new NonceFixo());
 
@@ -79,7 +111,11 @@ public sealed class DestinacaoFinalUseCaseTests
     private sealed class StoreFake : IDestinacaoFinalStore
     {
         public SolicitacaoDestinacaoPendente? SolicitacaoPersistida { get; private set; }
-        public ContextoAprovacaoDestinacao? ContextoAprovacao { get; init; } = new(17, 42, "RE-001", "DESCARTE", "did:legal:judge:001", "did:legal:admin:001");
+        public AprovacaoDestinacaoPendente? AprovacaoPersistida { get; private set; }
+        public ContextoAprovacaoDestinacao? ContextoAprovacao { get; init; } = new(
+            17, 42, 10, "urn:uuid:asset-1111-1111-1111-111111111111", "RE-001", "DESCARTE",
+            "cid-autorizacao", new string('a', 64), "urn:uuid:solicitacao-1111-1111-1111-111111111111",
+            "did:legal:custodian:teste-001", "did:legal:admin:teste-001");
         public Task<ContextoSolicitacaoDestinacao?> ObterContextoSolicitacaoAsync(long vestigioId, long solicitanteId, CancellationToken cancellationToken) =>
             Task.FromResult<ContextoSolicitacaoDestinacao?>(new(42, 10, "urn:uuid:asset-1111-1111-1111-111111111111", "RE-001",
                 "did:legal:custodian:teste-001", "urn:uuid:cred-1111-1111-1111-111111111111", "urn:uuid:guarda-1111-1111-1111-111111111111"));
@@ -89,7 +125,11 @@ public sealed class DestinacaoFinalUseCaseTests
             return Task.CompletedTask;
         }
         public Task<ContextoAprovacaoDestinacao?> ObterContextoAprovacaoAsync(long descarteId, long aprovadorId, CancellationToken cancellationToken) => Task.FromResult(ContextoAprovacao);
-        public Task PersistirAprovacaoAsync(AprovacaoDestinacaoPendente aprovacao, CancellationToken cancellationToken) => Task.CompletedTask;
+        public Task PersistirAprovacaoAsync(AprovacaoDestinacaoPendente aprovacao, CancellationToken cancellationToken)
+        {
+            AprovacaoPersistida = aprovacao;
+            return Task.CompletedTask;
+        }
     }
 
     private sealed class ArmazenamentoFake : IArmazenamentoAutorizacao

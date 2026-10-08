@@ -129,17 +129,31 @@ public sealed class DestinacaoFinalStore(CustodyChainDbContext db) : IDestinacao
         CancellationToken cancellationToken) =>
         (from descarte in db.Descartes
          join aprovador in db.Intervenientes on aprovadorId equals aprovador.Id
+         join perfil in db.Perfis on aprovador.PerfilId equals perfil.Id
+         join solicitacao in db.RegistrosLedger on descarte.Id equals solicitacao.RegistroOrigemId
          where descarte.Id == descarteId
              && descarte.AprovadoPorId == null
              && descarte.ExecutadoEm == null
              && descarte.SolicitadoPorId != aprovadorId
              && aprovador.Situacao == SituacaoInterveniente.ATIVO
+             && perfil.Codigo == "ADMIN"
+             && solicitacao.EntidadeOrigem == "DESCARTE"
+             && solicitacao.Evento == "DESTINACAO_SOLICITAR"
+             && solicitacao.Estado == EstadoRegistroLedger.ANCORADO
+             && solicitacao.OperacaoAssinadaId != null
+             && descarte.AutorizacaoAnexo.CaminhoRelativo != null
+             && descarte.AutorizacaoAnexo.HashSha256 != null
          select new ContextoAprovacaoDestinacao(
              descarte.Id,
              descarte.VestigioId,
+             descarte.Vestigio.ProcessoId,
+             descarte.Vestigio.AssetRef!,
              descarte.Vestigio.RotuloEvidencia,
              descarte.Tipo.ToString(),
-             descarte.DidMagistrado,
+             descarte.AutorizacaoAnexo.CaminhoRelativo!,
+             descarte.AutorizacaoAnexo.HashSha256!,
+             solicitacao.OperacaoAssinadaId!,
+             solicitacao.DidResponsavel!,
              aprovador.Did))
         .SingleOrDefaultAsync(cancellationToken);
 
@@ -156,10 +170,9 @@ public sealed class DestinacaoFinalStore(CustodyChainDbContext db) : IDestinacao
                     && d.AprovadoPorId == null
                     && d.ExecutadoEm == null
                     && d.SolicitadoPorId != aprovacao.AprovadorId, cancellationToken);
-            var aprovadorAtivo = await db.Intervenientes.AnyAsync(i => i.Id == aprovacao.AprovadorId
-                && i.Situacao == SituacaoInterveniente.ATIVO, cancellationToken);
+            var aprovadorAutorizado = await PossuiAdministradorERequisicaoAncoradaAsync(aprovacao, cancellationToken);
 
-            if (descarte is null || !aprovadorAtivo || descarte.VestigioId != aprovacao.VestigioId
+            if (descarte is null || !aprovadorAutorizado || descarte.VestigioId != aprovacao.VestigioId
                 || descarte.Tipo.ToString() != aprovacao.Tipo
                 || (descarte.Vestigio.Estado != EstadoVestigio.Armazenado
                     && descarte.Vestigio.Estado != EstadoVestigio.Periciado))
@@ -172,34 +185,27 @@ public sealed class DestinacaoFinalStore(CustodyChainDbContext db) : IDestinacao
             descarte.Vestigio.EtapaAtual = 10;
             descarte.Vestigio.AtualizadoEm = aprovacao.ExecutadoEm;
 
-            db.Credenciais.Add(new Credencial
-            {
-                Tipo = TipoCredencial.COC,
-                Identificador = aprovacao.CredencialId,
-                TitularId = aprovacao.AprovadorId,
-                EmissorId = aprovacao.AprovadorId,
-                VestigioId = aprovacao.VestigioId,
-                EmitidaEm = aprovacao.ExecutadoEm,
-                Situacao = SituacaoCredencial.PENDENTE,
-            });
             db.RegistrosLedger.Add(new RegistroLedger
             {
                 EntidadeOrigem = "DESCARTE",
                 RegistroOrigemId = descarte.Id,
                 VestigioId = aprovacao.VestigioId,
-                Evento = "ENCERRAMENTO",
-                PayloadJson = aprovacao.PayloadJson,
-                PayloadHashSha256 = aprovacao.PayloadHashSha256,
-                CredencialId = aprovacao.CredencialId,
+                Evento = "DESTINACAO_APROVAR",
+                PayloadJson = aprovacao.OperacaoAssinadaJson,
+                PayloadHashSha256 = aprovacao.OperacaoAssinadaHashSha256,
                 DidResponsavel = aprovacao.DidResponsavel,
-                ChaveIdempotencia = aprovacao.CredencialId,
-                Estado = EstadoRegistroLedger.PENDENTE,
-                Tentativas = 0,
+                ChaveIdempotencia = aprovacao.OperacaoAssinadaId,
+                OperacaoAssinadaId = aprovacao.OperacaoAssinadaId,
+                VersaoOperacaoAssinada = 1,
+                OperacaoAssinadaJson = aprovacao.OperacaoAssinadaJson,
+                OperacaoAssinadaHashSha256 = aprovacao.OperacaoAssinadaHashSha256,
+                Estado = EstadoRegistroLedger.ANCORADO,
+                Tentativas = 1,
                 CriadoEm = aprovacao.ExecutadoEm,
-                ProximaTentativaEm = aprovacao.ExecutadoEm,
+                AncoradoEm = aprovacao.ExecutadoEm,
             });
             db.LogsAuditoria.Add(CriarLog(
-                "ENCERRAMENTO",
+                "DESTINACAO_APROVAR",
                 descarte.Id,
                 aprovacao.AprovadorId,
                 aprovacao.ExecutadoEm));
@@ -211,7 +217,7 @@ public sealed class DestinacaoFinalStore(CustodyChainDbContext db) : IDestinacao
         {
             await transacao.RollbackAsync(cancellationToken);
             throw new ConflitoDestinacaoFinalException(
-                "Não foi possível concluir a destinação porque a credencial ou o evento já existe.");
+                "Não foi possível concluir a destinação porque a aprovação assinada já existe.");
         }
     }
 
@@ -246,6 +252,23 @@ public sealed class DestinacaoFinalStore(CustodyChainDbContext db) : IDestinacao
              && guarda.OperacaoAssinadaId == solicitacao.GuardaOperationId
              && guarda.DidResponsavel == solicitacao.DidResponsavel
          select guarda.Id).AnyAsync(cancellationToken);
+
+    private Task<bool> PossuiAdministradorERequisicaoAncoradaAsync(
+        AprovacaoDestinacaoPendente aprovacao,
+        CancellationToken cancellationToken) =>
+        (from descarte in db.Descartes
+         join aprovador in db.Intervenientes on aprovacao.AprovadorId equals aprovador.Id
+         join perfil in db.Perfis on aprovador.PerfilId equals perfil.Id
+         join solicitacao in db.RegistrosLedger on descarte.Id equals solicitacao.RegistroOrigemId
+         where descarte.Id == aprovacao.DescarteId
+             && descarte.SolicitadoPorId != aprovacao.AprovadorId
+             && aprovador.Situacao == SituacaoInterveniente.ATIVO
+             && perfil.Codigo == "ADMIN"
+             && solicitacao.EntidadeOrigem == "DESCARTE"
+             && solicitacao.Evento == "DESTINACAO_SOLICITAR"
+             && solicitacao.Estado == EstadoRegistroLedger.ANCORADO
+             && solicitacao.OperacaoAssinadaId == aprovacao.SolicitacaoOperationId
+         select solicitacao.Id).AnyAsync(cancellationToken);
 
     private LogAuditoria CriarLog(string acao, long descarteId, long responsavelId, DateTime ocorridoEm)
     {

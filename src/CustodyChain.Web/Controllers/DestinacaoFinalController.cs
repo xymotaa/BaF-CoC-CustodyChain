@@ -106,29 +106,60 @@ public class DestinacaoFinalController(
         }
     }
 
-    [HttpPost("/destinacao-final/aprovar")]
+    [HttpPost("/destinacao-final/aprovar/comando")]
     [ValidateAntiForgeryToken]
-    public async Task<IActionResult> Aprovar(long descarteId, CancellationToken cancellationToken)
+    public async Task<IActionResult> PrepararAprovacao(
+        [FromBody] PrepararAprovacaoDestinacaoRequest? requisicao,
+        CancellationToken cancellationToken)
     {
-        if (!TryObterIntervenienteId(out var aprovadorId))
-            return Forbid();
+        if (requisicao is null) return BadRequest(new { message = "Informe a destinação a aprovar." });
+        if (!TryObterIntervenienteId(out var aprovadorId)) return Forbid();
 
         try
         {
-            var resultado = await aprovarDestinacao.ExecutarAsync(
-                new AprovarDestinacaoCommand(aprovadorId, descarteId), cancellationToken);
+            var preparacao = await aprovarDestinacao.PrepararAsync(
+                new PrepararAprovacaoDestinacaoCommand(aprovadorId, requisicao.DescarteId), cancellationToken);
+            return Ok(new
+            {
+                operation = preparacao.Operacao,
+                signerDid = preparacao.DidSignatario,
+                walletEndpoint = configuration["AuthenticationDid:WalletEndpoint"] ?? "http://127.0.0.1:43123"
+            });
+        }
+        catch (AtorDestinacaoFinalNaoAutorizadoException) { return Forbid(); }
+        catch (Exception exception) when (exception is ValidacaoDestinacaoFinalException
+            or RecursoDestinacaoFinalNaoEncontradoException or ConflitoDestinacaoFinalException)
+        {
+            return BadRequest(new { message = exception.Message });
+        }
+    }
+
+    [HttpPost("/destinacao-final/aprovar/prova")]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> ConcluirAprovacao(
+        [FromBody] AprovacaoDestinacaoComProvaRequest? requisicao,
+        CancellationToken cancellationToken)
+    {
+        if (requisicao is null) return BadRequest(new { message = "Informe a prova da aprovação." });
+        if (!TryObterIntervenienteId(out var aprovadorId)) return Forbid();
+
+        try
+        {
+            var resultado = await aprovarDestinacao.ExecutarAsync(new ConcluirAprovacaoDestinacaoCommand(
+                aprovadorId, requisicao.DescarteId, requisicao.Operation), cancellationToken);
             var nomeTipo = resultado.Tipo == "DESCARTE" ? "Descarte" : "Restituição";
             TempData["MensagemSucesso"] =
-                $"{nomeTipo} de {resultado.RotuloEvidencia} aprovado e executado. A ancoragem da credencial está pendente.";
+                $"{nomeTipo} de {resultado.RotuloEvidencia} aprovado e executado com confirmação no ledger.";
+            return Ok(new { redirectUrl = Url.Action(nameof(Index)) });
         }
+        catch (AtorDestinacaoFinalNaoAutorizadoException) { return Forbid(); }
+        catch (IndisponibilidadeLedgerDestinacaoFinalException exception) { return StatusCode(503, new { message = exception.Message }); }
         catch (Exception exception) when (exception is ValidacaoDestinacaoFinalException
             or RecursoDestinacaoFinalNaoEncontradoException
             or ConflitoDestinacaoFinalException)
         {
-            TempData["MensagemErro"] = exception.Message;
+            return BadRequest(new { message = exception.Message });
         }
-
-        return RedirectToAction(nameof(Index));
     }
 
     private async Task CarregarOpcoesAsync(SolicitarDestinacaoViewModel modelo)
@@ -153,3 +184,5 @@ public class DestinacaoFinalController(
 }
 
 public sealed record SolicitacaoDestinacaoComProvaRequest(long VestigioId, JsonElement Operation);
+public sealed record PrepararAprovacaoDestinacaoRequest(long DescarteId);
+public sealed record AprovacaoDestinacaoComProvaRequest(long DescarteId, JsonElement Operation);

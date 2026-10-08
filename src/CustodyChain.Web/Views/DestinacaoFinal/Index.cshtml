@@ -61,12 +61,17 @@ else
 
                 <div class="item-recebimento-acoes">
                     <a href="/destinacao-final/solicitar" class="botao botao-secundario">Nova solicitação</a>
-                    <form asp-controller="DestinacaoFinal" asp-action="Aprovar" method="post">
+                    <form class="formulario-aprovacao" data-descarte-id="@item.DescarteId">
                         @Html.AntiForgeryToken()
-                        <input type="hidden" name="descarteId" value="@item.DescarteId" />
+                        <label class="sr-only" for="wallet-pairing-@item.DescarteId">Token de pareamento da wallet</label>
+                        <input id="wallet-pairing-@item.DescarteId" data-wallet-pairing type="password" class="campo-entrada campo-compacto" placeholder="Token da wallet" autocomplete="off" />
+                        <label class="sr-only" for="wallet-password-@item.DescarteId">Senha da wallet</label>
+                        <input id="wallet-password-@item.DescarteId" data-wallet-password type="password" class="campo-entrada campo-compacto" placeholder="Senha da wallet" autocomplete="current-password" />
                         <button type="submit" class="botao botao-primario">Aprovar e executar</button>
                     </form>
                 </div>
+                <p class="campo-erro" data-erro-aprovacao role="alert"></p>
+                <p class="campo-ajuda" data-status-aprovacao role="status"></p>
             </section>
         }
     </div>
@@ -147,9 +152,64 @@ else
             gap: 0.75rem;
         }
 
+        .formulario-aprovacao { display: flex; gap: 0.5rem; align-items: center; }
+        .campo-compacto { width: 10rem; }
+
         @@media (max-width: 640px) {
             .item-recebimento-detalhes { grid-template-columns: 1fr; }
             .item-recebimento-acoes { flex-wrap: wrap; }
         }
     </style>
+}
+
+@section Scripts {
+    <script>
+        (function () {
+            async function responseJson(response) {
+                var body = await response.json().catch(function () { return {}; });
+                if (!response.ok) throw new Error(body.message || 'Não foi possível concluir a aprovação.');
+                return body;
+            }
+
+            async function postJson(url, token, body) {
+                return responseJson(await fetch(url, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'RequestVerificationToken': token },
+                    body: JSON.stringify(body)
+                }));
+            }
+
+            document.querySelectorAll('.formulario-aprovacao').forEach(function (formulario) {
+                formulario.addEventListener('submit', async function (event) {
+                    event.preventDefault();
+                    var erro = formulario.parentElement.parentElement.querySelector('[data-erro-aprovacao]');
+                    var status = formulario.parentElement.parentElement.querySelector('[data-status-aprovacao]');
+                    var token = formulario.querySelector('input[name="__RequestVerificationToken"]').value;
+                    var pairing = formulario.querySelector('[data-wallet-pairing]');
+                    var password = formulario.querySelector('[data-wallet-password]');
+                    var descarteId = Number(formulario.dataset.descarteId);
+                    erro.textContent = '';
+                    status.textContent = '';
+                    try {
+                        status.textContent = 'Preparando a aprovação.';
+                        var command = await postJson('/destinacao-final/aprovar/comando', token, { descarteId: descarteId });
+                        status.textContent = 'Aguardando assinatura administrativa na wallet.';
+                        var wallet = await responseJson(await fetch(command.walletEndpoint + '/v1/proofs/signed-operation', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json', 'X-Wallet-Pairing-Token': pairing.value },
+                            body: JSON.stringify({ did: command.signerDid, password: password.value, operation: command.operation })
+                        }));
+                        password.value = '';
+                        status.textContent = 'Confirmando a aprovação no ledger.';
+                        var result = await postJson('/destinacao-final/aprovar/prova', token, { descarteId: descarteId, operation: wallet.operation });
+                        window.location.assign(result.redirectUrl);
+                    } catch (exception) {
+                        password.value = '';
+                        status.textContent = '';
+                        erro.textContent = exception.message;
+                    }
+                });
+            });
+        })();
+    </script>
 }

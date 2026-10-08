@@ -47,9 +47,14 @@ public sealed record SolicitacaoDestinacaoPendente(
 public sealed record ContextoAprovacaoDestinacao(
     long DescarteId,
     long VestigioId,
+    long ProcessoId,
+    string AssetRef,
     string RotuloEvidencia,
     string Tipo,
-    string DidMagistrado,
+    string CidAutorizacao,
+    string HashAutorizacao,
+    string SolicitacaoOperationId,
+    string DidSolicitante,
     string DidAprovador);
 
 public sealed record AprovacaoDestinacaoPendente(
@@ -58,7 +63,8 @@ public sealed record AprovacaoDestinacaoPendente(
     long VestigioId,
     string Tipo,
     DateTime ExecutadoEm,
-    string PayloadJson,
-    string PayloadHashSha256,
-    string CredencialId,
-    string DidResponsavel);
+    string OperacaoAssinadaId,
+    string OperacaoAssinadaJson,
+    string OperacaoAssinadaHashSha256,
+    string DidResponsavel,
+    string SolicitacaoOperationId);

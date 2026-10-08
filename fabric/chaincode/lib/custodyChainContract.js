@@ -12,9 +12,10 @@ const PREFIXO_TRANSFERENCIA_INICIAL = 'TRI';
 const PREFIXO_RESPOSTA_REMESSA = 'TRR';
 const PREFIXO_GUARDA = 'GUA';
 const PREFIXO_DESTINACAO_SOLICITACAO = 'DSR';
+const PREFIXO_DESTINACAO_APROVACAO = 'DSA';
 const MSP_ADMINISTRADOR = 'Org1MSP';
 const OPERACOES_ASSINADAS_SUPORTADAS = new Set([
-    'COLETA_REGISTRAR', 'REMESSA_CRIAR', 'REMESSA_RECEBER', 'REMESSA_RECUSAR', 'GUARDA_REGISTRAR', 'DESTINACAO_SOLICITAR', 'PERICIA_RECEBER', 'LACRE_ROMPER', 'LAUDO_EMITIR', 'AMOSTRA_CONSUMIR', 'AMOSTRA_EXAURIR', 'AMOSTRA_FRACIONAR', 'AMOSTRA_UNIFICAR'
+    'COLETA_REGISTRAR', 'REMESSA_CRIAR', 'REMESSA_RECEBER', 'REMESSA_RECUSAR', 'GUARDA_REGISTRAR', 'DESTINACAO_SOLICITAR', 'DESTINACAO_APROVAR', 'PERICIA_RECEBER', 'LACRE_ROMPER', 'LAUDO_EMITIR', 'AMOSTRA_CONSUMIR', 'AMOSTRA_EXAURIR', 'AMOSTRA_FRACIONAR', 'AMOSTRA_UNIFICAR'
 ]);
 
 class CustodyChainContract extends Contract {
@@ -722,6 +723,11 @@ class CustodyChainContract extends Contract {
             return;
         }
 
+        if (operacao.operation === 'DESTINACAO_APROVAR') {
+            await this._validarAprovacaoDestinacao(ctx, operacao);
+            return;
+        }
+
         if (operacao.operation === 'AMOSTRA_UNIFICAR') {
             await this._validarAutorizacaoUnificacao(ctx, operacao);
             return;
@@ -1084,6 +1090,55 @@ class CustodyChainContract extends Contract {
             operationId: operacao.operationId,
             solicitanteDid: operacao.signerDid,
             solicitadaEm: this._agora(ctx)
+        })));
+    }
+
+    async _validarAprovacaoDestinacao(ctx, operacao) {
+        const payload = operacao.payload;
+        if (!this._identificadorValido(payload.destinacaoOperationId)
+            || !this._identificadorValido(payload.assetRef)
+            || !/^[1-9][0-9]*$/.test(payload.assetId)
+            || !/^[1-9][0-9]*$/.test(payload.processoId)
+            || !['DESCARTE', 'RESTITUICAO'].includes(payload.tipo)
+            || typeof payload.autorizacaoCid !== 'string' || !payload.autorizacaoCid.trim()
+            || typeof payload.autorizacaoHashSha256 !== 'string' || !/^[a-f0-9]{64}$/.test(payload.autorizacaoHashSha256)) {
+            throw new Error('Payload da operação DESTINACAO_APROVAR inválido.');
+        }
+
+        this._garantirOrganizacaoAdministradora(ctx);
+        const aprovador = await this._obterDocumentoDid(ctx, operacao.signerDid);
+        if (aprovador.metodoDid !== 'did:legal:admin') {
+            throw new Error('Somente DID administrativo pode aprovar destinação final.');
+        }
+
+        const chaveAprovacao = ctx.stub.createCompositeKey(PREFIXO_DESTINACAO_APROVACAO, [payload.destinacaoOperationId]);
+        const aprovacaoExistente = await ctx.stub.getState(chaveAprovacao);
+        if (aprovacaoExistente && aprovacaoExistente.length > 0) {
+            throw new Error('Esta solicitação de destinação final já foi aprovada.');
+        }
+
+        const chaveSolicitacao = ctx.stub.createCompositeKey(PREFIXO_OPERACAO_ASSINADA, [payload.destinacaoOperationId]);
+        const bytesSolicitacao = await ctx.stub.getState(chaveSolicitacao);
+        if (!bytesSolicitacao || bytesSolicitacao.length === 0) {
+            throw new Error('A solicitação assinada de destinação final não foi encontrada.');
+        }
+        const solicitacao = JSON.parse(bytesSolicitacao.toString()).signedOperation;
+        if (solicitacao?.operation !== 'DESTINACAO_SOLICITAR'
+            || solicitacao.signerDid === operacao.signerDid
+            || solicitacao.payload?.assetRef !== payload.assetRef
+            || solicitacao.payload?.assetId !== payload.assetId
+            || solicitacao.payload?.processoId !== payload.processoId
+            || solicitacao.payload?.tipo !== payload.tipo
+            || solicitacao.payload?.autorizacaoCid !== payload.autorizacaoCid
+            || solicitacao.payload?.autorizacaoHashSha256 !== payload.autorizacaoHashSha256) {
+            throw new Error('A solicitação assinada não autoriza esta aprovação de destinação final.');
+        }
+
+        await ctx.stub.putState(chaveAprovacao, Buffer.from(JSON.stringify({
+            destinacaoOperationId: payload.destinacaoOperationId,
+            operationId: operacao.operationId,
+            aprovadorDid: operacao.signerDid,
+            aprovadaEm: this._agora(ctx)
         })));
     }
 
