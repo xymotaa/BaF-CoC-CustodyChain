@@ -434,16 +434,9 @@ app.get('/v2/operacoes/:operationId', async (req, res) => {
 });
 
 app.post('/credenciais/coc', async (req, res) => {
-    try {
-        const { credencialId, assetId, evento, did, payloadHashSha256 } = req.body;
-        const contrato = obterContrato();
-        const resultado = await contrato.submitTransaction(
-            'EmitirCredencialCoC', credencialId, assetId, evento, did, payloadHashSha256
-        );
-        res.status(201).json({ credencialId: decodificar(resultado) });
-    } catch (erro) {
-        tratarErro(res, erro);
-    }
+    return res.status(410).json({
+        error: 'Emissão de CoC descontinuada; use operações assinadas v1.'
+    });
 });
 
 app.get('/credenciais/:credencialId/verificar', async (req, res) => {

@@ -8,47 +8,6 @@ namespace CustodyChain.Web.Tests;
 public sealed class ServicoLedgerContractTests
 {
     [Fact]
-    public async Task LedgerFake_RepetirMesmaCredencial_NaoDuplicaHistorico()
-    {
-        var ledger = new LedgerFake();
-        var dto = new CredencialCoCDto("42", "COLETA", "did:legal:delegate:teste", new string('a', 64), "cred-coc-idempotente");
-
-        await ledger.EmitirCredencialCoCAsync(dto);
-        await ledger.EmitirCredencialCoCAsync(dto);
-
-        var historico = await ledger.HistoricoRegistroAsync("42");
-        Assert.Single(historico);
-    }
-
-    [Fact]
-    public async Task LedgerFake_ReutilizarCredencialComOutroPayload_RejeitaConflito()
-    {
-        var ledger = new LedgerFake();
-        await ledger.EmitirCredencialCoCAsync(new CredencialCoCDto("42", "COLETA", "did:legal:delegate:teste", new string('a', 64), "cred-coc-idempotente"));
-
-        await Assert.ThrowsAsync<InvalidOperationException>(() =>
-            ledger.EmitirCredencialCoCAsync(new CredencialCoCDto("42", "COLETA", "did:legal:delegate:teste", new string('b', 64), "cred-coc-idempotente")));
-    }
-
-    [Fact]
-    public async Task ServicoLedgerFabric_EnviaIdentificadorFornecidoPeloChamador()
-    {
-        var handler = new HandlerCapturandoRequisicao();
-        using var httpClient = new HttpClient(handler) { BaseAddress = new Uri("http://ledger.local") };
-        var ledger = new ServicoLedgerFabric(httpClient);
-
-        var identificador = await ledger.EmitirCredencialCoCAsync(
-            new CredencialCoCDto("42", "COLETA", "did:legal:delegate:teste", new string('b', 64), "cred-coc-estavel"));
-
-        Assert.Equal("cred-coc-estavel", identificador);
-        Assert.Equal(HttpMethod.Post, handler.Method);
-        Assert.Equal("/credenciais/coc", handler.Path);
-        using var corpo = JsonDocument.Parse(handler.Body!);
-        Assert.Equal("cred-coc-estavel", corpo.RootElement.GetProperty("credencialId").GetString());
-        Assert.Equal("42", corpo.RootElement.GetProperty("assetId").GetString());
-    }
-
-    [Fact]
     public async Task ServicoLedgerFabric_EnviaProvaDeRegistroAoContratoV2()
     {
         var handler = new HandlerCapturandoRequisicao();

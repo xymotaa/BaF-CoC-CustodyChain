@@ -24,13 +24,6 @@ public record RevogacaoCredencialV2Dto(object Command, string KeyId, string Sign
 public record OperacaoAssinadaV1Dto(System.Text.Json.JsonElement Operation);
 public record OperacaoAssinadaRegistradaV1Dto(System.Text.Json.JsonElement SignedOperation);
 
-public record CredencialCoCDto(
-    string AssetId,
-    string Evento,
-    string Did,
-    string PayloadHashSha256,
-    string? CredencialId = null);
-
 public record ResultadoVerificacao(bool Valido, string? Motivo);
 
 public record EstadoRegistro(string Estado, DateTime OcorridoEm, string DidResponsavel);
@@ -51,7 +44,6 @@ public interface IServicoLedger
         string operationId,
         CancellationToken cancellationToken = default) =>
         throw new NotSupportedException("Consulta de operação assinada não implementada por este ledger.");
-    Task<string> EmitirCredencialCoCAsync(CredencialCoCDto dto, CancellationToken cancellationToken = default);
     Task<ResultadoVerificacao> VerificarCredencialAsync(string credencialJson);
     Task<IReadOnlyList<EstadoRegistro>> HistoricoRegistroAsync(string assetId);
     Task<CredencialCoCRegistrada> ObterCredencialCoCAsync(string credencialId);

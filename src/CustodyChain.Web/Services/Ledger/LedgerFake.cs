@@ -93,37 +93,6 @@ public class LedgerFake : IServicoLedger
         return Task.FromResult(new OperacaoAssinadaRegistradaV1Dto(operacao.Operation));
     }
 
-    public Task<string> EmitirCredencialCoCAsync(CredencialCoCDto dto, CancellationToken cancellationToken = default)
-    {
-        var credencialId = dto.CredencialId ?? $"cred-coc-{Guid.NewGuid():N}";
-
-        if (_credenciaisCoC.TryGetValue(credencialId, out var existente))
-        {
-            var mesmaOperacao = existente.AssetId == dto.AssetId
-                && existente.Evento == dto.Evento
-                && existente.Did == dto.Did
-                && existente.PayloadHashSha256 == dto.PayloadHashSha256;
-
-            if (!mesmaOperacao)
-            {
-                throw new InvalidOperationException($"Conflito de idempotência para a credencial: {credencialId}");
-            }
-
-            return Task.FromResult(credencialId);
-        }
-
-        var lista = _historico.GetOrAdd(dto.AssetId, _ => []);
-        lock (lista)
-        {
-            lista.Add(new EstadoRegistro(dto.Evento, DateTime.UtcNow, dto.Did));
-        }
-
-        _credenciaisCoC[credencialId] = new CredencialCoCRegistrada(
-            credencialId, dto.AssetId, dto.Evento, dto.Did, dto.PayloadHashSha256, Revogada: false);
-
-        return Task.FromResult(credencialId);
-    }
-
     public Task<ResultadoVerificacao> VerificarCredencialAsync(string credencialJson)
     {
         if (!_credenciaisCoC.TryGetValue(credencialJson, out var credencial))

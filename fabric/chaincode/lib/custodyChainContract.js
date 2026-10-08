@@ -409,49 +409,7 @@ class CustodyChainContract extends Contract {
     }
 
     async EmitirCredencialCoC(ctx, credencialId, assetId, evento, did, payloadHashSha256) {
-        const chaveCredencial = ctx.stub.createCompositeKey(PREFIXO_CREDENCIAL, [credencialId]);
-        const credencialExistente = await ctx.stub.getState(chaveCredencial);
-
-        if (credencialExistente && credencialExistente.length > 0) {
-            const existente = JSON.parse(credencialExistente.toString());
-            const mesmaOperacao = existente.tipo === 'COC'
-                && existente.assetId === assetId
-                && existente.evento === evento
-                && existente.did === did
-                && existente.payloadHashSha256 === payloadHashSha256;
-
-            if (!mesmaOperacao) {
-                throw new Error(`Conflito de idempotência para a credencial: ${credencialId}`);
-            }
-
-            return credencialId;
-        }
-
-        const credencial = {
-            credencialId,
-            tipo: 'COC',
-            assetId,
-            evento,
-            did,
-            payloadHashSha256,
-            emitidaEm: this._agora(ctx),
-            revogada: false
-        };
-
-        await ctx.stub.putState(chaveCredencial, Buffer.from(JSON.stringify(credencial)));
-
-        const ocorridoEm = this._agora(ctx);
-        const chaveHistorico = ctx.stub.createCompositeKey(PREFIXO_HISTORICO, [assetId, ctx.stub.getTxID()]);
-        const registroHistorico = {
-            assetId,
-            evento,
-            ocorridoEm,
-            didResponsavel: did,
-            credencialId
-        };
-        await ctx.stub.putState(chaveHistorico, Buffer.from(JSON.stringify(registroHistorico)));
-
-        return credencialId;
+        throw new Error('Emissão de CoC descontinuada; use operações assinadas v1.');
     }
 
     async RegistrarOperacaoAssinadaV1(ctx, operacaoJson) {

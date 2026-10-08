@@ -185,6 +185,17 @@ test('recusa emissão de permissão pelo contrato legado sem prova', async () =>
     );
 });
 
+test('recusa emissão de CoC após a migração para operações assinadas', async () => {
+    const contract = new CustodyChainContract();
+
+    await assert.rejects(
+        contract.EmitirCredencialCoC(
+            contexto('Org1MSP'), 'cred-coc-legada', '42', 'COLETA', 'did:legal:delegate:teste', 'a'.repeat(64)
+        ),
+        /CoC descontinuada/
+    );
+});
+
 test('emite VC de coleta por processo e recusa ativo nesse escopo', async () => {
     const contract = new CustodyChainContract();
     const ctx = contexto('Org1MSP');

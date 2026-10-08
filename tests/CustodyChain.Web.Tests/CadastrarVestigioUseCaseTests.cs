@@ -138,7 +138,6 @@ public sealed class CadastrarVestigioUseCaseTests
         public Task<DidDocument> ResolverDidAsync(string did) => throw new NotSupportedException();
         public Task<string> EmitirCredencialPermissaoV2Async(CredencialPermissaoV2Dto dto, CancellationToken token = default) => throw new NotSupportedException();
         public Task RevogarCredencialV2Async(string credencialId, RevogacaoCredencialV2Dto dto, CancellationToken token = default) => throw new NotSupportedException();
-        public Task<string> EmitirCredencialCoCAsync(CredencialCoCDto dto, CancellationToken token = default) => throw new NotSupportedException();
         public Task<ResultadoVerificacao> VerificarCredencialAsync(string credential) => throw new NotSupportedException();
         public Task<IReadOnlyList<EstadoRegistro>> HistoricoRegistroAsync(string assetId) => throw new NotSupportedException();
         public Task<CredencialCoCRegistrada> ObterCredencialCoCAsync(string credentialId) => throw new NotSupportedException();

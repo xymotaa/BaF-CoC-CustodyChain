@@ -112,8 +112,6 @@ builder.Services.AddHttpClient<DidRegistryFabric>(client =>
     DidRegistryFabric.ConfigurarAutorizacao(client, ledgerServiceToken);
 });
 builder.Services.AddScoped<IDidRegistry>(services => services.GetRequiredService<DidRegistryFabric>());
-builder.Services.AddScoped<IProcessadorOutboxLedger, ProcessadorOutboxLedger>();
-builder.Services.AddHostedService<PublicadorOutboxLedgerService>();
 
 // Armazenamento off-chain de anexos (P-01): IPFS privado local via
 // docker-compose. A API HTTP roda em 127.0.0.1:5001, não exposta fora

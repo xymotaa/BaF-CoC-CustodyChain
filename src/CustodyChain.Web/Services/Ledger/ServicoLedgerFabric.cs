@@ -136,24 +136,6 @@ public class ServicoLedgerFabric(HttpClient httpClient) : IServicoLedger
         return new OperacaoAssinadaRegistradaV1Dto(operacao.Clone());
     }
 
-    public async Task<string> EmitirCredencialCoCAsync(CredencialCoCDto dto, CancellationToken cancellationToken = default)
-    {
-        var credencialId = dto.CredencialId ?? $"cred-coc-{Guid.NewGuid():N}";
-        var corpo = new
-        {
-            credencialId,
-            assetId = dto.AssetId,
-            dto.Evento,
-            dto.Did,
-            dto.PayloadHashSha256
-        };
-
-        var resposta = await httpClient.PostAsJsonAsync("/credenciais/coc", corpo, OpcoesJson, cancellationToken);
-        await LancarSeFalhaAsync(resposta);
-
-        return credencialId;
-    }
-
     public async Task<ResultadoVerificacao> VerificarCredencialAsync(string credencialJson)
     {
         var resposta = await httpClient.GetAsync($"/credenciais/{Uri.EscapeDataString(credencialJson)}/verificar");
