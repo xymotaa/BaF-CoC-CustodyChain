@@ -12,7 +12,7 @@ public class LedgerFake : IServicoLedger
     private readonly ConcurrentDictionary<string, DidDocument> _dids = new();
     private readonly ConcurrentDictionary<string, List<EstadoRegistro>> _historico = new();
     private readonly ConcurrentDictionary<string, CredencialCoCRegistrada> _credenciaisCoC = new();
-    private readonly ConcurrentDictionary<string, string> _operacoesAssinadas = new();
+    private readonly ConcurrentDictionary<string, OperacaoAssinadaV1Dto> _operacoesAssinadas = new();
     private int _sequencial;
 
     public Task RegistrarDidV2PendenteAsync(RegistroDidPendenteDto dto, CancellationToken cancellationToken = default)
@@ -76,11 +76,21 @@ public class LedgerFake : IServicoLedger
     {
         var operacao = OperacaoAssinadaV1.Ler(dto.Operation.GetRawText());
         var hash = operacao.CalcularHashCanonicoSemAssinatura();
-        if (_operacoesAssinadas.TryGetValue(operacao.OperationId, out var existente) && existente != hash)
+        if (_operacoesAssinadas.TryGetValue(operacao.OperationId, out var existente)
+            && OperacaoAssinadaV1.Ler(existente.Operation.GetRawText()).CalcularHashCanonicoSemAssinatura() != hash)
             throw new InvalidOperationException($"Conflito de idempotência para a operação: {operacao.OperationId}");
 
-        _operacoesAssinadas.TryAdd(operacao.OperationId, hash);
+        _operacoesAssinadas.TryAdd(operacao.OperationId, dto);
         return Task.FromResult(operacao.OperationId);
+    }
+
+    public Task<OperacaoAssinadaRegistradaV1Dto> ObterOperacaoAssinadaV1Async(
+        string operationId,
+        CancellationToken cancellationToken = default)
+    {
+        if (!_operacoesAssinadas.TryGetValue(operationId, out var operacao))
+            throw new InvalidOperationException($"Operação assinada não encontrada: {operationId}");
+        return Task.FromResult(new OperacaoAssinadaRegistradaV1Dto(operacao.Operation));
     }
 
     public Task<string> EmitirCredencialCoCAsync(CredencialCoCDto dto, CancellationToken cancellationToken = default)

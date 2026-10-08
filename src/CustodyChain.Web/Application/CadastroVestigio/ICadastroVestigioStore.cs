@@ -33,4 +33,13 @@ public sealed record CadastroVestigioPendente(
     string OperacaoAssinadaJson,
     string OperacaoAssinadaId,
     string OperacaoAssinadaHashSha256,
-    string DidResponsavel);
+    string DidResponsavel,
+    IntegridadeEvidenciaColeta? Integridade);
+
+public sealed record IntegridadeEvidenciaColeta(
+    string Algorithm,
+    string ContentHashSha256,
+    string ContentCid,
+    long ByteLength,
+    string MediaType,
+    string FileName);

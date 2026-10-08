@@ -23,7 +23,7 @@
     </div>
 }
 
-<form id="cadastro-vestigio-form" novalidate class="formulario-vestigio">
+<form id="cadastro-vestigio-form" novalidate class="formulario-vestigio" enctype="multipart/form-data">
     @Html.AntiForgeryToken()
 
     <section class="cartao secao-formulario">
@@ -127,6 +127,12 @@
             <label asp-for="DescricaoIntercorrencia" class="campo-rotulo"></label>
             <textarea asp-for="DescricaoIntercorrencia" rows="4" class="campo-entrada campo-textarea"></textarea>
             <span asp-validation-for="DescricaoIntercorrencia" class="campo-erro"></span>
+        </div>
+
+        <div class="campo">
+            <label asp-for="ArquivoEvidencia" class="campo-rotulo"></label>
+            <input asp-for="ArquivoEvidencia" type="file" class="campo-entrada" />
+            <p class="campo-ajuda">Opcional. Se enviado, o hash e o CID serão incluídos na operação assinada.</p>
         </div>
     </section>
 
@@ -243,7 +249,7 @@
             var error = form.querySelector('[data-operacao-error]');
             var antiForgery = form.querySelector('input[name="__RequestVerificationToken"]').value;
 
-            function payload() {
+            function cadastro() {
                 var value = function (name) { return form.querySelector('[name="' + name + '"]'); };
                 return {
                     rotuloEvidencia: value('RotuloEvidencia').value,
@@ -261,7 +267,7 @@
                 };
             }
 
-            async function post(url, body) {
+            async function postJson(url, body) {
                 var response = await fetch(url, {
                     method: 'POST', credentials: 'same-origin',
                     headers: { 'Content-Type': 'application/json', 'RequestVerificationToken': antiForgery },
@@ -269,6 +275,17 @@
                 });
                 var responseBody = await response.json().catch(function () { return {}; });
                 if (!response.ok) throw new Error(responseBody.message || 'Não foi possível registrar a coleta.');
+                return responseBody;
+            }
+
+            async function prepararComando() {
+                var response = await fetch('/vestigios/cadastrar/comando', {
+                    method: 'POST', credentials: 'same-origin',
+                    headers: { 'RequestVerificationToken': antiForgery },
+                    body: new FormData(form)
+                });
+                var responseBody = await response.json().catch(function () { return {}; });
+                if (!response.ok) throw new Error(responseBody.message || 'Não foi possível preparar a coleta.');
                 return responseBody;
             }
 
@@ -281,7 +298,7 @@
                 form.setAttribute('aria-busy', 'true');
                 try {
                     status.textContent = 'Preparando a operação de coleta.';
-                    var command = await post('/vestigios/cadastrar/comando', payload());
+                    var command = await prepararComando();
                     status.textContent = 'Aguardando assinatura na wallet.';
                     var walletResponse = await fetch(command.walletEndpoint + '/v1/proofs/signed-operation', {
                         method: 'POST',
@@ -292,7 +309,7 @@
                     if (!walletResponse.ok) throw new Error(wallet.message || 'A wallet recusou a assinatura da coleta.');
                     password.value = '';
                     status.textContent = 'Confirmando a coleta no ledger.';
-                    var result = await post('/vestigios/cadastrar/prova', { cadastro: payload(), operation: wallet.operation });
+                    var result = await postJson('/vestigios/cadastrar/prova', { cadastro: cadastro(), operation: wallet.operation });
                     window.location.assign(result.redirectUrl);
                 } catch (exception) {
                     password.value = '';

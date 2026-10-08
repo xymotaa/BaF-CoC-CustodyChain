@@ -228,7 +228,11 @@ test('registra coleta somente com VC do coletor no escopo do processo', async ()
             credentialId: credential.id, assetRef: 'urn:uuid:cccccccc-4444-4444-4444-444444444444', processoId: '10', rotuloEvidencia: 'RE-001', rotuloConjunto: 'RC-001',
             numeroEvidencia: null, tipoVestigioId: '1', descricao: 'Vestígio de teste', localColeta: 'Local A',
             dataHoraColeta: '2027-01-15T07:00:00.000Z', metodoColeta: 'Manual', numeroLacre: 'L-001',
-            houveIntercorrencia: false, descricaoIntercorrencia: null
+            houveIntercorrencia: false, descricaoIntercorrencia: null,
+            integrity: {
+                algorithm: 'SHA-256', contentHashSha256: 'a'.repeat(64), contentCid: 'bafyteste',
+                byteLength: 8, mediaType: 'text/plain', fileName: 'evidencia.txt'
+            }
         },
         signerDid: coletorDid, keyId: coletor.keyId, algorithm: 'Ed25519',
         canonicalization: 'custodychain-json-c14n-v1', audience: 'custodychain-ledger',
@@ -237,6 +241,8 @@ test('registra coleta somente com VC do coletor no escopo do processo', async ()
     assert.equal(await contract.RegistrarOperacaoAssinadaV1(ctx, JSON.stringify({
         ...operation, signature: assinar(coletor.privateKey, operation)
     })), operation.operationId);
+    const coletaRegistrada = JSON.parse(await contract.ObterOperacaoAssinadaV1(ctx, operation.operationId));
+    assert.equal(coletaRegistrada.signedOperation.payload.integrity.contentHashSha256, 'a'.repeat(64));
 
     const custodiaDid = 'did:legal:custodian:teste-transferencia-inicial';
     const custodia = gerarIdentidade(custodiaDid, `${custodiaDid}#key-1`);

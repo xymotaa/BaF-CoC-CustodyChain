@@ -113,6 +113,20 @@ public sealed class ServicoLedgerContractTests
         Assert.Equal(operationId, corpo.RootElement.GetProperty("operation").GetProperty("operationId").GetString());
     }
 
+    [Fact]
+    public async Task ServicoLedgerFabric_ConsultaOperacaoAssinadaRegistradaNoLedger()
+    {
+        var handler = new HandlerCapturandoRequisicao();
+        using var httpClient = new HttpClient(handler) { BaseAddress = new Uri("http://ledger.local") };
+        var ledger = new ServicoLedgerFabric(httpClient);
+
+        var resultado = await ledger.ObterOperacaoAssinadaV1Async("urn:uuid:11111111-1111-1111-1111-111111111111");
+
+        Assert.Equal(HttpMethod.Get, handler.Method);
+        Assert.Equal("/v2/operacoes/urn%3Auuid%3A11111111-1111-1111-1111-111111111111", handler.Path);
+        Assert.Equal("COLETA_REGISTRAR", resultado.SignedOperation.GetProperty("operation").GetString());
+    }
+
     private sealed class HandlerCapturandoRequisicao : HttpMessageHandler
     {
         public HttpMethod? Method { get; private set; }
@@ -125,11 +139,18 @@ public sealed class ServicoLedgerContractTests
             Path = request.RequestUri!.AbsolutePath;
             Body = request.Content is null ? null : await request.Content.ReadAsStringAsync(cancellationToken);
 
-            return new HttpResponseMessage(HttpStatusCode.Created)
-            {
-                Content = Path == "/v2/operacoes"
+            var content = Path == "/v2/operacoes/urn%3Auuid%3A11111111-1111-1111-1111-111111111111"
+                ? JsonContent.Create(new
+                {
+                    signedOperation = new { operation = "COLETA_REGISTRAR" }
+                })
+                : Path == "/v2/operacoes"
                     ? JsonContent.Create(new { operationId = "urn:uuid:11111111-1111-1111-1111-111111111111" })
-                    : JsonContent.Create(new { credencialId = "cred-coc-estavel" })
+                    : JsonContent.Create(new { credencialId = "cred-coc-estavel" });
+
+            return new HttpResponseMessage(Method == HttpMethod.Get ? HttpStatusCode.OK : HttpStatusCode.Created)
+            {
+                Content = content
             };
         }
     }

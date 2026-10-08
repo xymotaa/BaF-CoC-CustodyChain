@@ -84,6 +84,22 @@ public sealed class CadastroVestigioStore(CustodyChainDbContext db) : ICadastroV
                 AplicadoEm = cadastro.CriadoEm,
             });
 
+            if (cadastro.Integridade is not null)
+            {
+                db.Anexos.Add(new Anexo
+                {
+                    VestigioId = vestigio.Id,
+                    Tipo = TipoAnexo.DOCUMENTO,
+                    NomeArquivo = cadastro.Integridade.FileName,
+                    CaminhoRelativo = cadastro.Integridade.ContentCid,
+                    TamanhoBytes = cadastro.Integridade.ByteLength,
+                    HashSha256 = cadastro.Integridade.ContentHashSha256,
+                    Algoritmo = cadastro.Integridade.Algorithm,
+                    EnviadoPorId = cadastro.CriadorId,
+                    EnviadoEm = cadastro.ConfirmadoEm,
+                });
+            }
+
             db.RegistrosLedger.Add(new RegistroLedger
             {
                 EntidadeOrigem = "VESTIGIO",

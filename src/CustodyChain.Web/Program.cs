@@ -77,6 +77,7 @@ builder.Services.AddScoped<ISolicitarDesignacaoPericia, SolicitarDesignacaoPeric
 builder.Services.AddScoped<IAprovarDesignacaoPericia, AprovarDesignacaoPericiaUseCase>();
 builder.Services.AddScoped<IDesignacaoPericiaStore, DesignacaoPericiaStore>();
 builder.Services.AddScoped<IArmazenamentoAutorizacao, ArmazenamentoAutorizacaoIpfs>();
+builder.Services.AddScoped<IArmazenamentoEvidenciaColeta, ArmazenamentoEvidenciaColetaIpfs>();
 builder.Services.AddSingleton<IClock, SystemClock>();
 builder.Services.AddSingleton<IGeradorIdentificadorCredencial, GeradorIdentificadorCredencial>();
 builder.Services.AddScoped<CriarDesafioAutenticacaoUseCase>();

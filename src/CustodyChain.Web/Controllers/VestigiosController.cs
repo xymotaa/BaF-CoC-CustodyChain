@@ -25,7 +25,7 @@ public class VestigiosController(
     [HttpPost("/vestigios/cadastrar/comando")]
     [ValidateAntiForgeryToken]
     public async Task<IActionResult> PrepararCadastro(
-        [FromBody] CadastroVestigioViewModel? modelo,
+        [FromForm] CadastroVestigioViewModel? modelo,
         CancellationToken cancellationToken)
     {
         if (modelo is null || !TryObterCriador(out var criadorId))
@@ -34,7 +34,11 @@ public class VestigiosController(
         try
         {
             var preparacao = await cadastrarVestigio.PrepararAsync(
-                CriarCommand(criadorId, modelo), cancellationToken);
+                CriarCommand(
+                    criadorId,
+                    modelo,
+                    await CriarArquivoEvidenciaAsync(modelo.ArquivoEvidencia, cancellationToken)),
+                cancellationToken);
 
             return Ok(new
             {
@@ -96,6 +100,12 @@ public class VestigiosController(
         long.TryParse(User.FindFirstValue(ClaimTypes.NameIdentifier), out criadorId);
 
     private static CadastrarVestigioCommand CriarCommand(long criadorId, CadastroVestigioViewModel modelo) =>
+        CriarCommand(criadorId, modelo, null);
+
+    private static CadastrarVestigioCommand CriarCommand(
+        long criadorId,
+        CadastroVestigioViewModel modelo,
+        ArquivoEvidenciaColeta? arquivoEvidencia) =>
         new(
             criadorId,
             modelo.RotuloEvidencia ?? string.Empty,
@@ -109,7 +119,22 @@ public class VestigiosController(
             modelo.MetodoColeta,
             modelo.NumeroLacre ?? string.Empty,
             modelo.HouveIntercorrencia,
-            modelo.DescricaoIntercorrencia);
+            modelo.DescricaoIntercorrencia,
+            arquivoEvidencia);
+
+    private static async Task<ArquivoEvidenciaColeta?> CriarArquivoEvidenciaAsync(
+        IFormFile? arquivo,
+        CancellationToken cancellationToken)
+    {
+        if (arquivo is not { Length: > 0 }) return null;
+
+        await using var memoria = new MemoryStream();
+        await arquivo.CopyToAsync(memoria, cancellationToken);
+        return new ArquivoEvidenciaColeta(
+            Path.GetFileName(arquivo.FileName),
+            string.IsNullOrWhiteSpace(arquivo.ContentType) ? "application/octet-stream" : arquivo.ContentType,
+            memoria.ToArray());
+    }
 
     private async Task CarregarOpcoesAsync(CadastroVestigioViewModel modelo, CancellationToken cancellationToken)
     {

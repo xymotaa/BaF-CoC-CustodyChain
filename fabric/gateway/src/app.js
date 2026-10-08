@@ -422,6 +422,17 @@ app.post('/v2/operacoes', async (req, res) => {
     }
 });
 
+app.get('/v2/operacoes/:operationId', async (req, res) => {
+    try {
+        const resultado = await obterContrato().evaluateTransaction(
+            'ObterOperacaoAssinadaV1', req.params.operationId
+        );
+        res.json(JSON.parse(decodificar(resultado)));
+    } catch (erro) {
+        tratarErro(res, erro);
+    }
+});
+
 app.post('/credenciais/coc', async (req, res) => {
     try {
         const { credencialId, assetId, evento, did, payloadHashSha256 } = req.body;

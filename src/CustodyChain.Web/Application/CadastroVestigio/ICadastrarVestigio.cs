@@ -23,7 +23,13 @@ public sealed record CadastrarVestigioCommand(
     string? MetodoColeta,
     string NumeroLacre,
     bool HouveIntercorrencia,
-    string? DescricaoIntercorrencia);
+    string? DescricaoIntercorrencia,
+    ArquivoEvidenciaColeta? ArquivoEvidencia = null);
+
+public sealed record ArquivoEvidenciaColeta(
+    string NomeArquivo,
+    string MediaType,
+    byte[] Conteudo);
 
 public sealed record ConcluirCadastroVestigioCommand(CadastrarVestigioCommand Cadastro, JsonElement OperacaoAssinada);
 public sealed record PreparacaoCadastroVestigio(JsonElement Operacao, string DidColetor);

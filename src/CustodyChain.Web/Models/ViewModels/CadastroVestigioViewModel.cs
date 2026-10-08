@@ -58,6 +58,9 @@ public class CadastroVestigioViewModel
     [Display(Name = "Descrição da intercorrência")]
     public string? DescricaoIntercorrencia { get; set; }
 
+    [Display(Name = "Arquivo digital da evidência")]
+    public IFormFile? ArquivoEvidencia { get; set; }
+
     // Opções para os seletores
 
     public IReadOnlyList<OpcaoProcessoViewModel> ProcessosDisponiveis { get; set; } = [];

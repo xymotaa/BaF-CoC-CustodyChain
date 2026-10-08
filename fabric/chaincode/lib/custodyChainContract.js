@@ -502,6 +502,19 @@ class CustodyChainContract extends Contract {
         return operacao.operationId;
     }
 
+    async ObterOperacaoAssinadaV1(ctx, operationId) {
+        if (!this._identificadorValido(operationId)) {
+            throw new Error('Identificador de operação inválido.');
+        }
+
+        const chave = ctx.stub.createCompositeKey(PREFIXO_OPERACAO_ASSINADA, [operationId]);
+        const bytes = await ctx.stub.getState(chave);
+        if (!bytes || bytes.length === 0) {
+            throw new Error(`Operação assinada não encontrada: ${operationId}`);
+        }
+        return bytes.toString();
+    }
+
     async VerificarCredencial(ctx, credencialId) {
         const chave = ctx.stub.createCompositeKey(PREFIXO_CREDENCIAL, [credencialId]);
         const bytes = await ctx.stub.getState(chave);
@@ -805,7 +818,8 @@ class CustodyChainContract extends Contract {
             || typeof payload.houveIntercorrencia !== 'boolean'
             || !textoOpcional(payload.descricaoIntercorrencia)
             || (payload.houveIntercorrencia && !textoObrigatorio(payload.descricaoIntercorrencia))
-            || (!payload.houveIntercorrencia && payload.descricaoIntercorrencia !== null)) {
+            || (!payload.houveIntercorrencia && payload.descricaoIntercorrencia !== null)
+            || !this._integridadeDaColetaValida(payload.integrity)) {
             throw new Error('Payload da operação COLETA_REGISTRAR inválido.');
         }
 
@@ -824,6 +838,18 @@ class CustodyChainContract extends Contract {
             || (credencial.expiraEm && Date.parse(credencial.expiraEm) <= Date.parse(this._agora(ctx)))) {
             throw new Error('VC de permissão não autoriza a operação: COLETA_REGISTRAR');
         }
+    }
+
+    _integridadeDaColetaValida(integridade) {
+        if (integridade === null) return true;
+        return integridade && typeof integridade === 'object' && !Array.isArray(integridade)
+            && integridade.algorithm === 'SHA-256'
+            && /^[a-f0-9]{64}$/.test(integridade.contentHashSha256)
+            && typeof integridade.contentCid === 'string' && integridade.contentCid.trim()
+            && Number.isSafeInteger(integridade.byteLength) && integridade.byteLength > 0
+            && typeof integridade.mediaType === 'string' && integridade.mediaType.trim()
+            && typeof integridade.fileName === 'string' && integridade.fileName.trim()
+            && integridade.mediaType.length <= 127 && integridade.fileName.length <= 255;
     }
 
     async _validarAutorizacaoRemessa(ctx, operacao) {

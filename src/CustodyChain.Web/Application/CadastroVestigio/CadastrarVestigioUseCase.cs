@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Security.Cryptography;
 using CustodyChain.Web.Application.Autenticacao;
 using CustodyChain.Web.Application.Common;
 using CustodyChain.Web.Application.SignedOperations;
@@ -8,6 +9,7 @@ namespace CustodyChain.Web.Application.CadastroVestigio;
 
 public sealed class CadastrarVestigioUseCase(
     ICadastroVestigioStore store,
+    IArmazenamentoEvidenciaColeta armazenamentoEvidencia,
     IServicoLedger ledger,
     IClock clock,
     IGeradorNonce nonce) : ICadastrarVestigio
@@ -18,7 +20,8 @@ public sealed class CadastrarVestigioUseCase(
     {
         var cadastro = Normalizar(command);
         var ator = await ValidarPrecondicoesAsync(cadastro, cancellationToken);
-        return new PreparacaoCadastroVestigio(CriarOperacao(cadastro, ator, CriarAssetRef()), ator.Did);
+        var integridade = await ArmazenarEvidenciaAsync(cadastro.ArquivoEvidencia, cancellationToken);
+        return new PreparacaoCadastroVestigio(CriarOperacao(cadastro, ator, CriarAssetRef(), integridade), ator.Did);
     }
 
     public async Task<ResultadoCadastroVestigio> ExecutarAsync(
@@ -29,11 +32,11 @@ public sealed class CadastrarVestigioUseCase(
         var ator = await ValidarPrecondicoesAsync(cadastro, cancellationToken);
         var operacao = LerOperacaoAssinada(command.OperacaoAssinada);
 
-        var assetRef = ValidarVinculoDaOperacao(operacao, cadastro, ator);
+        var coleta = ValidarVinculoDaOperacao(operacao, cadastro, ator);
         await ConfirmarNoLedgerAsync(operacao, cancellationToken);
 
         var vestigioId = await store.PersistirAsync(
-            CriarCadastroConfirmado(cadastro, operacao, ator, assetRef),
+            CriarCadastroConfirmado(cadastro, operacao, ator, coleta.AssetRef, coleta.Integridade),
             cancellationToken);
 
         return new ResultadoCadastroVestigio(vestigioId, cadastro.RotuloEvidencia, AncoragemPendente: false);
@@ -70,7 +73,11 @@ public sealed class CadastrarVestigioUseCase(
                    "O coletor não possui VC vigente para este processo.");
     }
 
-    private JsonElement CriarOperacao(CadastrarVestigioCommand cadastro, AtorCadastroVestigio ator, string assetRef)
+    private JsonElement CriarOperacao(
+        CadastrarVestigioCommand cadastro,
+        AtorCadastroVestigio ator,
+        string assetRef,
+        IntegridadeEvidenciaColeta? integridade)
     {
         var agora = Agora();
         return JsonSerializer.SerializeToElement(new
@@ -94,7 +101,16 @@ public sealed class CadastrarVestigioUseCase(
                 metodoColeta = cadastro.MetodoColeta,
                 numeroLacre = cadastro.NumeroLacre,
                 houveIntercorrencia = cadastro.HouveIntercorrencia,
-                descricaoIntercorrencia = cadastro.DescricaoIntercorrencia
+                descricaoIntercorrencia = cadastro.DescricaoIntercorrencia,
+                integrity = integridade is null ? null : new
+                {
+                    algorithm = integridade.Algorithm,
+                    contentHashSha256 = integridade.ContentHashSha256,
+                    contentCid = integridade.ContentCid,
+                    byteLength = integridade.ByteLength,
+                    mediaType = integridade.MediaType,
+                    fileName = integridade.FileName
+                }
             },
             signerDid = ator.Did,
             keyId = $"{ator.Did}#key-1",
@@ -119,7 +135,7 @@ public sealed class CadastrarVestigioUseCase(
         }
     }
 
-    private static string ValidarVinculoDaOperacao(
+    private static ColetaAssinada ValidarVinculoDaOperacao(
         OperacaoAssinadaV1 operacao, CadastrarVestigioCommand cadastro, AtorCadastroVestigio ator)
     {
         var envelope = operacao.Envelope;
@@ -145,7 +161,7 @@ public sealed class CadastrarVestigioUseCase(
             throw new ValidacaoCadastroVestigioException(
                 "A operação assinada não corresponde à coleta ou à permissão vigente.");
 
-        return assetRef;
+        return new ColetaAssinada(assetRef, LerIntegridade(payload));
     }
 
     private async Task ConfirmarNoLedgerAsync(OperacaoAssinadaV1 operacao, CancellationToken cancellationToken)
@@ -168,7 +184,8 @@ public sealed class CadastrarVestigioUseCase(
         CadastrarVestigioCommand cadastro,
         OperacaoAssinadaV1 operacao,
         AtorCadastroVestigio ator,
-        string assetRef) =>
+        string assetRef,
+        IntegridadeEvidenciaColeta? integridade) =>
         new(
             assetRef, cadastro.RotuloEvidencia, cadastro.RotuloConjunto, cadastro.NumeroEvidencia,
             cadastro.ProcessoId, cadastro.TipoVestigioId, cadastro.Descricao, cadastro.CriadorId,
@@ -176,7 +193,58 @@ public sealed class CadastrarVestigioUseCase(
             cadastro.HouveIntercorrencia, cadastro.DescricaoIntercorrencia, cadastro.NumeroLacre,
             DateTimeOffset.Parse(operacao.Envelope.GetProperty("timestamp").GetString()!).UtcDateTime,
             Agora(), operacao.Envelope.GetRawText(), operacao.OperationId,
-            operacao.CalcularHashCanonicoSemAssinatura(), ator.Did);
+            operacao.CalcularHashCanonicoSemAssinatura(), ator.Did, integridade);
+
+    private async Task<IntegridadeEvidenciaColeta?> ArmazenarEvidenciaAsync(
+        ArquivoEvidenciaColeta? arquivo,
+        CancellationToken cancellationToken)
+    {
+        if (arquivo is null)
+            return null;
+
+        var armazenado = await armazenamentoEvidencia.ArmazenarAsync(
+            arquivo.Conteudo, arquivo.NomeArquivo, cancellationToken);
+        if (armazenado.TamanhoBytes != arquivo.Conteudo.LongLength)
+            throw new InvalidOperationException("O armazenamento retornou tamanho diferente do arquivo enviado.");
+
+        return new IntegridadeEvidenciaColeta(
+            "SHA-256",
+            Convert.ToHexStringLower(SHA256.HashData(arquivo.Conteudo)),
+            armazenado.Cid,
+            armazenado.TamanhoBytes,
+            arquivo.MediaType,
+            arquivo.NomeArquivo);
+    }
+
+    private static IntegridadeEvidenciaColeta? LerIntegridade(JsonElement payload)
+    {
+        if (!payload.TryGetProperty("integrity", out var integridade))
+            throw new ValidacaoCadastroVestigioException(
+                "A operação assinada não informa a atestação de integridade.");
+
+        if (integridade.ValueKind == JsonValueKind.Null)
+            return null;
+
+        if (integridade.ValueKind != JsonValueKind.Object
+            || !Texto(integridade, "algorithm", "SHA-256")
+            || !Padrao(integridade, "contentHashSha256", "^[a-f0-9]{64}$")
+            || !TextoObrigatorio(integridade, "contentCid")
+            || !InteiroPositivo(integridade, "byteLength")
+            || !TextoObrigatorio(integridade, "mediaType")
+            || !TextoObrigatorio(integridade, "fileName"))
+        {
+            throw new ValidacaoCadastroVestigioException(
+                "A atestação de integridade assinada é inválida.");
+        }
+
+        return new IntegridadeEvidenciaColeta(
+            integridade.GetProperty("algorithm").GetString()!,
+            integridade.GetProperty("contentHashSha256").GetString()!,
+            integridade.GetProperty("contentCid").GetString()!,
+            integridade.GetProperty("byteLength").GetInt64(),
+            integridade.GetProperty("mediaType").GetString()!,
+            integridade.GetProperty("fileName").GetString()!);
+    }
 
     private static bool Texto(JsonElement objeto, string nome, string esperado) =>
         objeto.TryGetProperty(nome, out var valor)
@@ -190,6 +258,22 @@ public sealed class CadastrarVestigioUseCase(
         objeto.TryGetProperty(nome, out var valor)
         && (valor.ValueKind is JsonValueKind.True or JsonValueKind.False)
         && valor.GetBoolean() == esperado;
+
+    private static bool Padrao(JsonElement objeto, string nome, string padrao) =>
+        objeto.TryGetProperty(nome, out var valor)
+        && valor.ValueKind == JsonValueKind.String
+        && System.Text.RegularExpressions.Regex.IsMatch(valor.GetString()!, padrao);
+
+    private static bool TextoObrigatorio(JsonElement objeto, string nome) =>
+        objeto.TryGetProperty(nome, out var valor)
+        && valor.ValueKind == JsonValueKind.String
+        && !string.IsNullOrWhiteSpace(valor.GetString());
+
+    private static bool InteiroPositivo(JsonElement objeto, string nome) =>
+        objeto.TryGetProperty(nome, out var valor)
+        && valor.ValueKind == JsonValueKind.Number
+        && valor.TryGetInt64(out var inteiro)
+        && inteiro > 0;
 
     private static string ObterAssetRef(JsonElement payload)
     {
@@ -209,6 +293,14 @@ public sealed class CadastrarVestigioUseCase(
         if (command.HouveIntercorrencia && string.IsNullOrWhiteSpace(command.DescricaoIntercorrencia))
             throw new ValidacaoCadastroVestigioException(
                 "Descreva a intercorrência informada.", nameof(command.DescricaoIntercorrencia));
+        if (command.ArquivoEvidencia is { } arquivo
+            && (arquivo.Conteudo.Length == 0
+                || string.IsNullOrWhiteSpace(arquivo.NomeArquivo)
+                || arquivo.NomeArquivo.Length > 255
+                || string.IsNullOrWhiteSpace(arquivo.MediaType)
+                || arquivo.MediaType.Length > 127))
+            throw new ValidacaoCadastroVestigioException(
+                "O arquivo de evidência informado é inválido.", nameof(command.ArquivoEvidencia));
 
         return command with
         {
@@ -224,6 +316,8 @@ public sealed class CadastrarVestigioUseCase(
             DataHoraColeta = command.DataHoraColeta.ToUniversalTime()
         };
     }
+
+    private sealed record ColetaAssinada(string AssetRef, IntegridadeEvidenciaColeta? Integridade);
 
     private DateTime Agora() => DateTime.SpecifyKind(clock.UtcNow, DateTimeKind.Utc);
     private static string CriarAssetRef() => $"urn:uuid:{Guid.NewGuid()}";

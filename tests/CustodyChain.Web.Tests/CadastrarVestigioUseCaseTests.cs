@@ -54,8 +54,42 @@ public sealed class CadastrarVestigioUseCaseTests
         Assert.Equal(nameof(CadastrarVestigioCommand.RotuloEvidencia), exception.Campo);
     }
 
+    [Fact]
+    public async Task PrepararAsync_ComArquivo_DeveVincularIntegridadeAssinada()
+    {
+        var useCase = CriarUseCase(new CadastroVestigioStoreFake(), new LedgerCaptura());
+        var command = CriarCommand() with
+        {
+            ArquivoEvidencia = new ArquivoEvidenciaColeta("evidencia.txt", "text/plain", "conteudo"u8.ToArray())
+        };
+
+        var preparacao = await useCase.PrepararAsync(command);
+        var integrity = preparacao.Operacao.GetProperty("payload").GetProperty("integrity");
+
+        Assert.Equal("SHA-256", integrity.GetProperty("algorithm").GetString());
+        Assert.Equal("92359bb294288000958de4f1f20d5778681b14bfe2f0868104f79230942a6984", integrity.GetProperty("contentHashSha256").GetString());
+        Assert.Equal("bafyteste", integrity.GetProperty("contentCid").GetString());
+        Assert.Equal(8, integrity.GetProperty("byteLength").GetInt64());
+    }
+
+    [Fact]
+    public async Task ExecutarAsync_ComIntegridadeAssinada_PersisteAtestacaoDaEvidencia()
+    {
+        var store = new CadastroVestigioStoreFake();
+        var useCase = CriarUseCase(store, new LedgerCaptura());
+        var preparacao = await useCase.PrepararAsync(CriarCommand() with
+        {
+            ArquivoEvidencia = new ArquivoEvidenciaColeta("evidencia.txt", "text/plain", "conteudo"u8.ToArray())
+        });
+
+        await useCase.ExecutarAsync(new ConcluirCadastroVestigioCommand(CriarCommand(), Assinar(preparacao.Operacao)));
+
+        Assert.NotNull(store.CadastroPersistido!.Integridade);
+        Assert.Equal("bafyteste", store.CadastroPersistido.Integridade!.ContentCid);
+    }
+
     private static CadastrarVestigioUseCase CriarUseCase(CadastroVestigioStoreFake store, IServicoLedger ledger) =>
-        new(store, ledger, new ClockFixo(), new NonceFixo());
+        new(store, new ArmazenamentoEvidenciaFake(), ledger, new ClockFixo(), new NonceFixo());
 
     private static CadastrarVestigioCommand CriarCommand() =>
         new(3, " RE-001 ", " RC-001 ", " NE-001 ", 1, 1, " Vestígio de teste ",
@@ -108,6 +142,12 @@ public sealed class CadastrarVestigioUseCaseTests
         public Task<ResultadoVerificacao> VerificarCredencialAsync(string credential) => throw new NotSupportedException();
         public Task<IReadOnlyList<EstadoRegistro>> HistoricoRegistroAsync(string assetId) => throw new NotSupportedException();
         public Task<CredencialCoCRegistrada> ObterCredencialCoCAsync(string credentialId) => throw new NotSupportedException();
+    }
+
+    private sealed class ArmazenamentoEvidenciaFake : IArmazenamentoEvidenciaColeta
+    {
+        public Task<EvidenciaColetaArmazenada> ArmazenarAsync(byte[] conteudo, string nomeArquivo, CancellationToken token = default) =>
+            Task.FromResult(new EvidenciaColetaArmazenada("bafyteste", conteudo.LongLength));
     }
 
     private sealed class ClockFixo : IClock { public DateTime UtcNow { get; } = new(2026, 10, 7, 12, 0, 0, DateTimeKind.Utc); }

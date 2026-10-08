@@ -119,6 +119,23 @@ public class ServicoLedgerFabric(HttpClient httpClient) : IServicoLedger
         return resultado.OperationId;
     }
 
+    public async Task<OperacaoAssinadaRegistradaV1Dto> ObterOperacaoAssinadaV1Async(
+        string operationId,
+        CancellationToken cancellationToken = default)
+    {
+        var resposta = await httpClient.GetAsync(
+            $"/v2/operacoes/{Uri.EscapeDataString(operationId)}", cancellationToken);
+        await LancarSeFalhaAsync(resposta);
+
+        using var documento = await JsonDocument.ParseAsync(
+            await resposta.Content.ReadAsStreamAsync(cancellationToken), cancellationToken: cancellationToken);
+        if (!documento.RootElement.TryGetProperty("signedOperation", out var operacao)
+            || operacao.ValueKind != JsonValueKind.Object)
+            throw new InvalidOperationException("Resposta inválida do gateway ao obter operação assinada.");
+
+        return new OperacaoAssinadaRegistradaV1Dto(operacao.Clone());
+    }
+
     public async Task<string> EmitirCredencialCoCAsync(CredencialCoCDto dto, CancellationToken cancellationToken = default)
     {
         var credencialId = dto.CredencialId ?? $"cred-coc-{Guid.NewGuid():N}";
