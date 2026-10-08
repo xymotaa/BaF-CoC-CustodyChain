@@ -1,4 +1,5 @@
 using System.Security.Claims;
+using System.Text.Json;
 using CustodyChain.Web.Application.Arquivo;
 using CustodyChain.Web.Data;
 using CustodyChain.Web.Models.Entities;
@@ -10,7 +11,7 @@ using Microsoft.EntityFrameworkCore;
 namespace CustodyChain.Web.Controllers;
 
 [Authorize]
-public class ArquivoController(CustodyChainDbContext db, IDarEntradaArquivo darEntradaArquivo) : Controller
+public class ArquivoController(CustodyChainDbContext db, IDarEntradaArquivo darEntradaArquivo, IConfiguration configuration) : Controller
 {
     [HttpGet("/arquivo")]
     public async Task<IActionResult> Index(string? busca, string? categoria)
@@ -82,49 +83,60 @@ public class ArquivoController(CustodyChainDbContext db, IDarEntradaArquivo darE
         return View(modelo);
     }
 
-    [HttpPost("/arquivo/entrada")]
+    [HttpPost("/arquivo/entrada/comando")]
     [ValidateAntiForgeryToken]
-    public async Task<IActionResult> Entrada(DarEntradaArquivoViewModel modelo, CancellationToken cancellationToken)
+    public async Task<IActionResult> PrepararEntrada(
+        [FromBody] DarEntradaArquivoViewModel? modelo,
+        CancellationToken cancellationToken)
     {
+        if (modelo is null) return BadRequest(new { message = "Informe os dados da guarda." });
         if (!TryObterIntervenienteId(out var recebedorId))
             return Forbid();
 
-        if (!ModelState.IsValid)
-        {
-            await CarregarOpcoesAsync(modelo);
-            return View(modelo);
-        }
-
         try
         {
-            var resultado = await darEntradaArquivo.ExecutarAsync(new DarEntradaArquivoCommand(
-                recebedorId,
-                modelo.VestigioId ?? 0,
-                modelo.Central,
-                modelo.Posicao,
-                modelo.PrazoGuardaAte), cancellationToken);
-            TempData["MensagemSucesso"] =
-                $"Vestígio {resultado.RotuloEvidencia} arquivado. A ancoragem da credencial está pendente.";
+            var preparacao = await darEntradaArquivo.PrepararAsync(CriarCommand(recebedorId, modelo), cancellationToken);
+            return Ok(new
+            {
+                operation = preparacao.Operacao,
+                signerDid = preparacao.DidSignatario,
+                walletEndpoint = configuration["AuthenticationDid:WalletEndpoint"] ?? "http://127.0.0.1:43123"
+            });
         }
-        catch (ValidacaoEntradaArquivoException exception)
+        catch (AtorEntradaArquivoNaoAutorizadoException) { return Forbid(); }
+        catch (Exception exception) when (exception is ValidacaoEntradaArquivoException
+            or RecursoEntradaArquivoNaoEncontradoException or ConflitoEntradaArquivoException)
         {
-            ModelState.AddModelError(exception.Campo ?? string.Empty, exception.Message);
-            await CarregarOpcoesAsync(modelo);
-            return View(modelo);
+            return BadRequest(new { message = exception.Message });
         }
-        catch (RecursoEntradaArquivoNaoEncontradoException exception)
-        {
-            ModelState.AddModelError(nameof(modelo.VestigioId), exception.Message);
-            await CarregarOpcoesAsync(modelo);
-            return View(modelo);
-        }
-        catch (ConflitoEntradaArquivoException exception)
-        {
-            TempData["MensagemErro"] = exception.Message;
-        }
-
-        return RedirectToAction(nameof(Entrada));
     }
+
+    [HttpPost("/arquivo/entrada/prova")]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> ConcluirEntrada(
+        [FromBody] EntradaArquivoComProvaRequest? requisicao,
+        CancellationToken cancellationToken)
+    {
+        if (requisicao is null) return BadRequest(new { message = "Informe a prova da guarda." });
+        if (!TryObterIntervenienteId(out var recebedorId)) return Forbid();
+        try
+        {
+            var resultado = await darEntradaArquivo.ExecutarAsync(new ConcluirEntradaArquivoCommand(
+                CriarCommand(recebedorId, requisicao.Entrada), requisicao.Operation), cancellationToken);
+            TempData["MensagemSucesso"] = $"Vestígio {resultado.RotuloEvidencia} arquivado e confirmado no ledger.";
+            return Ok(new { redirectUrl = Url.Action(nameof(Entrada)) });
+        }
+        catch (AtorEntradaArquivoNaoAutorizadoException) { return Forbid(); }
+        catch (IndisponibilidadeLedgerEntradaArquivoException exception) { return StatusCode(503, new { message = exception.Message }); }
+        catch (Exception exception) when (exception is ValidacaoEntradaArquivoException
+            or RecursoEntradaArquivoNaoEncontradoException or ConflitoEntradaArquivoException)
+        {
+            return BadRequest(new { message = exception.Message });
+        }
+    }
+
+    private static DarEntradaArquivoCommand CriarCommand(long recebedorId, DarEntradaArquivoViewModel modelo) =>
+        new(recebedorId, modelo.VestigioId ?? 0, modelo.Central, modelo.Posicao, modelo.PrazoGuardaAte);
 
     private async Task CarregarOpcoesAsync(DarEntradaArquivoViewModel modelo)
     {
@@ -140,3 +152,5 @@ public class ArquivoController(CustodyChainDbContext db, IDarEntradaArquivo darE
     private bool TryObterIntervenienteId(out long intervenienteId) =>
         long.TryParse(User.FindFirstValue(ClaimTypes.NameIdentifier), out intervenienteId) && intervenienteId > 0;
 }
+
+public sealed record EntradaArquivoComProvaRequest(DarEntradaArquivoViewModel Entrada, JsonElement Operation);

@@ -33,7 +33,7 @@
 }
 else
 {
-    <form asp-controller="Arquivo" asp-action="Entrada" method="post" novalidate class="formulario-vestigio">
+    <form id="entrada-arquivo-form" method="post" novalidate class="formulario-vestigio">
         @Html.AntiForgeryToken()
 
         <section class="cartao secao-formulario">
@@ -70,10 +70,97 @@ else
             </div>
         </section>
 
+        <section class="cartao secao-formulario" aria-labelledby="assinatura-guarda-title">
+            <h2 id="assinatura-guarda-title">Assinatura da guarda</h2>
+            <p class="campo-ajuda">A wallet do custodiante confirma o registro antes do armazenamento no ledger.</p>
+            <div class="grade-campos grade-2col">
+                <div class="campo">
+                    <label for="senha-wallet" class="campo-rotulo">Senha da wallet</label>
+                    <input id="senha-wallet" name="SenhaWallet" type="password" autocomplete="current-password" class="campo-entrada" required />
+                </div>
+                <div class="campo">
+                    <label for="codigo-pareamento" class="campo-rotulo">Código de pareamento</label>
+                    <input id="codigo-pareamento" name="CodigoPareamento" type="password" autocomplete="one-time-code" class="campo-entrada" required />
+                </div>
+            </div>
+            <p class="campo-ajuda" data-operacao-status role="status" aria-live="polite"></p>
+            <p class="campo-erro" data-operacao-error role="alert" tabindex="-1" hidden></p>
+        </section>
+
         <div class="formulario-acoes">
-            <button type="submit" class="botao botao-primario">Arquivar</button>
+            <button type="submit" class="botao botao-primario">Assinar e arquivar</button>
         </div>
     </form>
+}
+
+@section Scripts {
+    <script>
+        (function () {
+            var form = document.getElementById('entrada-arquivo-form');
+            if (!form) return;
+            var button = form.querySelector('button[type="submit"]');
+            var password = document.getElementById('senha-wallet');
+            var pairing = document.getElementById('codigo-pareamento');
+            var status = form.querySelector('[data-operacao-status]');
+            var error = form.querySelector('[data-operacao-error]');
+            var antiForgery = form.querySelector('input[name="__RequestVerificationToken"]').value;
+
+            function payload() {
+                var field = function (name) { return form.querySelector('[name="' + name + '"]'); };
+                return {
+                    vestigioId: Number(field('VestigioId').value) || null,
+                    central: field('Central').value,
+                    posicao: field('Posicao').value || null,
+                    prazoGuardaAte: field('PrazoGuardaAte').value || null
+                };
+            }
+
+            async function post(url, body) {
+                var response = await fetch(url, {
+                    method: 'POST', credentials: 'same-origin',
+                    headers: { 'Content-Type': 'application/json', 'RequestVerificationToken': antiForgery },
+                    body: JSON.stringify(body)
+                });
+                var responseBody = await response.json().catch(function () { return {}; });
+                if (!response.ok) throw new Error(responseBody.message || 'Não foi possível registrar a guarda.');
+                return responseBody;
+            }
+
+            form.addEventListener('submit', async function (event) {
+                event.preventDefault();
+                error.hidden = true;
+                if (!form.checkValidity()) { form.reportValidity(); return; }
+
+                button.disabled = true;
+                form.setAttribute('aria-busy', 'true');
+                try {
+                    var dados = payload();
+                    status.textContent = 'Preparando a guarda.';
+                    var command = await post('/arquivo/entrada/comando', dados);
+                    status.textContent = 'Aguardando assinatura na wallet.';
+                    var walletResponse = await fetch(command.walletEndpoint + '/v1/proofs/signed-operation', {
+                        method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Wallet-Pairing-Token': pairing.value },
+                        body: JSON.stringify({ did: command.signerDid, password: password.value, operation: command.operation })
+                    });
+                    var wallet = await walletResponse.json().catch(function () { return {}; });
+                    if (!walletResponse.ok) throw new Error(wallet.message || 'A wallet recusou a assinatura.');
+                    password.value = '';
+                    status.textContent = 'Confirmando a guarda no ledger.';
+                    var result = await post('/arquivo/entrada/prova', { entrada: dados, operation: wallet.operation });
+                    window.location.assign(result.redirectUrl);
+                } catch (exception) {
+                    password.value = '';
+                    status.textContent = '';
+                    error.textContent = exception.message;
+                    error.hidden = false;
+                    error.focus();
+                } finally {
+                    button.disabled = false;
+                    form.removeAttribute('aria-busy');
+                }
+            });
+        })();
+    </script>
 }
 
 @section Styles {

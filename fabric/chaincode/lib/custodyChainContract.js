@@ -10,9 +10,10 @@ const PREFIXO_GOVERNANCA = 'GOV';
 const PREFIXO_OPERACAO_ASSINADA = 'SOP';
 const PREFIXO_TRANSFERENCIA_INICIAL = 'TRI';
 const PREFIXO_RESPOSTA_REMESSA = 'TRR';
+const PREFIXO_GUARDA = 'GUA';
 const MSP_ADMINISTRADOR = 'Org1MSP';
 const OPERACOES_ASSINADAS_SUPORTADAS = new Set([
-    'COLETA_REGISTRAR', 'REMESSA_CRIAR', 'REMESSA_RECEBER', 'REMESSA_RECUSAR', 'PERICIA_RECEBER', 'LACRE_ROMPER', 'LAUDO_EMITIR', 'AMOSTRA_CONSUMIR', 'AMOSTRA_EXAURIR', 'AMOSTRA_FRACIONAR', 'AMOSTRA_UNIFICAR'
+    'COLETA_REGISTRAR', 'REMESSA_CRIAR', 'REMESSA_RECEBER', 'REMESSA_RECUSAR', 'GUARDA_REGISTRAR', 'PERICIA_RECEBER', 'LACRE_ROMPER', 'LAUDO_EMITIR', 'AMOSTRA_CONSUMIR', 'AMOSTRA_EXAURIR', 'AMOSTRA_FRACIONAR', 'AMOSTRA_UNIFICAR'
 ]);
 
 class CustodyChainContract extends Contract {
@@ -710,6 +711,11 @@ class CustodyChainContract extends Contract {
             return;
         }
 
+        if (operacao.operation === 'GUARDA_REGISTRAR') {
+            await this._validarGuarda(ctx, operacao);
+            return;
+        }
+
         if (operacao.operation === 'AMOSTRA_UNIFICAR') {
             await this._validarAutorizacaoUnificacao(ctx, operacao);
             return;
@@ -981,6 +987,50 @@ class CustodyChainContract extends Contract {
             || (credencial.expiraEm && Date.parse(credencial.expiraEm) <= Date.parse(this._agora(ctx)))) {
             throw new Error(`VC de custódia não autoriza a operação: ${operacao.operation}`);
         }
+    }
+
+    async _validarGuarda(ctx, operacao) {
+        const payload = operacao.payload;
+        const textoObrigatorio = (valor) => typeof valor === 'string' && valor.trim();
+        const textoOpcional = (valor) => valor === null || typeof valor === 'string';
+        if (!this._identificadorValido(payload.credentialId)
+            || !this._identificadorValido(payload.recebimentoOperationId)
+            || !this._identificadorValido(payload.assetRef)
+            || !/^[1-9][0-9]*$/.test(payload.assetId)
+            || !/^[1-9][0-9]*$/.test(payload.processoId)
+            || !textoObrigatorio(payload.central)
+            || !textoOpcional(payload.posicao)
+            || (payload.prazoGuardaAte !== null && (!/^\d{4}-\d{2}-\d{2}$/.test(payload.prazoGuardaAte)
+                || !Number.isFinite(Date.parse(`${payload.prazoGuardaAte}T00:00:00.000Z`))))) {
+            throw new Error('Payload da operação GUARDA_REGISTRAR inválido.');
+        }
+
+        const chaveGuarda = ctx.stub.createCompositeKey(PREFIXO_GUARDA, [payload.recebimentoOperationId]);
+        const guardaExistente = await ctx.stub.getState(chaveGuarda);
+        if (guardaExistente && guardaExistente.length > 0) {
+            throw new Error('Este recebimento já possui guarda registrada.');
+        }
+
+        const chaveRecebimento = ctx.stub.createCompositeKey(PREFIXO_OPERACAO_ASSINADA, [payload.recebimentoOperationId]);
+        const bytesRecebimento = await ctx.stub.getState(chaveRecebimento);
+        if (!bytesRecebimento || bytesRecebimento.length === 0) {
+            throw new Error('O recebimento assinado não foi encontrado para a guarda.');
+        }
+        const recebimento = JSON.parse(bytesRecebimento.toString()).signedOperation;
+        if (recebimento?.operation !== 'REMESSA_RECEBER'
+            || recebimento.signerDid !== operacao.signerDid
+            || recebimento.payload?.assetRef !== payload.assetRef
+            || recebimento.payload?.assetId !== payload.assetId
+            || recebimento.payload?.processoId !== payload.processoId) {
+            throw new Error('O recebimento assinado não autoriza esta guarda.');
+        }
+
+        await this._validarCredencialCustodia(ctx, operacao, payload);
+        await ctx.stub.putState(chaveGuarda, Buffer.from(JSON.stringify({
+            recebimentoOperationId: payload.recebimentoOperationId,
+            operationId: operacao.operationId,
+            guardadaEm: this._agora(ctx)
+        })));
     }
 
     async _validarAutorizacaoUnificacao(ctx, operacao) {

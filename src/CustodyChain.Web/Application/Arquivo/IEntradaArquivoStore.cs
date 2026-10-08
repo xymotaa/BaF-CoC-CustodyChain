@@ -4,19 +4,27 @@ public interface IEntradaArquivoStore
 {
     Task<ContextoEntradaArquivo?> ObterContextoAsync(long vestigioId, long recebedorId, CancellationToken cancellationToken);
 
-    Task PersistirAsync(EntradaArquivoPendente entrada, CancellationToken cancellationToken);
+    Task PersistirAsync(EntradaArquivoConfirmada entrada, CancellationToken cancellationToken);
 }
 
-public sealed record ContextoEntradaArquivo(long VestigioId, string RotuloEvidencia, string DidRecebedor);
+public sealed record ContextoEntradaArquivo(
+    long VestigioId,
+    long ProcessoId,
+    string AssetRef,
+    string RotuloEvidencia,
+    string DidRecebedor,
+    string CredencialId,
+    string RecebimentoOperationId);
 
-public sealed record EntradaArquivoPendente(
+public sealed record EntradaArquivoConfirmada(
     long VestigioId,
     long RecebedorId,
     string Central,
     string? Posicao,
     DateOnly? PrazoGuardaAte,
     DateTime EntradaEm,
-    string PayloadJson,
-    string PayloadHashSha256,
-    string CredencialId,
+    string RecebimentoOperationId,
+    string OperacaoAssinadaJson,
+    string OperacaoAssinadaId,
+    string OperacaoAssinadaHashSha256,
     string DidResponsavel);

@@ -10,3 +10,5 @@ public sealed class RecursoEntradaArquivoNaoEncontradoException(string message) 
 public sealed class ConflitoEntradaArquivoException(string message) : Exception(message);
 
 public sealed class AtorEntradaArquivoNaoAutorizadoException(string message) : Exception(message);
+
+public sealed class IndisponibilidadeLedgerEntradaArquivoException(string message, Exception innerException) : Exception(message, innerException);
