@@ -11,9 +11,10 @@ const PREFIXO_OPERACAO_ASSINADA = 'SOP';
 const PREFIXO_TRANSFERENCIA_INICIAL = 'TRI';
 const PREFIXO_RESPOSTA_REMESSA = 'TRR';
 const PREFIXO_GUARDA = 'GUA';
+const PREFIXO_DESTINACAO_SOLICITACAO = 'DSR';
 const MSP_ADMINISTRADOR = 'Org1MSP';
 const OPERACOES_ASSINADAS_SUPORTADAS = new Set([
-    'COLETA_REGISTRAR', 'REMESSA_CRIAR', 'REMESSA_RECEBER', 'REMESSA_RECUSAR', 'GUARDA_REGISTRAR', 'PERICIA_RECEBER', 'LACRE_ROMPER', 'LAUDO_EMITIR', 'AMOSTRA_CONSUMIR', 'AMOSTRA_EXAURIR', 'AMOSTRA_FRACIONAR', 'AMOSTRA_UNIFICAR'
+    'COLETA_REGISTRAR', 'REMESSA_CRIAR', 'REMESSA_RECEBER', 'REMESSA_RECUSAR', 'GUARDA_REGISTRAR', 'DESTINACAO_SOLICITAR', 'PERICIA_RECEBER', 'LACRE_ROMPER', 'LAUDO_EMITIR', 'AMOSTRA_CONSUMIR', 'AMOSTRA_EXAURIR', 'AMOSTRA_FRACIONAR', 'AMOSTRA_UNIFICAR'
 ]);
 
 class CustodyChainContract extends Contract {
@@ -716,6 +717,11 @@ class CustodyChainContract extends Contract {
             return;
         }
 
+        if (operacao.operation === 'DESTINACAO_SOLICITAR') {
+            await this._validarSolicitacaoDestinacao(ctx, operacao);
+            return;
+        }
+
         if (operacao.operation === 'AMOSTRA_UNIFICAR') {
             await this._validarAutorizacaoUnificacao(ctx, operacao);
             return;
@@ -1033,6 +1039,54 @@ class CustodyChainContract extends Contract {
         })));
     }
 
+    async _validarSolicitacaoDestinacao(ctx, operacao) {
+        const payload = operacao.payload;
+        const textoObrigatorio = (valor) => typeof valor === 'string' && valor.trim();
+        const textoOpcional = (valor) => valor === null || typeof valor === 'string';
+        if (!this._identificadorValido(payload.credentialId)
+            || !this._identificadorValido(payload.guardaOperationId)
+            || !this._identificadorValido(payload.assetRef)
+            || !/^[1-9][0-9]*$/.test(payload.assetId)
+            || !/^[1-9][0-9]*$/.test(payload.processoId)
+            || !['DESCARTE', 'RESTITUICAO'].includes(payload.tipo)
+            || !/^did:legal:judge:[a-zA-Z0-9._-]{3,128}$/.test(payload.didMagistrado)
+            || !textoObrigatorio(payload.autorizacaoCid)
+            || typeof payload.autorizacaoHashSha256 !== 'string' || !/^[a-f0-9]{64}$/.test(payload.autorizacaoHashSha256)
+            || !textoObrigatorio(payload.autorizacaoNomeArquivo)
+            || !Number.isSafeInteger(payload.autorizacaoTamanhoBytes) || payload.autorizacaoTamanhoBytes <= 0
+            || !textoOpcional(payload.observacao)) {
+            throw new Error('Payload da operação DESTINACAO_SOLICITAR inválido.');
+        }
+
+        const chaveDestinacao = ctx.stub.createCompositeKey(PREFIXO_DESTINACAO_SOLICITACAO, [payload.assetRef]);
+        const solicitacaoExistente = await ctx.stub.getState(chaveDestinacao);
+        if (solicitacaoExistente && solicitacaoExistente.length > 0) {
+            throw new Error('Este ativo já possui solicitação de destinação final registrada.');
+        }
+
+        const chaveGuarda = ctx.stub.createCompositeKey(PREFIXO_OPERACAO_ASSINADA, [payload.guardaOperationId]);
+        const bytesGuarda = await ctx.stub.getState(chaveGuarda);
+        if (!bytesGuarda || bytesGuarda.length === 0) {
+            throw new Error('A guarda assinada não foi encontrada para a destinação final.');
+        }
+        const guarda = JSON.parse(bytesGuarda.toString()).signedOperation;
+        if (guarda?.operation !== 'GUARDA_REGISTRAR'
+            || guarda.signerDid !== operacao.signerDid
+            || guarda.payload?.assetRef !== payload.assetRef
+            || guarda.payload?.assetId !== payload.assetId
+            || guarda.payload?.processoId !== payload.processoId) {
+            throw new Error('A guarda assinada não autoriza esta solicitação de destinação final.');
+        }
+
+        await this._validarCredencialCustodia(ctx, operacao, payload);
+        await ctx.stub.putState(chaveDestinacao, Buffer.from(JSON.stringify({
+            assetRef: payload.assetRef,
+            operationId: operacao.operationId,
+            solicitanteDid: operacao.signerDid,
+            solicitadaEm: this._agora(ctx)
+        })));
+    }
+
     async _validarAutorizacaoUnificacao(ctx, operacao) {
         const payload = operacao.payload;
         if (!/^[1-9][0-9]*$/.test(payload.periciaId)
@@ -1108,7 +1162,8 @@ class CustodyChainContract extends Contract {
             'REMESSA_CRIAR',
             'REMESSA_RECEBER',
             'REMESSA_RECUSAR',
-            'GUARDA_REGISTRAR'
+            'GUARDA_REGISTRAR',
+            'DESTINACAO_SOLICITAR'
         ]);
         const escopoInvalido = authorization !== undefined && (!authorization
             || typeof authorization !== 'object' || Array.isArray(authorization)
@@ -1159,7 +1214,7 @@ class CustodyChainContract extends Contract {
         ], true);
         const coletor = perfilValido('COLETOR', 'did:legal:delegate', ['COLETA_REGISTRAR'], false);
         const custodia = perfilValido('CUSTODIA', 'did:legal:custodian', [
-            'REMESSA_CRIAR', 'REMESSA_RECEBER', 'REMESSA_RECUSAR', 'GUARDA_REGISTRAR'
+            'REMESSA_CRIAR', 'REMESSA_RECEBER', 'REMESSA_RECUSAR', 'GUARDA_REGISTRAR', 'DESTINACAO_SOLICITAR'
         ], true);
         if (!perito && !coletor && !custodia) {
             throw new Error('Perfil, DID ou escopo da VC de permissão não é autorizado.');

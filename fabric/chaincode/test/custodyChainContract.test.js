@@ -643,6 +643,49 @@ test('guarda exige VC de custódia e recebimento assinado, uma vez por recebimen
     })), /já possui guarda/);
 });
 
+test('solicitação de destinação exige VC de custódia e guarda assinada, uma vez por ativo', async () => {
+    const contract = new CustodyChainContract();
+    const ctx = contexto('Org1MSP');
+    const admin = gerarIdentidade(did, keyId);
+    await contract.BootstrapAdminDid(ctx, did, keyId, admin.publicKeyMultibase);
+    const custodianteDid = 'did:legal:custodian:teste-destinacao';
+    const custodiante = gerarIdentidade(custodianteDid, `${custodianteDid}#key-1`);
+    await registrarIdentidadeAtiva(ctx, custodianteDid, 'did:legal:custodian', custodiante);
+    const credential = criarVcPermissao(admin.privateKey, {
+        processoId: '10', assetId: '42', operations: ['DESTINACAO_SOLICITAR']
+    }, custodianteDid, 'urn:uuid:dededede-1111-1111-1111-111111111111', 'CUSTODIA');
+    await contract.EmitirCredencialPermissaoV2(ctx, JSON.stringify(credential));
+
+    const guardaOperationId = 'urn:uuid:dededede-2222-2222-2222-222222222222';
+    const assetRef = 'urn:uuid:dededede-3333-3333-3333-333333333333';
+    const guarda = {
+        type: 'CustodyChainSignedOperation', version: 1, operationId: guardaOperationId, operation: 'GUARDA_REGISTRAR',
+        payload: { credentialId: credential.id, recebimentoOperationId: 'urn:uuid:dededede-4444-4444-4444-444444444444', assetRef, assetId: '42', processoId: '10', central: 'Central Norte', posicao: null, prazoGuardaAte: null },
+        signerDid: custodianteDid, keyId: custodiante.keyId, algorithm: 'Ed25519', canonicalization: 'custodychain-json-c14n-v1',
+        audience: 'custodychain-ledger', timestamp: '2027-01-15T08:00:00.000Z', expiresAt: '2027-01-15T08:05:00.000Z', nonce: '0123456789abcdefghijkl', signature: 'A'.repeat(86)
+    };
+    await ctx.stub.putState(ctx.stub.createCompositeKey('SOP', [guardaOperationId]), Buffer.from(JSON.stringify({ signedOperation: guarda })));
+
+    const solicitacao = {
+        type: 'CustodyChainSignedOperation', version: 1, operationId: 'urn:uuid:dededede-5555-5555-5555-555555555555', operation: 'DESTINACAO_SOLICITAR',
+        payload: {
+            credentialId: credential.id, guardaOperationId, assetRef, assetId: '42', processoId: '10', tipo: 'DESCARTE',
+            didMagistrado: 'did:legal:judge:teste-001', autorizacaoCid: 'bafyautorizacao', autorizacaoHashSha256: 'a'.repeat(64),
+            autorizacaoNomeArquivo: 'mandado.pdf', autorizacaoTamanhoBytes: 123, observacao: null
+        },
+        signerDid: custodianteDid, keyId: custodiante.keyId, algorithm: 'Ed25519', canonicalization: 'custodychain-json-c14n-v1',
+        audience: 'custodychain-ledger', timestamp: '2027-01-15T08:00:00.000Z', expiresAt: '2027-01-15T08:05:00.000Z', nonce: 'abcdefghij0123456789kl'
+    };
+    assert.equal(await contract.RegistrarOperacaoAssinadaV1(ctx, JSON.stringify({
+        ...solicitacao, signature: assinar(custodiante.privateKey, solicitacao)
+    })), solicitacao.operationId);
+
+    const duplicada = { ...solicitacao, operationId: 'urn:uuid:dededede-6666-6666-6666-666666666666' };
+    await assert.rejects(contract.RegistrarOperacaoAssinadaV1(ctx, JSON.stringify({
+        ...duplicada, signature: assinar(custodiante.privateKey, duplicada)
+    })), /já possui solicitação/);
+});
+
 function criarVcPermissao(privateKey, authorization, subjectDid = 'did:legal:expert:teste-vc', credentialId = 'urn:uuid:55555555-5555-5555-5555-555555555555', perfil = 'PERITO') {
     const credential = {
         '@context': ['https://www.w3.org/2018/credentials/v1'],

@@ -1,4 +1,5 @@
 using System.Security.Claims;
+using System.Text.Json;
 using CustodyChain.Web.Application.DestinacaoFinal;
 using CustodyChain.Web.Data;
 using CustodyChain.Web.Models.Entities;
@@ -13,7 +14,8 @@ namespace CustodyChain.Web.Controllers;
 public class DestinacaoFinalController(
     CustodyChainDbContext db,
     ISolicitarDestinacao solicitarDestinacao,
-    IAprovarDestinacao aprovarDestinacao) : Controller
+    IAprovarDestinacao aprovarDestinacao,
+    IConfiguration configuration) : Controller
 {
     [HttpGet("/destinacao-final")]
     public async Task<IActionResult> Index()
@@ -41,55 +43,67 @@ public class DestinacaoFinalController(
         return View(modelo);
     }
 
-    [HttpPost("/destinacao-final/solicitar")]
+    [HttpPost("/destinacao-final/solicitar/comando")]
     [ValidateAntiForgeryToken]
-    public async Task<IActionResult> Solicitar(
+    public async Task<IActionResult> PrepararSolicitacao(
         SolicitarDestinacaoViewModel modelo,
         CancellationToken cancellationToken)
     {
         if (!TryObterIntervenienteId(out var solicitanteId))
             return Forbid();
 
-        byte[]? conteudoAutorizacao = null;
-        if (modelo.ArquivoAutorizacao is { Length: > 0 })
-        {
-            await using var memoria = new MemoryStream();
-            await modelo.ArquivoAutorizacao.CopyToAsync(memoria, cancellationToken);
-            conteudoAutorizacao = memoria.ToArray();
-        }
-
         try
         {
-            var resultado = await solicitarDestinacao.ExecutarAsync(new SolicitarDestinacaoCommand(
+            var preparacao = await solicitarDestinacao.PrepararAsync(new PrepararSolicitacaoDestinacaoCommand(
                 solicitanteId,
                 modelo.VestigioId,
                 modelo.Tipo,
                 modelo.DidMagistrado,
                 modelo.ArquivoAutorizacao?.FileName,
-                conteudoAutorizacao,
+                await LerConteudoAsync(modelo.ArquivoAutorizacao, cancellationToken),
                 modelo.Observacao), cancellationToken);
-            TempData["MensagemSucesso"] =
-                $"Destinação final de {resultado.RotuloEvidencia} solicitada. Aguardando aprovação.";
-            return RedirectToAction(nameof(Solicitar));
+            return Ok(new
+            {
+                operation = preparacao.Operacao,
+                signerDid = preparacao.DidSignatario,
+                walletEndpoint = configuration["AuthenticationDid:WalletEndpoint"] ?? "http://127.0.0.1:43123"
+            });
         }
-        catch (ValidacaoDestinacaoFinalException exception)
+        catch (AtorDestinacaoFinalNaoAutorizadoException)
         {
-            var campo = exception.Campo == nameof(SolicitarDestinacaoCommand.ConteudoAutorizacao)
-                ? nameof(modelo.ArquivoAutorizacao)
-                : exception.Campo;
-            ModelState.AddModelError(campo ?? string.Empty, exception.Message);
+            return Forbid();
         }
-        catch (RecursoDestinacaoFinalNaoEncontradoException exception)
+        catch (Exception exception) when (exception is ValidacaoDestinacaoFinalException
+            or RecursoDestinacaoFinalNaoEncontradoException or ConflitoDestinacaoFinalException)
         {
-            ModelState.AddModelError(nameof(modelo.VestigioId), exception.Message);
+            return BadRequest(new { message = exception.Message });
         }
-        catch (ConflitoDestinacaoFinalException exception)
-        {
-            ModelState.AddModelError(string.Empty, exception.Message);
-        }
+    }
 
-        await CarregarOpcoesAsync(modelo);
-        return View(modelo);
+    [HttpPost("/destinacao-final/solicitar/prova")]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> ConcluirSolicitacao(
+        [FromBody] SolicitacaoDestinacaoComProvaRequest? requisicao,
+        CancellationToken cancellationToken)
+    {
+        if (requisicao is null) return BadRequest(new { message = "Informe a prova da solicitação." });
+        if (!TryObterIntervenienteId(out var solicitanteId)) return Forbid();
+
+        try
+        {
+            var resultado = await solicitarDestinacao.ExecutarAsync(new ConcluirSolicitacaoDestinacaoCommand(
+                solicitanteId, requisicao.VestigioId, requisicao.Operation), cancellationToken);
+            TempData["MensagemSucesso"] =
+                $"Destinação final de {resultado.RotuloEvidencia} solicitada e confirmada no ledger. Aguardando aprovação.";
+            return Ok(new { redirectUrl = Url.Action(nameof(Solicitar)) });
+        }
+        catch (AtorDestinacaoFinalNaoAutorizadoException) { return Forbid(); }
+        catch (IndisponibilidadeLedgerDestinacaoFinalException exception) { return StatusCode(503, new { message = exception.Message }); }
+        catch (Exception exception) when (exception is ValidacaoDestinacaoFinalException
+            or RecursoDestinacaoFinalNaoEncontradoException or ConflitoDestinacaoFinalException)
+        {
+            return BadRequest(new { message = exception.Message });
+        }
     }
 
     [HttpPost("/destinacao-final/aprovar")]
@@ -128,4 +142,14 @@ public class DestinacaoFinalController(
 
     private bool TryObterIntervenienteId(out long intervenienteId) =>
         long.TryParse(User.FindFirstValue(ClaimTypes.NameIdentifier), out intervenienteId) && intervenienteId > 0;
+
+    private static async Task<byte[]?> LerConteudoAsync(IFormFile? arquivo, CancellationToken cancellationToken)
+    {
+        if (arquivo is not { Length: > 0 }) return null;
+        await using var memoria = new MemoryStream();
+        await arquivo.CopyToAsync(memoria, cancellationToken);
+        return memoria.ToArray();
+    }
 }
+
+public sealed record SolicitacaoDestinacaoComProvaRequest(long VestigioId, JsonElement Operation);

@@ -1,122 +1,130 @@
 using System.Text.Json;
+using CustodyChain.Web.Application.Autenticacao;
 using CustodyChain.Web.Application.Common;
 using CustodyChain.Web.Application.DestinacaoFinal;
+using CustodyChain.Web.Services.Ledger;
 
 namespace CustodyChain.Web.Tests;
 
 public sealed class DestinacaoFinalUseCaseTests
 {
     [Fact]
-    public async Task Solicitar_ComDadosValidos_ArmazenaAutorizacaoEPersisteSolicitacao()
+    public async Task Solicitar_AssinadaEConfirmada_PersisteSomenteAposLedger()
     {
         var store = new StoreFake();
         var armazenamento = new ArmazenamentoFake();
-        var useCase = new SolicitarDestinacaoUseCase(store, armazenamento, new ClockFixo());
+        var ledger = new LedgerCaptura();
+        var useCase = CriarUseCase(store, armazenamento, ledger);
+        var entrada = new PrepararSolicitacaoDestinacaoCommand(
+            3, 42, "DESCARTE", " did:legal:judge:001 ", " mandado.pdf ", [1, 2, 3], " Motivo ");
 
-        var resultado = await useCase.ExecutarAsync(new SolicitarDestinacaoCommand(
-            3, 42, "DESCARTE", " did:legal:judge:001 ", " mandado.pdf ", [1, 2, 3], " Motivo "));
+        var preparacao = await useCase.PrepararAsync(entrada);
+        var resultado = await useCase.ExecutarAsync(new ConcluirSolicitacaoDestinacaoCommand(
+            3, 42, Assinar(preparacao.Operacao)));
 
         Assert.Equal("RE-001", resultado.RotuloEvidencia);
+        Assert.False(resultado.AncoragemPendente);
         Assert.Equal("mandado.pdf", armazenamento.NomeArquivo);
+        Assert.Equal("DESTINACAO_SOLICITAR", ledger.OperacaoRecebida!.Value.GetProperty("operation").GetString());
         var solicitacao = Assert.IsType<SolicitacaoDestinacaoPendente>(store.SolicitacaoPersistida);
         Assert.Equal("DESCARTE", solicitacao.Tipo);
         Assert.Equal("did:legal:judge:001", solicitacao.DidMagistrado);
-        Assert.Equal("cid-autorizacao", solicitacao.CidAutorizacao);
+        Assert.Equal("urn:uuid:guarda-1111-1111-1111-111111111111", solicitacao.GuardaOperationId);
         Assert.Equal(64, solicitacao.HashAutorizacao.Length);
     }
 
     [Fact]
-    public async Task Solicitar_SemAutorizacao_NaoArmazenaNemPersiste()
+    public async Task Solicitar_QuandoLedgerFalha_NaoPersisteSolicitacao()
     {
         var store = new StoreFake();
-        var armazenamento = new ArmazenamentoFake();
-        var useCase = new SolicitarDestinacaoUseCase(store, armazenamento, new ClockFixo());
+        var useCase = CriarUseCase(store, new ArmazenamentoFake(), new LedgerCaptura { Falhar = true });
+        var preparacao = await useCase.PrepararAsync(new PrepararSolicitacaoDestinacaoCommand(
+            3, 42, "DESCARTE", "did:legal:judge:001", "mandado.pdf", [1, 2, 3], null));
 
-        await Assert.ThrowsAsync<ValidacaoDestinacaoFinalException>(() => useCase.ExecutarAsync(
-            new SolicitarDestinacaoCommand(3, 42, "DESCARTE", "did:legal:judge:001", null, null, null)));
+        await Assert.ThrowsAsync<IndisponibilidadeLedgerDestinacaoFinalException>(() => useCase.ExecutarAsync(
+            new ConcluirSolicitacaoDestinacaoCommand(3, 42, Assinar(preparacao.Operacao))));
 
-        Assert.False(armazenamento.FoiChamado);
         Assert.Null(store.SolicitacaoPersistida);
     }
 
     [Fact]
-    public async Task Aprovar_ComSolicitacaoDeOutroAtor_PersisteEncerramentoPendente()
+    public async Task Solicitar_ComGuardaDivergente_NaoChamaLedger()
     {
         var store = new StoreFake();
-        var useCase = new AprovarDestinacaoUseCase(store, new ClockFixo(), new GeradorCredencialFixo());
+        var ledger = new LedgerCaptura();
+        var useCase = CriarUseCase(store, new ArmazenamentoFake(), ledger);
+        var preparacao = await useCase.PrepararAsync(new PrepararSolicitacaoDestinacaoCommand(
+            3, 42, "DESCARTE", "did:legal:judge:001", "mandado.pdf", [1], null));
+        var adulterada = preparacao.Operacao.GetRawText().Replace("guarda-1111", "guarda-9999", StringComparison.Ordinal);
 
-        var resultado = await useCase.ExecutarAsync(new AprovarDestinacaoCommand(4, 17));
+        await Assert.ThrowsAsync<ValidacaoDestinacaoFinalException>(() => useCase.ExecutarAsync(
+            new ConcluirSolicitacaoDestinacaoCommand(3, 42, Assinar(JsonDocument.Parse(adulterada).RootElement))));
 
-        Assert.Equal("DESCARTE", resultado.Tipo);
-        Assert.True(resultado.AncoragemPendente);
-        var aprovacao = Assert.IsType<AprovacaoDestinacaoPendente>(store.AprovacaoPersistida);
-        Assert.Equal("cred-coc-destinacao", aprovacao.CredencialId);
-        Assert.Equal(64, aprovacao.PayloadHashSha256.Length);
-        using var payload = JsonDocument.Parse(aprovacao.PayloadJson);
-        Assert.Equal("RE-001", payload.RootElement.GetProperty("RE").GetString());
-        Assert.Equal("did:legal:admin:001", payload.RootElement.GetProperty("AprovadoPor").GetString());
+        Assert.Null(ledger.OperacaoRecebida);
+        Assert.Null(store.SolicitacaoPersistida);
     }
 
-    [Fact]
-    public async Task Aprovar_QuandoNaoHaSolicitacaoAprovavel_NaoPersiste()
+    private static SolicitarDestinacaoUseCase CriarUseCase(StoreFake store, ArmazenamentoFake armazenamento, LedgerCaptura ledger) =>
+        new(store, armazenamento, ledger, new ClockAtual(), new NonceFixo());
+
+    private static JsonElement Assinar(JsonElement operacao)
     {
-        var store = new StoreFake { ContextoAprovacao = null };
-        var useCase = new AprovarDestinacaoUseCase(store, new ClockFixo(), new GeradorCredencialFixo());
-
-        await Assert.ThrowsAsync<RecursoDestinacaoFinalNaoEncontradoException>(() =>
-            useCase.ExecutarAsync(new AprovarDestinacaoCommand(3, 17)));
-
-        Assert.Null(store.AprovacaoPersistida);
+        using var documento = JsonDocument.Parse(operacao.GetRawText());
+        var dados = documento.RootElement.EnumerateObject()
+            .ToDictionary(propriedade => propriedade.Name, propriedade => propriedade.Value.Clone());
+        dados["signature"] = JsonSerializer.SerializeToElement(new string('A', 86));
+        return JsonSerializer.SerializeToElement(dados);
     }
 
     private sealed class StoreFake : IDestinacaoFinalStore
     {
-        public ContextoAprovacaoDestinacao? ContextoAprovacao { get; init; } = new(
-            17, 42, "RE-001", "DESCARTE", "did:legal:judge:001", "did:legal:admin:001");
         public SolicitacaoDestinacaoPendente? SolicitacaoPersistida { get; private set; }
-        public AprovacaoDestinacaoPendente? AprovacaoPersistida { get; private set; }
-
-        public Task<ContextoSolicitacaoDestinacao?> ObterContextoSolicitacaoAsync(
-            long vestigioId, long solicitanteId, CancellationToken cancellationToken) =>
-            Task.FromResult<ContextoSolicitacaoDestinacao?>(new(42, "RE-001"));
-
+        public ContextoAprovacaoDestinacao? ContextoAprovacao { get; init; } = new(17, 42, "RE-001", "DESCARTE", "did:legal:judge:001", "did:legal:admin:001");
+        public Task<ContextoSolicitacaoDestinacao?> ObterContextoSolicitacaoAsync(long vestigioId, long solicitanteId, CancellationToken cancellationToken) =>
+            Task.FromResult<ContextoSolicitacaoDestinacao?>(new(42, 10, "urn:uuid:asset-1111-1111-1111-111111111111", "RE-001",
+                "did:legal:custodian:teste-001", "urn:uuid:cred-1111-1111-1111-111111111111", "urn:uuid:guarda-1111-1111-1111-111111111111"));
         public Task PersistirSolicitacaoAsync(SolicitacaoDestinacaoPendente solicitacao, CancellationToken cancellationToken)
         {
             SolicitacaoPersistida = solicitacao;
             return Task.CompletedTask;
         }
-
-        public Task<ContextoAprovacaoDestinacao?> ObterContextoAprovacaoAsync(
-            long descarteId, long aprovadorId, CancellationToken cancellationToken) =>
-            Task.FromResult(ContextoAprovacao);
-
-        public Task PersistirAprovacaoAsync(AprovacaoDestinacaoPendente aprovacao, CancellationToken cancellationToken)
-        {
-            AprovacaoPersistida = aprovacao;
-            return Task.CompletedTask;
-        }
+        public Task<ContextoAprovacaoDestinacao?> ObterContextoAprovacaoAsync(long descarteId, long aprovadorId, CancellationToken cancellationToken) => Task.FromResult(ContextoAprovacao);
+        public Task PersistirAprovacaoAsync(AprovacaoDestinacaoPendente aprovacao, CancellationToken cancellationToken) => Task.CompletedTask;
     }
 
     private sealed class ArmazenamentoFake : IArmazenamentoAutorizacao
     {
-        public bool FoiChamado { get; private set; }
         public string? NomeArquivo { get; private set; }
-
         public Task<AutorizacaoArmazenada> ArmazenarAsync(byte[] conteudo, string nomeArquivo, CancellationToken cancellationToken = default)
         {
-            FoiChamado = true;
             NomeArquivo = nomeArquivo;
             return Task.FromResult(new AutorizacaoArmazenada("cid-autorizacao", conteudo.Length));
         }
     }
 
-    private sealed class ClockFixo : IClock
+    private sealed class LedgerCaptura : IServicoLedger
     {
-        public DateTime UtcNow { get; } = new(2026, 10, 2, 12, 0, 0, DateTimeKind.Utc);
+        public bool Falhar { get; init; }
+        public JsonElement? OperacaoRecebida { get; private set; }
+        public Task<string> RegistrarOperacaoAssinadaV1Async(OperacaoAssinadaV1Dto dto, CancellationToken token = default)
+        {
+            if (Falhar) throw new InvalidOperationException("Ledger indisponível.");
+            OperacaoRecebida = dto.Operation;
+            return Task.FromResult(dto.Operation.GetProperty("operationId").GetString()!);
+        }
+        public Task RegistrarDidV2PendenteAsync(RegistroDidPendenteDto dto, CancellationToken token = default) => throw new NotSupportedException();
+        public Task AtivarDidV2Async(string did, AtivacaoDidV2Dto dto, CancellationToken token = default) => throw new NotSupportedException();
+        public Task<string> GerarDidAsync(TipoAtor tipo) => throw new NotSupportedException();
+        public Task AtivarDidAsync(string did, string emissor, string senha) => throw new NotSupportedException();
+        public Task<DidDocument> ResolverDidAsync(string did) => throw new NotSupportedException();
+        public Task<string> EmitirCredencialPermissaoV2Async(CredencialPermissaoV2Dto dto, CancellationToken token = default) => throw new NotSupportedException();
+        public Task RevogarCredencialV2Async(string credencialId, RevogacaoCredencialV2Dto dto, CancellationToken token = default) => throw new NotSupportedException();
+        public Task<string> EmitirCredencialCoCAsync(CredencialCoCDto dto, CancellationToken token = default) => throw new NotSupportedException();
+        public Task<ResultadoVerificacao> VerificarCredencialAsync(string credential) => throw new NotSupportedException();
+        public Task<IReadOnlyList<EstadoRegistro>> HistoricoRegistroAsync(string assetId) => throw new NotSupportedException();
+        public Task<CredencialCoCRegistrada> ObterCredencialCoCAsync(string credentialId) => throw new NotSupportedException();
     }
 
-    private sealed class GeradorCredencialFixo : IGeradorIdentificadorCredencial
-    {
-        public string GerarCoC() => "cred-coc-destinacao";
-    }
+    private sealed class ClockAtual : IClock { public DateTime UtcNow => DateTime.UtcNow; }
+    private sealed class NonceFixo : IGeradorNonce { public byte[] Gerar(int tamanho) => Enumerable.Range(0, tamanho).Select(i => (byte)i).ToArray(); }
 }

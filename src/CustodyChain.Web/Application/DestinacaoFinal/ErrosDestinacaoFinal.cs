@@ -10,3 +10,5 @@ public sealed class RecursoDestinacaoFinalNaoEncontradoException(string message)
 public sealed class ConflitoDestinacaoFinalException(string message) : Exception(message);
 
 public sealed class AtorDestinacaoFinalNaoAutorizadoException(string message) : Exception(message);
+
+public sealed class IndisponibilidadeLedgerDestinacaoFinalException(string message, Exception innerException) : Exception(message, innerException);

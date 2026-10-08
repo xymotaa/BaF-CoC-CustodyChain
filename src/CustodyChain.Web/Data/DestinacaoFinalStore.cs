@@ -14,11 +14,34 @@ public sealed class DestinacaoFinalStore(CustodyChainDbContext db) : IDestinacao
         CancellationToken cancellationToken) =>
         (from vestigio in db.Vestigios
          join solicitante in db.Intervenientes on solicitanteId equals solicitante.Id
+         join perfil in db.Perfis on solicitante.PerfilId equals perfil.Id
+         join credencial in db.Credenciais on solicitante.Id equals credencial.TitularId
+         join guarda in db.RegistrosLedger on vestigio.Id equals guarda.VestigioId
          where vestigio.Id == vestigioId
              && (vestigio.Estado == EstadoVestigio.Armazenado || vestigio.Estado == EstadoVestigio.Periciado)
              && solicitante.Situacao == SituacaoInterveniente.ATIVO
-         select new ContextoSolicitacaoDestinacao(vestigio.Id, vestigio.RotuloEvidencia))
-        .SingleOrDefaultAsync(cancellationToken);
+             && perfil.Codigo == "CUSTODIA"
+             && vestigio.CustodianteAtualId == solicitanteId
+             && vestigio.AssetRef != null
+             && credencial.Tipo == TipoCredencial.PERMISSAO
+             && credencial.Situacao == SituacaoCredencial.VIGENTE
+             && credencial.ProcessoId == vestigio.ProcessoId
+             && credencial.VestigioId == vestigio.Id
+             && (credencial.ValidaAte == null || credencial.ValidaAte > DateTime.UtcNow)
+             && guarda.Evento == "GUARDA_REGISTRAR"
+             && guarda.Estado == EstadoRegistroLedger.ANCORADO
+             && guarda.OperacaoAssinadaId != null
+             && guarda.DidResponsavel == solicitante.Did
+         orderby guarda.AncoradoEm descending, credencial.EmitidaEm descending
+         select new ContextoSolicitacaoDestinacao(
+             vestigio.Id,
+             vestigio.ProcessoId,
+             vestigio.AssetRef!,
+             vestigio.RotuloEvidencia,
+             solicitante.Did,
+             credencial.Identificador,
+             guarda.OperacaoAssinadaId!))
+        .FirstOrDefaultAsync(cancellationToken);
 
     public async Task PersistirSolicitacaoAsync(
         SolicitacaoDestinacaoPendente solicitacao,
@@ -31,7 +54,8 @@ public sealed class DestinacaoFinalStore(CustodyChainDbContext db) : IDestinacao
                 && (v.Estado == EstadoVestigio.Armazenado || v.Estado == EstadoVestigio.Periciado), cancellationToken);
             var solicitanteAtivo = await db.Intervenientes.AnyAsync(i => i.Id == solicitacao.SolicitanteId
                 && i.Situacao == SituacaoInterveniente.ATIVO, cancellationToken);
-            if (!vestigioElegivel || !solicitanteAtivo)
+            var solicitanteAutorizado = await PossuiPermissaoCustodiaEGuardaAsync(solicitacao, cancellationToken);
+            if (!vestigioElegivel || !solicitanteAtivo || !solicitanteAutorizado)
                 throw new ConflitoDestinacaoFinalException(
                     "O vestígio ou o solicitante mudou enquanto a destinação era preparada. Atualize a página e tente novamente.");
 
@@ -61,6 +85,27 @@ public sealed class DestinacaoFinalStore(CustodyChainDbContext db) : IDestinacao
             };
             db.Descartes.Add(descarte);
             await db.SaveChangesAsync(cancellationToken);
+
+            db.RegistrosLedger.Add(new RegistroLedger
+            {
+                EntidadeOrigem = "DESCARTE",
+                RegistroOrigemId = descarte.Id,
+                VestigioId = solicitacao.VestigioId,
+                Evento = "DESTINACAO_SOLICITAR",
+                PayloadJson = solicitacao.OperacaoAssinadaJson,
+                PayloadHashSha256 = solicitacao.OperacaoAssinadaHashSha256,
+                CredencialId = solicitacao.CredencialId,
+                DidResponsavel = solicitacao.DidResponsavel,
+                ChaveIdempotencia = solicitacao.OperacaoAssinadaId,
+                OperacaoAssinadaId = solicitacao.OperacaoAssinadaId,
+                VersaoOperacaoAssinada = 1,
+                OperacaoAssinadaJson = solicitacao.OperacaoAssinadaJson,
+                OperacaoAssinadaHashSha256 = solicitacao.OperacaoAssinadaHashSha256,
+                Estado = EstadoRegistroLedger.ANCORADO,
+                Tentativas = 1,
+                CriadoEm = solicitacao.SolicitadoEm,
+                AncoradoEm = solicitacao.SolicitadoEm,
+            });
 
             db.LogsAuditoria.Add(CriarLog(
                 "SOLICITACAO_DESTINACAO",
@@ -176,6 +221,31 @@ public sealed class DestinacaoFinalStore(CustodyChainDbContext db) : IDestinacao
         "RESTITUICAO" => Models.Entities.TipoDescarte.RESTITUICAO,
         _ => throw new InvalidOperationException("Tipo de destinação inválido."),
     };
+
+    private Task<bool> PossuiPermissaoCustodiaEGuardaAsync(
+        SolicitacaoDestinacaoPendente solicitacao,
+        CancellationToken cancellationToken) =>
+        (from vestigio in db.Vestigios
+         join solicitante in db.Intervenientes on solicitacao.SolicitanteId equals solicitante.Id
+         join perfil in db.Perfis on solicitante.PerfilId equals perfil.Id
+         join credencial in db.Credenciais on solicitante.Id equals credencial.TitularId
+         join guarda in db.RegistrosLedger on vestigio.Id equals guarda.VestigioId
+         where vestigio.Id == solicitacao.VestigioId
+             && vestigio.CustodianteAtualId == solicitacao.SolicitanteId
+             && vestigio.AssetRef != null
+             && solicitante.Situacao == SituacaoInterveniente.ATIVO
+             && perfil.Codigo == "CUSTODIA"
+             && credencial.Tipo == TipoCredencial.PERMISSAO
+             && credencial.Situacao == SituacaoCredencial.VIGENTE
+             && credencial.ProcessoId == vestigio.ProcessoId
+             && credencial.VestigioId == vestigio.Id
+             && credencial.Identificador == solicitacao.CredencialId
+             && (credencial.ValidaAte == null || credencial.ValidaAte > DateTime.UtcNow)
+             && guarda.Evento == "GUARDA_REGISTRAR"
+             && guarda.Estado == EstadoRegistroLedger.ANCORADO
+             && guarda.OperacaoAssinadaId == solicitacao.GuardaOperationId
+             && guarda.DidResponsavel == solicitacao.DidResponsavel
+         select guarda.Id).AnyAsync(cancellationToken);
 
     private LogAuditoria CriarLog(string acao, long descarteId, long responsavelId, DateTime ocorridoEm)
     {

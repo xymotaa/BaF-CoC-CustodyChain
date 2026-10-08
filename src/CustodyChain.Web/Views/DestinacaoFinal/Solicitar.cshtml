@@ -81,6 +81,20 @@ else
                 <textarea asp-for="Observacao" rows="3" class="campo-entrada campo-textarea"></textarea>
                 <span asp-validation-for="Observacao" class="campo-erro"></span>
             </div>
+
+            <div class="grade-campos grade-2col assinatura-wallet">
+                <div class="campo">
+                    <label class="campo-rotulo" for="wallet-pairing">Token de pareamento da wallet</label>
+                    <input id="wallet-pairing" type="password" class="campo-entrada" autocomplete="off" />
+                </div>
+                <div class="campo">
+                    <label class="campo-rotulo" for="wallet-password">Senha da wallet</label>
+                    <input id="wallet-password" type="password" class="campo-entrada" autocomplete="current-password" />
+                </div>
+            </div>
+            <p class="campo-ajuda">A solicitação só será registrada após sua assinatura na wallet e confirmação no ledger.</p>
+            <p class="campo-erro" data-erro-assinatura role="alert"></p>
+            <p class="campo-ajuda" data-status-assinatura role="status"></p>
         </section>
 
         <div class="formulario-acoes">
@@ -158,6 +172,7 @@ else
         }
 
         .formulario-acoes { display: flex; justify-content: flex-end; }
+        .assinatura-wallet { margin-top: 0.5rem; }
 
         .painel-vazio {
             border: 1px dashed var(--cor-borda-forte);
@@ -182,9 +197,59 @@ else
         (function () {
             var entrada = document.querySelector('[data-campo-arquivo-input]');
             var nome = document.querySelector('[data-campo-arquivo-nome]');
-            if (!entrada || !nome) return;
+            var formulario = document.querySelector('.formulario-vestigio');
+            var erro = document.querySelector('[data-erro-assinatura]');
+            var status = document.querySelector('[data-status-assinatura]');
+            var pairing = document.getElementById('wallet-pairing');
+            var password = document.getElementById('wallet-password');
+            if (!entrada || !nome || !formulario || !erro || !status || !pairing || !password) return;
+
             entrada.addEventListener('change', function () {
                 nome.textContent = entrada.files.length > 0 ? entrada.files[0].name : nome.dataset.placeholder;
+            });
+
+            async function responseJson(response) {
+                var body = await response.json().catch(function () { return {}; });
+                if (!response.ok) throw new Error(body.message || 'Não foi possível concluir a solicitação.');
+                return body;
+            }
+
+            async function postProof(url, body) {
+                var token = formulario.querySelector('input[name="__RequestVerificationToken"]');
+                return responseJson(await fetch(url, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'RequestVerificationToken': token.value },
+                    body: JSON.stringify(body)
+                }));
+            }
+
+            formulario.addEventListener('submit', async function (event) {
+                event.preventDefault();
+                erro.textContent = '';
+                status.textContent = '';
+                try {
+                    status.textContent = 'Enviando autorização e preparando a solicitação.';
+                    var command = await responseJson(await fetch('/destinacao-final/solicitar/comando', {
+                        method: 'POST', body: new FormData(formulario)
+                    }));
+                    status.textContent = 'Aguardando assinatura na wallet.';
+                    var walletResponse = await fetch(command.walletEndpoint + '/v1/proofs/signed-operation', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json', 'X-Wallet-Pairing-Token': pairing.value },
+                        body: JSON.stringify({ did: command.signerDid, password: password.value, operation: command.operation })
+                    });
+                    var wallet = await responseJson(walletResponse);
+                    password.value = '';
+                    status.textContent = 'Confirmando a solicitação no ledger.';
+                    var result = await postProof('/destinacao-final/solicitar/prova', {
+                        vestigioId: Number(document.getElementById('VestigioId').value), operation: wallet.operation
+                    });
+                    window.location.assign(result.redirectUrl);
+                } catch (exception) {
+                    password.value = '';
+                    status.textContent = '';
+                    erro.textContent = exception.message;
+                }
             });
         })();
     </script>

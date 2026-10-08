@@ -17,7 +17,14 @@ public interface IDestinacaoFinalStore
     Task PersistirAprovacaoAsync(AprovacaoDestinacaoPendente aprovacao, CancellationToken cancellationToken);
 }
 
-public sealed record ContextoSolicitacaoDestinacao(long VestigioId, string RotuloEvidencia);
+public sealed record ContextoSolicitacaoDestinacao(
+    long VestigioId,
+    long ProcessoId,
+    string AssetRef,
+    string RotuloEvidencia,
+    string DidSolicitante,
+    string CredencialId,
+    string GuardaOperationId);
 
 public sealed record SolicitacaoDestinacaoPendente(
     long VestigioId,
@@ -29,7 +36,13 @@ public sealed record SolicitacaoDestinacaoPendente(
     long TamanhoBytesAutorizacao,
     string HashAutorizacao,
     string? Observacao,
-    DateTime SolicitadoEm);
+    DateTime SolicitadoEm,
+    string CredencialId,
+    string GuardaOperationId,
+    string OperacaoAssinadaId,
+    string OperacaoAssinadaJson,
+    string OperacaoAssinadaHashSha256,
+    string DidResponsavel);
 
 public sealed record ContextoAprovacaoDestinacao(
     long DescarteId,
