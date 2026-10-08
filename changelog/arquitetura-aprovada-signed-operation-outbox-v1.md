@@ -134,5 +134,5 @@ resposta do ledger e o commit local divergirem.
 - [ ] Fatia 7 — remoção completa dos contratos CoC legados;
 - [x] Fatia 8a — rotação de chave com dupla prova e histórico criptográfico;
 - [x] Fatia 8b — identidade Fabric por organização;
-- [ ] Fatia 8c — recuperação administrativa de chave;
+- [x] Fatia 8c — recuperação administrativa de chave;
 - [ ] Fatia 8d — migração operacional e endurecimento.

@@ -66,6 +66,16 @@ public class ServicoLedgerFabric(HttpClient httpClient) : IServicoLedger
         return new DocumentoDidRotacionadoDto(documento.Id ?? documento.Did, documento.DocumentVersion, keyId);
     }
 
+    public async Task<DocumentoDidRotacionadoDto> RecuperarChaveDidV2Async(string did, RecuperacaoChaveDidV2Dto dto, CancellationToken cancellationToken = default)
+    {
+        var resposta = await httpClient.PostAsJsonAsync($"/v2/dids/{Uri.EscapeDataString(did)}/recover-key", new { command = dto.Command, dto.AdminKeyId, dto.AdminSignature, dto.CandidateSignature }, OpcoesJson, cancellationToken);
+        await LancarSeFalhaAsync(resposta);
+        var documento = await resposta.Content.ReadFromJsonAsync<DocumentoRotacionadoGatewayDto>(OpcoesJson, cancellationToken)
+            ?? throw new InvalidOperationException("Resposta vazia do gateway ao recuperar a chave DID.");
+        var keyId = documento.Authentication.FirstOrDefault() ?? throw new InvalidOperationException("Documento DID recuperado sem chave de autenticação ativa.");
+        return new DocumentoDidRotacionadoDto(documento.Id ?? documento.Did, documento.DocumentVersion, keyId);
+    }
+
     public async Task<string> GerarDidAsync(TipoAtor tipo)
     {
         var metodoDid = $"did:legal:{tipo.ToString().ToLowerInvariant()}";

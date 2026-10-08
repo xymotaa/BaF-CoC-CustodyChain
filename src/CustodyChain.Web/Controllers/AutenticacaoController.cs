@@ -213,6 +213,28 @@ public class AutenticacaoController(
         });
     }
 
+    [HttpPost("/identidade/chave/recuperacao/prova")]
+    [Authorize(Roles = "ADMIN")]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> ConfirmarRecuperacao(
+        [FromBody] EnviarProvaRecuperacaoDidRequest? request,
+        CancellationToken cancellationToken)
+    {
+        var adminDid = User.FindFirstValue("did");
+        if (request is null || request.Command.ValueKind != JsonValueKind.Object
+            || !request.Command.TryGetProperty("actorDid", out var actor)
+            || actor.GetString() != adminDid
+            || !request.Command.TryGetProperty("subjectDid", out var subject)
+            || string.IsNullOrWhiteSpace(subject.GetString()))
+        {
+            return BadRequest(new { message = "A recuperação não corresponde à identidade administrativa autenticada." });
+        }
+
+        var documento = await ledger.RecuperarChaveDidV2Async(subject.GetString()!, new RecuperacaoChaveDidV2Dto(
+            request.Command, request.AdminKeyId, request.AdminSignature, request.CandidateSignature), cancellationToken);
+        return Ok(new { keyId = documento.KeyId, documentVersion = documento.DocumentVersion });
+    }
+
     [HttpPost("/sair")]
     [ValidateAntiForgeryToken]
     public async Task<IActionResult> Sair()

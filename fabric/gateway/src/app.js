@@ -397,6 +397,30 @@ app.post('/v2/dids/:did/rotate-key', async (req, res) => {
     }
 });
 
+app.post('/v2/dids/:did/recover-key', async (req, res) => {
+    try {
+        const { command, adminKeyId, adminSignature, candidateSignature } = req.body;
+        validarComandoDid(command, 'CustodyChainDidKeyRecovery');
+        if (command.subjectDid !== req.params.did || typeof adminKeyId !== 'string'
+            || typeof adminSignature !== 'string' || typeof candidateSignature !== 'string') {
+            throw new Error('Provas de recuperação DID inválidas.');
+        }
+        const contrato = obterContrato();
+        const administrador = JSON.parse(decodificar(await contrato.evaluateTransaction('ResolverDid', command.actorDid)));
+        validarMspDoDid(administrador);
+        const chaveAdmin = administrador.verificationMethod?.find((chave) => chave.id === adminKeyId);
+        if (!chaveAdmin || !administrador.capabilityInvocation?.includes(adminKeyId)) {
+            throw new Error('A chave administrativa não possui capacidade para recuperar identidade.');
+        }
+        verificarProvaDid(command, adminSignature, chaveAdmin.publicKeyMultibase);
+        verificarProvaDid(command.recoveryRequest, candidateSignature, command.recoveryRequest?.newVerificationMethod?.publicKeyMultibase);
+        const resultado = await contrato.submitTransaction('RecuperarChaveDidV2', JSON.stringify(command), adminKeyId, adminSignature, candidateSignature);
+        res.json(JSON.parse(decodificar(resultado)));
+    } catch (erro) {
+        tratarErro(res, erro);
+    }
+});
+
 app.post('/dids', async (req, res) => {
     if (!LEGACY_IDENTITY_WRITES_ENABLED) {
         return res.status(410).json({ error: 'Criação de DID v1 desabilitada; use o contrato v2 com prova de posse.' });

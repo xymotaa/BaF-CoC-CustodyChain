@@ -21,6 +21,9 @@ public sealed class ServicoLedgerPorOrganizacao(
         string did, RotacaoChaveDidV2Dto dto, CancellationToken cancellationToken = default) =>
         ParaDid(did).RotacionarChaveDidV2Async(did, dto, cancellationToken);
 
+    public Task<DocumentoDidRotacionadoDto> RecuperarChaveDidV2Async(string did, RecuperacaoChaveDidV2Dto dto, CancellationToken cancellationToken = default) =>
+        Administrador().RecuperarChaveDidV2Async(did, dto, cancellationToken);
+
     public Task<string> GerarDidAsync(TipoAtor tipo) => Administrador().GerarDidAsync(tipo);
 
     public Task AtivarDidAsync(string did, string didEmissor, string senhaEmissor) =>

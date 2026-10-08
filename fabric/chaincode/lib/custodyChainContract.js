@@ -405,6 +405,57 @@ class CustodyChainContract extends Contract {
         return JSON.stringify(documento);
     }
 
+    async RecuperarChaveDidV2(ctx, comandoJson, keyIdAdmin, assinaturaAdmin, assinaturaCandidata) {
+        this._garantirOrganizacaoAdministradora(ctx);
+        const comando = this._lerComando(comandoJson, 'CustodyChainDidKeyRecovery');
+        this._validarComandoRecuperacao(comando, keyIdAdmin);
+        this._validarJanelaComando(ctx, comando);
+        const administrador = await this._obterDocumentoDid(ctx, comando.actorDid);
+        const chaveAdmin = administrador.verificationMethod?.find((chave) => chave.id === keyIdAdmin);
+        if (!chaveAdmin || !administrador.capabilityInvocation?.includes(keyIdAdmin)) {
+            throw new Error('A chave administrativa não possui capacidade para recuperar identidade.');
+        }
+        this._verificarAssinatura(comando, assinaturaAdmin, chaveAdmin.publicKeyMultibase);
+
+        const documento = await this._obterDocumentoDid(ctx, comando.subjectDid);
+        const pedido = comando.recoveryRequest;
+        this._validarPedidoRecuperacao(ctx, pedido, documento, comando);
+        this._verificarAssinatura(pedido, assinaturaCandidata, pedido.newVerificationMethod.publicKeyMultibase);
+
+        const chaveComando = ctx.stub.createCompositeKey(PREFIXO_GOVERNANCA, ['command', comando.commandId]);
+        const existente = await ctx.stub.getState(chaveComando);
+        const hash = this._hashComando(comando);
+        if (existente && existente.length > 0) {
+            if (JSON.parse(existente.toString()).hash !== hash) throw new Error('Conflito de idempotência para a recuperação DID.');
+            return this.ResolverDid(ctx, comando.subjectDid);
+        }
+
+        const agora = this._agora(ctx);
+        for (const chave of documento.verificationMethod || []) {
+            if (chave.status === 'ACTIVE') {
+                chave.status = 'COMPROMISED';
+                chave.validUntil = agora;
+                chave.retirementReason = 'ADMIN_RECOVERY';
+            }
+        }
+        const novaChave = pedido.newVerificationMethod;
+        novaChave.status = 'ACTIVE';
+        novaChave.validFrom = agora;
+        documento.verificationMethod.push(novaChave);
+        documento.authentication = [novaChave.id];
+        documento.assertionMethod = [novaChave.id];
+        documento.capabilityInvocation = [novaChave.id];
+        documento.keySequence = this._obterSequenciaChave(documento);
+        documento.documentVersion += 1;
+        documento.recoveredByDid = comando.actorDid;
+        documento.recoveryReason = comando.reason;
+        documento.recoveryRequestId = pedido.requestId;
+        documento.recoveredAt = agora;
+        await ctx.stub.putState(ctx.stub.createCompositeKey(PREFIXO_DID, [comando.subjectDid]), Buffer.from(JSON.stringify(documento)));
+        await ctx.stub.putState(chaveComando, Buffer.from(JSON.stringify({ hash, did: comando.subjectDid, criadoEm: agora, tipo: 'RECUPERACAO_CHAVE' })));
+        return JSON.stringify(documento);
+    }
+
     async RevogarDidV2(ctx, did) {
         this._garantirOrganizacaoAdministradora(ctx);
         const chave = ctx.stub.createCompositeKey(PREFIXO_DID, [did]);
@@ -1425,6 +1476,35 @@ class CustodyChainContract extends Contract {
             || comando.canonicalization !== 'custodychain-json-c14n-v1'
             || typeof comando.nonce !== 'string' || !/^[A-Za-z0-9_-]{22,128}$/.test(comando.nonce)) {
             throw new Error('Conteúdo do comando de rotação DID inválido.');
+        }
+    }
+
+    _validarComandoRecuperacao(comando, keyIdAdmin) {
+        const pedido = comando.recoveryRequest;
+        if (!/^did:legal:admin:[a-zA-Z0-9._-]{3,128}$/.test(comando.actorDid)
+            || !/^did:legal:(admin|custodian|delegate|expert|judge):[a-zA-Z0-9._-]{3,128}$/.test(comando.subjectDid)
+            || typeof keyIdAdmin !== 'string' || !keyIdAdmin.startsWith(`${comando.actorDid}#`)
+            || !['LOST_KEY', 'DEVICE_LOST', 'COMPROMISED'].includes(comando.reason)
+            || !pedido || typeof pedido !== 'object' || Array.isArray(pedido)) {
+            throw new Error('Conteúdo do comando de recuperação DID inválido.');
+        }
+    }
+
+    _validarPedidoRecuperacao(ctx, pedido, documento, comando) {
+        const novoMetodo = pedido?.newVerificationMethod;
+        if (!this._identificadorValido(pedido?.requestId)
+            || pedido.type !== 'CustodyChainDidKeyRecoveryRequest' || pedido.version !== 1
+            || pedido.subjectDid !== comando.subjectDid || pedido.expectedDocumentVersion !== documento.documentVersion
+            || pedido.algorithm !== 'Ed25519' || pedido.canonicalization !== 'custodychain-json-c14n-v1'
+            || pedido.audience !== 'custodychain-ledger' || !/^[A-Za-z0-9_-]{22,128}$/.test(pedido.nonce || '')
+            || !novoMetodo || novoMetodo.type !== 'Multikey' || novoMetodo.controller !== pedido.subjectDid
+            || novoMetodo.id !== `${pedido.subjectDid}#${documento.authentication?.[0]?.includes('#auth-') ? 'auth' : 'key'}-${this._obterSequenciaChave(documento) + 1}`
+            || !this._chavePublicaMultibaseValida(novoMetodo.publicKeyMultibase)) {
+            throw new Error('Pedido de recuperação DID inválido.');
+        }
+        this._validarJanelaComando(ctx, pedido);
+        if (documento.version !== 2 || documento.status !== 'ATIVO' || documento.ativo !== true) {
+            throw new Error('Somente um DID v2 ativo pode ser recuperado.');
         }
     }
 

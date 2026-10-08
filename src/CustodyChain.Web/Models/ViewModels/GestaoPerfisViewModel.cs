@@ -109,3 +109,9 @@ public record EnviarProvaRotacaoDidRequest(
     JsonElement Command,
     ProvaChaveDidDto CurrentKeyProof,
     ProvaChaveDidDto NewKeyProof);
+
+public record EnviarProvaRecuperacaoDidRequest(
+    JsonElement Command,
+    string AdminKeyId,
+    string AdminSignature,
+    string CandidateSignature);

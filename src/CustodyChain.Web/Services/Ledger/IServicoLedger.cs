@@ -25,6 +25,7 @@ public record RotacaoChaveDidV2Dto(
     ProvaChaveDidLedgerDto NewKeyProof);
 
 public record DocumentoDidRotacionadoDto(string Did, int DocumentVersion, string KeyId);
+public record RecuperacaoChaveDidV2Dto(System.Text.Json.JsonElement Command, string AdminKeyId, string AdminSignature, string CandidateSignature);
 
 public record CredencialPermissaoV2Dto(System.Text.Json.JsonElement Credential);
 
@@ -48,6 +49,8 @@ public interface IServicoLedger
         RotacaoChaveDidV2Dto dto,
         CancellationToken cancellationToken = default) =>
         throw new NotSupportedException("Rotação de chave DID não implementada por este ledger.");
+    Task<DocumentoDidRotacionadoDto> RecuperarChaveDidV2Async(string did, RecuperacaoChaveDidV2Dto dto, CancellationToken cancellationToken = default) =>
+        throw new NotSupportedException("Recuperação de chave DID não implementada por este ledger.");
     Task<string> GerarDidAsync(TipoAtor tipo);
     Task AtivarDidAsync(string did, string didEmissor, string senhaEmissor);
     Task<DidDocument> ResolverDidAsync(string did);

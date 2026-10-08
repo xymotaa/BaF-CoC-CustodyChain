@@ -190,6 +190,29 @@ class WalletStore {
         };
     }
 
+    createRecoveryCandidate({ did, keyId, password }) {
+        if (!/^did:legal:(admin|custodian|delegate|expert|judge):[a-zA-Z0-9._-]{3,128}$/.test(did)
+            || !new RegExp(`^${escapeRegex(did)}#(?:key|auth)-[1-9][0-9]*$`).test(keyId)) {
+            throw new Error('O DID ou a chave candidata de recuperação é inválido.');
+        }
+        if (typeof password !== 'string' || password.length < 12) throw new Error('A senha da wallet deve ter pelo menos 12 caracteres.');
+        const existente = this.database.prepare('SELECT * FROM identity_keys WHERE did = ? AND key_id = ?').get(did, keyId);
+        if (existente) return { candidateId: existente.candidate_id, did, keyId, algorithm: 'Ed25519', publicKeyMultibase: existente.public_key_multibase };
+        const sequencia = Number(/-(\d+)$/.exec(keyId)[1]);
+        const candidateId = `urn:uuid:${crypto.randomUUID()}`;
+        const key = createEncryptedKey({ did, keyId, password });
+        this.database.prepare(`INSERT INTO identity_keys (did,key_id,public_key_multibase,encrypted_private_key,salt,iv,auth_tag,scrypt_n,scrypt_r,scrypt_p,key_sequence,status,candidate_id,created_at,activated_at,retired_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,'PENDING',?,?,NULL,NULL)`).run(did,keyId,key.publicKeyMultibase,key.encryptedPrivateKey,key.salt,key.iv,key.authTag,SCRYPT_N,SCRYPT_R,SCRYPT_P,sequencia,candidateId,key.createdAt);
+        return { candidateId, did, keyId, algorithm: 'Ed25519', publicKeyMultibase: key.publicKeyMultibase };
+    }
+
+    signKeyRecoveryRequest({ did, password, candidateId, request }) {
+        if (!request || request.type !== 'CustodyChainDidKeyRecoveryRequest' || request.subjectDid !== did
+            || request.newVerificationMethod?.id === undefined) throw new Error('O pedido de recuperação não corresponde à identidade selecionada.');
+        const candidate = this.database.prepare("SELECT * FROM identity_keys WHERE did = ? AND candidate_id = ? AND status = 'PENDING'").get(did, candidateId);
+        if (!candidate || candidate.key_id !== request.newVerificationMethod.id || candidate.public_key_multibase !== request.newVerificationMethod.publicKeyMultibase) throw new Error('A chave candidata não corresponde ao pedido de recuperação.');
+        return signWithKey(candidate, password, Buffer.from(canonicalize(request), 'utf8').toString('base64url'));
+    }
+
     signKeyRotation({ did, password, candidateId, command }) {
         if (!command || typeof command !== 'object' || Array.isArray(command)
             || command.type !== 'CustodyChainDidKeyRotation' || command.version !== 1
@@ -348,6 +371,10 @@ class WalletStore {
     close() {
         this.database.close();
     }
+}
+
+function escapeRegex(value) {
+    return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
 function canonicalize(value) {
