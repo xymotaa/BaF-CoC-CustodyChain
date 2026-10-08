@@ -51,6 +51,7 @@ public sealed class CadastroVestigioStore(CustodyChainDbContext db) : ICadastroV
         {
             var vestigio = new Vestigio
             {
+                AssetRef = cadastro.AssetRef,
                 RotuloEvidencia = cadastro.RotuloEvidencia,
                 RotuloConjunto = cadastro.RotuloConjunto,
                 NumeroEvidencia = cadastro.NumeroEvidencia,

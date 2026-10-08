@@ -122,6 +122,7 @@ resposta do ledger e o commit local divergirem.
 - [x] Fatia 4d — `AMOSTRA_UNIFICAR`, com VC válida por origem;
 - [x] Fatia 5a — emissão de VC por escopo de processo/ativo e política por perfil;
 - [x] Fatia 5b — `COLETA_REGISTRAR`;
+- [x] Fatia 5b.1 — `assetRef` imutável vinculado à coleta assinada;
 - [ ] Fatia 5c — `REMESSA_CRIAR`;
 - [ ] Fatia 5d — `REMESSA_RECEBER` e `REMESSA_RECUSAR`;
 - [ ] Fatia 5e — `GUARDA_REGISTRAR`;

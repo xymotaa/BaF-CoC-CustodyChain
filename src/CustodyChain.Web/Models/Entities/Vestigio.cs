@@ -22,6 +22,7 @@ public enum EstadoVestigio
 public class Vestigio
 {
     public long Id { get; set; }
+    public string? AssetRef { get; set; }
     public required string RotuloEvidencia { get; set; }
     public required string RotuloConjunto { get; set; }
     public string? NumeroEvidencia { get; set; }

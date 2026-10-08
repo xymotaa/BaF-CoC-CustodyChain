@@ -225,7 +225,7 @@ test('registra coleta somente com VC do coletor no escopo do processo', async ()
         type: 'CustodyChainSignedOperation', version: 1,
         operationId: 'urn:uuid:cccccccc-2222-2222-2222-222222222222', operation: 'COLETA_REGISTRAR',
         payload: {
-            credentialId: credential.id, processoId: '10', rotuloEvidencia: 'RE-001', rotuloConjunto: 'RC-001',
+            credentialId: credential.id, assetRef: 'urn:uuid:cccccccc-4444-4444-4444-444444444444', processoId: '10', rotuloEvidencia: 'RE-001', rotuloConjunto: 'RC-001',
             numeroEvidencia: null, tipoVestigioId: '1', descricao: 'Vestígio de teste', localColeta: 'Local A',
             dataHoraColeta: '2027-01-15T07:00:00.000Z', metodoColeta: 'Manual', numeroLacre: 'L-001',
             houveIntercorrencia: false, descricaoIntercorrencia: null

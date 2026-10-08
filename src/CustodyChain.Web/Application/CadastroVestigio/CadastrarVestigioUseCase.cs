@@ -18,7 +18,7 @@ public sealed class CadastrarVestigioUseCase(
     {
         var cadastro = Normalizar(command);
         var ator = await ValidarPrecondicoesAsync(cadastro, cancellationToken);
-        return new PreparacaoCadastroVestigio(CriarOperacao(cadastro, ator), ator.Did);
+        return new PreparacaoCadastroVestigio(CriarOperacao(cadastro, ator, CriarAssetRef()), ator.Did);
     }
 
     public async Task<ResultadoCadastroVestigio> ExecutarAsync(
@@ -29,11 +29,11 @@ public sealed class CadastrarVestigioUseCase(
         var ator = await ValidarPrecondicoesAsync(cadastro, cancellationToken);
         var operacao = LerOperacaoAssinada(command.OperacaoAssinada);
 
-        ValidarVinculoDaOperacao(operacao, cadastro, ator);
+        var assetRef = ValidarVinculoDaOperacao(operacao, cadastro, ator);
         await ConfirmarNoLedgerAsync(operacao, cancellationToken);
 
         var vestigioId = await store.PersistirAsync(
-            CriarCadastroConfirmado(cadastro, operacao, ator),
+            CriarCadastroConfirmado(cadastro, operacao, ator, assetRef),
             cancellationToken);
 
         return new ResultadoCadastroVestigio(vestigioId, cadastro.RotuloEvidencia, AncoragemPendente: false);
@@ -70,7 +70,7 @@ public sealed class CadastrarVestigioUseCase(
                    "O coletor não possui VC vigente para este processo.");
     }
 
-    private JsonElement CriarOperacao(CadastrarVestigioCommand cadastro, AtorCadastroVestigio ator)
+    private JsonElement CriarOperacao(CadastrarVestigioCommand cadastro, AtorCadastroVestigio ator, string assetRef)
     {
         var agora = Agora();
         return JsonSerializer.SerializeToElement(new
@@ -82,6 +82,7 @@ public sealed class CadastrarVestigioUseCase(
             payload = new
             {
                 credentialId = ator.CredencialId,
+                assetRef,
                 processoId = cadastro.ProcessoId.ToString(),
                 rotuloEvidencia = cadastro.RotuloEvidencia,
                 rotuloConjunto = cadastro.RotuloConjunto,
@@ -118,11 +119,12 @@ public sealed class CadastrarVestigioUseCase(
         }
     }
 
-    private static void ValidarVinculoDaOperacao(
+    private static string ValidarVinculoDaOperacao(
         OperacaoAssinadaV1 operacao, CadastrarVestigioCommand cadastro, AtorCadastroVestigio ator)
     {
         var envelope = operacao.Envelope;
         var payload = envelope.GetProperty("payload");
+        var assetRef = ObterAssetRef(payload);
         var corresponde = Texto(envelope, "operation", "COLETA_REGISTRAR")
             && Texto(envelope, "signerDid", ator.Did)
             && Texto(payload, "credentialId", ator.CredencialId)
@@ -142,6 +144,8 @@ public sealed class CadastrarVestigioUseCase(
         if (!corresponde)
             throw new ValidacaoCadastroVestigioException(
                 "A operação assinada não corresponde à coleta ou à permissão vigente.");
+
+        return assetRef;
     }
 
     private async Task ConfirmarNoLedgerAsync(OperacaoAssinadaV1 operacao, CancellationToken cancellationToken)
@@ -161,9 +165,12 @@ public sealed class CadastrarVestigioUseCase(
     }
 
     private CadastroVestigioPendente CriarCadastroConfirmado(
-        CadastrarVestigioCommand cadastro, OperacaoAssinadaV1 operacao, AtorCadastroVestigio ator) =>
+        CadastrarVestigioCommand cadastro,
+        OperacaoAssinadaV1 operacao,
+        AtorCadastroVestigio ator,
+        string assetRef) =>
         new(
-            cadastro.RotuloEvidencia, cadastro.RotuloConjunto, cadastro.NumeroEvidencia,
+            assetRef, cadastro.RotuloEvidencia, cadastro.RotuloConjunto, cadastro.NumeroEvidencia,
             cadastro.ProcessoId, cadastro.TipoVestigioId, cadastro.Descricao, cadastro.CriadorId,
             cadastro.LocalColeta ?? string.Empty, cadastro.DataHoraColeta, cadastro.MetodoColeta,
             cadastro.HouveIntercorrencia, cadastro.DescricaoIntercorrencia, cadastro.NumeroLacre,
@@ -183,6 +190,17 @@ public sealed class CadastrarVestigioUseCase(
         objeto.TryGetProperty(nome, out var valor)
         && (valor.ValueKind is JsonValueKind.True or JsonValueKind.False)
         && valor.GetBoolean() == esperado;
+
+    private static string ObterAssetRef(JsonElement payload)
+    {
+        if (!payload.TryGetProperty("assetRef", out var valor)
+            || valor.ValueKind != JsonValueKind.String
+            || !Guid.TryParseExact(valor.GetString()?.Replace("urn:uuid:", string.Empty, StringComparison.Ordinal), "D", out _)
+            || !valor.GetString()!.StartsWith("urn:uuid:", StringComparison.Ordinal))
+            throw new ValidacaoCadastroVestigioException("A operação assinada não possui um identificador de ativo válido.");
+
+        return valor.GetString()!;
+    }
 
     private static CadastrarVestigioCommand Normalizar(CadastrarVestigioCommand command)
     {
@@ -208,6 +226,7 @@ public sealed class CadastrarVestigioUseCase(
     }
 
     private DateTime Agora() => DateTime.SpecifyKind(clock.UtcNow, DateTimeKind.Utc);
+    private static string CriarAssetRef() => $"urn:uuid:{Guid.NewGuid()}";
     private static string Exigir(string? valor, string campo) =>
         Limpar(valor) ?? throw new ValidacaoCadastroVestigioException("Informe um valor.", campo);
     private static string? Limpar(string? valor) => string.IsNullOrWhiteSpace(valor) ? null : valor.Trim();

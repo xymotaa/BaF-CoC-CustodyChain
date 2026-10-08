@@ -101,6 +101,8 @@ public class CustodyChainDbContext(DbContextOptions<CustodyChainDbContext> optio
         {
             e.ToTable("VESTIGIO");
             e.HasKey(v => v.Id);
+            e.Property(v => v.AssetRef).HasMaxLength(45);
+            e.HasIndex(v => v.AssetRef).IsUnique();
             e.Property(v => v.RotuloEvidencia).HasMaxLength(40).IsRequired();
             e.HasIndex(v => v.RotuloEvidencia).IsUnique();
             e.Property(v => v.RotuloConjunto).HasMaxLength(40).IsRequired();

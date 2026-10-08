@@ -901,6 +901,10 @@ namespace CustodyChain.Web.Migrations
 
                     MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<long>("Id"));
 
+                    b.Property<string>("AssetRef")
+                        .HasMaxLength(45)
+                        .HasColumnType("varchar(45)");
+
                     b.Property<DateTime?>("AtualizadoEm")
                         .HasColumnType("datetime(6)");
 
@@ -970,6 +974,9 @@ namespace CustodyChain.Web.Migrations
                         .HasColumnType("smallint");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("AssetRef")
+                        .IsUnique();
 
                     b.HasIndex("CriadorId");
 

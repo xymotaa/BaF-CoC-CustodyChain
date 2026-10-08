@@ -14,6 +14,7 @@ public sealed record AtorCadastroVestigio(long Id, string Did, string Credencial
 public sealed record ProcessoCadastroVestigio(long Id, string Numero);
 
 public sealed record CadastroVestigioPendente(
+    string AssetRef,
     string RotuloEvidencia,
     string RotuloConjunto,
     string? NumeroEvidencia,

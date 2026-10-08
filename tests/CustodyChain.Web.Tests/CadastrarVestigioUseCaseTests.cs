@@ -24,6 +24,7 @@ public sealed class CadastrarVestigioUseCaseTests
         Assert.Equal("RE-001", resultado.RotuloEvidencia);
         Assert.False(resultado.AncoragemPendente);
         Assert.Equal(preparacao.Operacao.GetProperty("operationId").GetString(), store.CadastroPersistido!.OperacaoAssinadaId);
+        Assert.Equal(preparacao.Operacao.GetProperty("payload").GetProperty("assetRef").GetString(), store.CadastroPersistido.AssetRef);
         Assert.Equal(store.CadastroPersistido.OperacaoAssinadaId, ledger.OperacaoIdRecebida);
         Assert.Equal("did:legal:delegate:teste-001", store.CadastroPersistido.DidResponsavel);
     }

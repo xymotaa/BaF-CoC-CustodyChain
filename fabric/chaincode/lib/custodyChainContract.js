@@ -761,6 +761,7 @@ class CustodyChainContract extends Contract {
         const textoObrigatorio = (valor) => typeof valor === 'string' && valor.trim();
         const textoOpcional = (valor) => valor === null || typeof valor === 'string';
         if (!this._identificadorValido(payload.credentialId)
+            || !this._identificadorValido(payload.assetRef)
             || !/^[1-9][0-9]*$/.test(payload.processoId)
             || !/^[1-9][0-9]*$/.test(payload.tipoVestigioId)
             || !textoObrigatorio(payload.rotuloEvidencia)
