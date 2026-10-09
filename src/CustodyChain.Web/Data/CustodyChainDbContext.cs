@@ -48,6 +48,7 @@ public class CustodyChainDbContext(DbContextOptions<CustodyChainDbContext> optio
             e.Property(i => i.Orgao).HasMaxLength(80);
             e.Property(i => i.Lotacao).HasMaxLength(80);
             e.Property(i => i.Situacao).HasConversion<string>().HasMaxLength(20);
+            e.Property(i => i.SituacaoIdentidadeLedger).HasConversion<string>().HasMaxLength(24);
             e.Property(i => i.DidEmissor).HasMaxLength(200);
             e.Property(i => i.CriadoEm).HasColumnType("datetime(6)").IsRequired();
             e.Property(i => i.AtivadoEm).HasColumnType("datetime(6)");
@@ -56,6 +57,7 @@ public class CustodyChainDbContext(DbContextOptions<CustodyChainDbContext> optio
                 .WithMany(p => p.Intervenientes)
                 .HasForeignKey(i => i.PerfilId)
                 .OnDelete(DeleteBehavior.Restrict);
+            e.HasQueryFilter(i => i.SituacaoIdentidadeLedger == SituacaoIdentidadeLedger.ATIVA);
         });
 
         modelBuilder.Entity<InscricaoDid>(e =>

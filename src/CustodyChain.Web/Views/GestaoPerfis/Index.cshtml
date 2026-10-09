@@ -6,7 +6,7 @@
 <div class="pagina-cabecalho pagina-cabecalho-acao">
     <div>
         <h1>Gestão de perfis</h1>
-        <p class="campo-ajuda">Intervenientes cadastrados. Ative um DID recém-gerado ou revogue um ativo.</p>
+        <p class="campo-ajuda">A identidade no ledger é verificada separadamente da situação cadastral.</p>
     </div>
     <div class="relatorio-acoes">
         <a href="/gestao-perfis/cadastrar" class="botao botao-secundario">Cadastrar interveniente</a>
@@ -49,6 +49,7 @@ else
                     <th>Perfil</th>
                     <th>DID</th>
                     <th>Situação</th>
+                    <th>Identidade no ledger</th>
                     <th>Ativado em</th>
                     <th>Ação</th>
                 </tr>
@@ -61,6 +62,7 @@ else
                         <td>@item.PerfilNome</td>
                         <td><span class="mono">@item.Did</span></td>
                         <td><span class="selo">@item.Situacao</span></td>
+                        <td><span class="selo">@item.SituacaoIdentidadeLedger</span></td>
                         <td>@(item.AtivadoEm?.ToString("dd/MM/yyyy HH:mm") ?? "—")</td>
                         <td>
                             @if (item.Situacao == "GERADO")
@@ -69,6 +71,17 @@ else
                             }
                             else if (item.Situacao == "ATIVO")
                             {
+                                <form action="/gestao-perfis/@item.Id/sincronizar-identidade" method="post" class="formulario-acao-tabela">
+                                    @Html.AntiForgeryToken()
+                                    <button type="submit" class="botao botao-secundario">Sincronizar identidade</button>
+                                </form>
+                                @if (item.SituacaoIdentidadeLedger == "AUSENTE_NO_LEDGER")
+                                {
+                                    <form action="/gestao-perfis/@item.Id/reinscrever" method="post" class="formulario-acao-tabela">
+                                        @Html.AntiForgeryToken()
+                                        <button type="submit" class="botao botao-primario">Reinscrever DID</button>
+                                    </form>
+                                }
                                 <form asp-controller="GestaoPerfis" asp-action="Revogar" method="post" class="formulario-acao-tabela">
                                     @Html.AntiForgeryToken()
                                     <input type="hidden" name="intervenienteId" value="@item.Id" />

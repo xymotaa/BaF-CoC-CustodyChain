@@ -37,6 +37,7 @@ public record ItemIntervenienteViewModel(
     string Nome,
     string PerfilNome,
     string Situacao,
+    string SituacaoIdentidadeLedger,
     DateTime CriadoEm,
     DateTime? AtivadoEm);
 

@@ -28,6 +28,7 @@ public sealed class RevalidacaoCookieEvents(
         try
         {
             var ativoLocal = await db.Intervenientes
+                .IgnoreQueryFilters()
                 .AsNoTracking()
                 .AnyAsync(i => i.Did == did && i.Situacao == SituacaoInterveniente.ATIVO);
             var documento = ativoLocal ? await didRegistry.ResolverAsync(did) : null;

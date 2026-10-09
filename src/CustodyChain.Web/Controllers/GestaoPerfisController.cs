@@ -4,6 +4,7 @@ using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using CustodyChain.Web.Application.VerifiableCredentials;
+using CustodyChain.Web.Application.Autenticacao;
 using CustodyChain.Web.Data;
 using CustodyChain.Web.Models.Entities;
 using CustodyChain.Web.Models.ViewModels;
@@ -20,6 +21,7 @@ namespace CustodyChain.Web.Controllers;
 public class GestaoPerfisController(
     CustodyChainDbContext db,
     IServicoLedger ledger,
+    IDidRegistry didRegistry,
     IConfiguration configuration,
     CriarVcPermissao criarVcPermissao,
     IEmissaoVcPendenteStore emissoesPendentes) : Controller
@@ -43,13 +45,87 @@ public class GestaoPerfisController(
     public async Task<IActionResult> Index()
     {
         var intervenientes = await db.Intervenientes
+            .IgnoreQueryFilters()
             .Include(i => i.Perfil)
             .OrderByDescending(i => i.CriadoEm)
             .Select(i => new ItemIntervenienteViewModel(
-                i.Id, i.Did, i.Nome, i.Perfil.Nome, i.Situacao.ToString(), i.CriadoEm, i.AtivadoEm))
+                i.Id, i.Did, i.Nome, i.Perfil.Nome, i.Situacao.ToString(), i.SituacaoIdentidadeLedger.ToString(), i.CriadoEm, i.AtivadoEm))
             .ToListAsync();
 
         return View(new GestaoPerfisListaViewModel { Intervenientes = intervenientes });
+    }
+
+    [HttpPost("/gestao-perfis/{intervenienteId:long}/sincronizar-identidade")]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> SincronizarIdentidade(long intervenienteId, CancellationToken cancellationToken)
+    {
+        var interveniente = await db.Intervenientes.IgnoreQueryFilters()
+            .FirstOrDefaultAsync(i => i.Id == intervenienteId, cancellationToken);
+        if (interveniente is null)
+        {
+            TempData["MensagemErro"] = "Interveniente não encontrado.";
+            return RedirectToAction(nameof(Index));
+        }
+
+        try
+        {
+            var documento = await didRegistry.ResolverAsync(interveniente.Did, cancellationToken);
+            interveniente.SituacaoIdentidadeLedger = documento?.Ativo == true && documento.Version == 2
+                ? SituacaoIdentidadeLedger.ATIVA
+                : documento is null ? SituacaoIdentidadeLedger.AUSENTE_NO_LEDGER : SituacaoIdentidadeLedger.INATIVA;
+            await db.SaveChangesAsync(cancellationToken);
+            TempData["MensagemSucesso"] = $"Identidade de {interveniente.Nome} sincronizada.";
+        }
+        catch (Exception)
+        {
+            TempData["MensagemErro"] = "Não foi possível consultar o ledger. Tente novamente.";
+        }
+
+        return RedirectToAction(nameof(Index));
+    }
+
+    [HttpPost("/gestao-perfis/{intervenienteId:long}/reinscrever")]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> ReinscreverDid(long intervenienteId, CancellationToken cancellationToken)
+    {
+        var interveniente = await db.Intervenientes.IgnoreQueryFilters()
+            .FirstOrDefaultAsync(i => i.Id == intervenienteId && i.Situacao == SituacaoInterveniente.ATIVO, cancellationToken);
+        if (interveniente is null)
+        {
+            TempData["MensagemErro"] = "Interveniente não está disponível para reinscrição.";
+            return RedirectToAction(nameof(Index));
+        }
+
+        try
+        {
+            if (await didRegistry.ResolverAsync(interveniente.Did, cancellationToken) is not null)
+            {
+                TempData["MensagemErro"] = "O DID já existe no ledger; sincronize a identidade em vez de reinscrevê-la.";
+                return RedirectToAction(nameof(Index));
+            }
+        }
+        catch (Exception)
+        {
+            TempData["MensagemErro"] = "Não foi possível confirmar a ausência do DID no ledger.";
+            return RedirectToAction(nameof(Index));
+        }
+
+        var agora = DateTime.UtcNow;
+        var codigoInscricao = Convert.ToHexString(RandomNumberGenerator.GetBytes(24));
+        var inscricao = new InscricaoDid
+        {
+            EnrollmentId = $"urn:uuid:{Guid.NewGuid()}",
+            CodigoHash = CalcularHash(codigoInscricao),
+            Situacao = SituacaoInscricaoDid.PENDENTE,
+            CriadaEm = agora,
+            ExpiraEm = agora.AddMinutes(15),
+            Interveniente = interveniente
+        };
+        interveniente.SituacaoIdentidadeLedger = SituacaoIdentidadeLedger.PENDENTE_ATIVACAO;
+        db.InscricoesDid.Add(inscricao);
+        await db.SaveChangesAsync(cancellationToken);
+        return View("InscricaoCriada", new InscricaoDidCriadaViewModel(
+            interveniente.Did, inscricao.EnrollmentId, codigoInscricao, inscricao.ExpiraEm));
     }
 
     [HttpGet("/gestao-perfis/recuperar-chave")]
@@ -136,6 +212,7 @@ public class GestaoPerfisController(
             Orgao = modelo.Orgao,
             Lotacao = modelo.Lotacao,
             Situacao = SituacaoInterveniente.GERADO,
+            SituacaoIdentidadeLedger = SituacaoIdentidadeLedger.PENDENTE_ATIVACAO,
             CriadoEm = agora,
         };
         db.Intervenientes.Add(interveniente);
@@ -216,11 +293,12 @@ public class GestaoPerfisController(
         var emissor = await db.Intervenientes.FindAsync(emissorId);
 
         var interveniente = await db.Intervenientes
-            .FirstOrDefaultAsync(i => i.Id == intervenienteId && i.Situacao == SituacaoInterveniente.GERADO);
+            .IgnoreQueryFilters()
+            .FirstOrDefaultAsync(i => i.Id == intervenienteId);
 
         var inscricaoRegistrada = await db.InscricoesDid.AnyAsync(i => i.IntervenienteId == intervenienteId
             && i.Situacao == SituacaoInscricaoDid.REGISTRADA);
-        if (interveniente is null || emissor is null || !inscricaoRegistrada)
+        if (interveniente is null || !PodeAtivarIdentidade(interveniente) || emissor is null || !inscricaoRegistrada)
         {
             TempData["MensagemErro"] = "Interveniente não está pronto para ativação por prova de posse.";
             return RedirectToAction(nameof(Index));
@@ -236,10 +314,10 @@ public class GestaoPerfisController(
     public async Task<IActionResult> CriarComandoAtivacao(long intervenienteId, CancellationToken cancellationToken)
     {
         var emissorDid = User.FindFirstValue("did") ?? string.Empty;
-        var interveniente = await db.Intervenientes.FirstOrDefaultAsync(
-            i => i.Id == intervenienteId && i.Situacao == SituacaoInterveniente.GERADO,
+        var interveniente = await db.Intervenientes.IgnoreQueryFilters().FirstOrDefaultAsync(
+            i => i.Id == intervenienteId,
             cancellationToken);
-        if (interveniente is null || string.IsNullOrWhiteSpace(emissorDid))
+        if (interveniente is null || !PodeAtivarIdentidade(interveniente) || string.IsNullOrWhiteSpace(emissorDid))
         {
             return BadRequest(new { message = "Interveniente não está disponível para ativação." });
         }
@@ -256,8 +334,10 @@ public class GestaoPerfisController(
     {
         var emissorDid = User.FindFirstValue("did") ?? string.Empty;
         var interveniente = await db.Intervenientes
-            .FirstOrDefaultAsync(i => i.Id == intervenienteId && i.Situacao == SituacaoInterveniente.GERADO, cancellationToken);
-        if (interveniente is null || !ComandoAtivacaoCorresponde(request?.Command, interveniente.Did, emissorDid))
+            .IgnoreQueryFilters()
+            .FirstOrDefaultAsync(i => i.Id == intervenienteId, cancellationToken);
+        if (interveniente is null || !PodeAtivarIdentidade(interveniente)
+            || !ComandoAtivacaoCorresponde(request?.Command, interveniente.Did, emissorDid))
         {
             return BadRequest(new { message = "O comando de ativação não corresponde à identidade pendente." });
         }
@@ -266,6 +346,7 @@ public class GestaoPerfisController(
             new AtivacaoDidV2Dto(request!.Command, request.KeyId, request.Signature), cancellationToken);
 
         interveniente.Situacao = SituacaoInterveniente.ATIVO;
+        interveniente.SituacaoIdentidadeLedger = SituacaoIdentidadeLedger.ATIVA;
         interveniente.DidEmissor = emissorDid;
         interveniente.AtivadoEm = DateTime.UtcNow;
 
@@ -279,6 +360,7 @@ public class GestaoPerfisController(
     public async Task<IActionResult> Revogar(long intervenienteId)
     {
         var interveniente = await db.Intervenientes
+            .IgnoreQueryFilters()
             .FirstOrDefaultAsync(i => i.Id == intervenienteId && i.Situacao == SituacaoInterveniente.ATIVO);
 
         if (interveniente is null)
@@ -288,6 +370,7 @@ public class GestaoPerfisController(
         }
 
         interveniente.Situacao = SituacaoInterveniente.REVOGADO;
+        interveniente.SituacaoIdentidadeLedger = SituacaoIdentidadeLedger.INATIVA;
         await db.SaveChangesAsync();
 
         TempData["MensagemSucesso"] = $"{interveniente.Nome} revogado.";
@@ -510,6 +593,7 @@ public class GestaoPerfisController(
         }
 
         var inscricao = await db.InscricoesDid
+            .IgnoreQueryFilters()
             .Include(i => i.Interveniente)
             .FirstOrDefaultAsync(i => i.EnrollmentId == enrollmentId && i.Situacao == SituacaoInscricaoDid.PENDENTE);
         if (inscricao is null || inscricao.ExpiraEm <= DateTime.UtcNow)
@@ -580,6 +664,14 @@ public class GestaoPerfisController(
             && json.TryGetProperty("expectedDocumentVersion", out var version) && version.GetInt32() == 1;
     }
 
+    private static bool PodeAtivarIdentidade(Interveniente interveniente) =>
+        interveniente.Situacao == SituacaoInterveniente.GERADO
+        || interveniente is
+        {
+            Situacao: SituacaoInterveniente.ATIVO,
+            SituacaoIdentidadeLedger: SituacaoIdentidadeLedger.PENDENTE_ATIVACAO
+        };
+
     private static bool PedidoRecuperacaoValido(JsonElement pedido) =>
         pedido.ValueKind == JsonValueKind.Object
         && pedido.TryGetProperty("type", out var type) && type.GetString() == "CustodyChainDidKeyRecoveryRequest"
@@ -636,7 +728,7 @@ public class GestaoPerfisController(
             .Where(i => i.Situacao == SituacaoInterveniente.ATIVO)
             .OrderBy(i => i.Nome)
             .Select(i => new ItemIntervenienteViewModel(
-                i.Id, i.Did, i.Nome, i.Perfil.Nome, i.Situacao.ToString(), i.CriadoEm, i.AtivadoEm))
+                i.Id, i.Did, i.Nome, i.Perfil.Nome, i.Situacao.ToString(), i.SituacaoIdentidadeLedger.ToString(), i.CriadoEm, i.AtivadoEm))
             .ToListAsync();
 
         modelo.ProcessosDisponiveis = await db.Processos

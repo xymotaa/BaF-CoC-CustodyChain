@@ -108,6 +108,11 @@ namespace CustodyChain.Web.Migrations
                         .HasMaxLength(20)
                         .HasColumnType("varchar(20)");
 
+                    b.Property<string>("SituacaoIdentidadeLedger")
+                        .IsRequired()
+                        .HasMaxLength(24)
+                        .HasColumnType("varchar(24)");
+
                     b.Property<long>("VestigioId")
                         .HasColumnType("bigint");
 

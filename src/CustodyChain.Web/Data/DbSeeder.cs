@@ -51,6 +51,7 @@ public static class DbSeeder
                     Matricula = "0001",
                     Orgao = "Unifesspa",
                     Situacao = SituacaoInterveniente.ATIVO,
+                    SituacaoIdentidadeLedger = SituacaoIdentidadeLedger.DESCONHECIDA,
                     CriadoEm = agora,
                     AtivadoEm = agora
                 },
@@ -62,6 +63,7 @@ public static class DbSeeder
                     Matricula = "0002",
                     Orgao = "Central de Custódia",
                     Situacao = SituacaoInterveniente.ATIVO,
+                    SituacaoIdentidadeLedger = SituacaoIdentidadeLedger.DESCONHECIDA,
                     CriadoEm = agora,
                     AtivadoEm = agora
                 },
@@ -73,6 +75,7 @@ public static class DbSeeder
                     Matricula = "0003",
                     Orgao = "Polícia Científica",
                     Situacao = SituacaoInterveniente.ATIVO,
+                    SituacaoIdentidadeLedger = SituacaoIdentidadeLedger.DESCONHECIDA,
                     CriadoEm = agora,
                     AtivadoEm = agora
                 },
@@ -84,6 +87,7 @@ public static class DbSeeder
                     Matricula = "0004",
                     Orgao = "Instituto de Criminalística",
                     Situacao = SituacaoInterveniente.ATIVO,
+                    SituacaoIdentidadeLedger = SituacaoIdentidadeLedger.DESCONHECIDA,
                     CriadoEm = agora,
                     AtivadoEm = agora
                 },
@@ -95,6 +99,7 @@ public static class DbSeeder
                     Matricula = "0005",
                     Orgao = "Poder Judiciário",
                     Situacao = SituacaoInterveniente.ATIVO,
+                    SituacaoIdentidadeLedger = SituacaoIdentidadeLedger.DESCONHECIDA,
                     CriadoEm = agora,
                     AtivadoEm = agora
                 }
