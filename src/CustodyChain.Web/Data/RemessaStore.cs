@@ -73,9 +73,9 @@ public sealed class RemessaStore(CustodyChainDbContext db) : ICriarRemessaStore
     private async Task<ContextoRemessa?> ObterContextoInicialAsync(
         long vestigioId, long criadorId, long destinoId, CancellationToken cancellationToken) =>
         await (from vestigio in db.Vestigios
-               join origem in db.Intervenientes on criadorId equals origem.Id
+               join origem in db.Intervenientes.AptosParaOperacoesLedger() on criadorId equals origem.Id
                join perfilOrigem in db.Perfis on origem.PerfilId equals perfilOrigem.Id
-               join destino in db.Intervenientes on destinoId equals destino.Id
+               join destino in db.Intervenientes.AptosParaOperacoesLedger() on destinoId equals destino.Id
                join perfilDestino in db.Perfis on destino.PerfilId equals perfilDestino.Id
                join coleta in db.RegistrosLedger on vestigio.Id equals coleta.VestigioId
                where vestigio.Id == vestigioId
@@ -99,10 +99,10 @@ public sealed class RemessaStore(CustodyChainDbContext db) : ICriarRemessaStore
     private async Task<ContextoRemessa?> ObterContextoCustodiaAsync(
         long vestigioId, long criadorId, long destinoId, CancellationToken cancellationToken) =>
         await (from vestigio in db.Vestigios
-               join origem in db.Intervenientes on criadorId equals origem.Id
+               join origem in db.Intervenientes.AptosParaOperacoesLedger() on criadorId equals origem.Id
                join perfilOrigem in db.Perfis on origem.PerfilId equals perfilOrigem.Id
                join credencial in db.Credenciais on origem.Id equals credencial.TitularId
-               join destino in db.Intervenientes on destinoId equals destino.Id
+               join destino in db.Intervenientes.AptosParaOperacoesLedger() on destinoId equals destino.Id
                join perfilDestino in db.Perfis on destino.PerfilId equals perfilDestino.Id
                where vestigio.Id == vestigioId
                      && vestigio.Estado == EstadoVestigio.Recebido
@@ -126,7 +126,7 @@ public sealed class RemessaStore(CustodyChainDbContext db) : ICriarRemessaStore
             .FirstOrDefaultAsync(cancellationToken);
 
     private Task<bool> EhCustodiaAtivaAsync(long intervenienteId, CancellationToken cancellationToken) =>
-        (from interveniente in db.Intervenientes
+        (from interveniente in db.Intervenientes.AptosParaOperacoesLedger()
          join perfil in db.Perfis on interveniente.PerfilId equals perfil.Id
          where interveniente.Id == intervenienteId
                && interveniente.Situacao == SituacaoInterveniente.ATIVO
@@ -134,7 +134,7 @@ public sealed class RemessaStore(CustodyChainDbContext db) : ICriarRemessaStore
          select interveniente.Id).AnyAsync(cancellationToken);
 
     private Task<bool> TemPerfilAsync(long intervenienteId, string perfilCodigo, CancellationToken cancellationToken) =>
-        (from interveniente in db.Intervenientes
+        (from interveniente in db.Intervenientes.AptosParaOperacoesLedger()
          join perfil in db.Perfis on interveniente.PerfilId equals perfil.Id
          where interveniente.Id == intervenienteId
                && interveniente.Situacao == SituacaoInterveniente.ATIVO
@@ -143,7 +143,7 @@ public sealed class RemessaStore(CustodyChainDbContext db) : ICriarRemessaStore
 
     private Task<bool> PossuiVcCustodiaVigenteAsync(long vestigioId, long intervenienteId, CancellationToken cancellationToken) =>
         (from vestigio in db.Vestigios
-         join interveniente in db.Intervenientes on intervenienteId equals interveniente.Id
+         join interveniente in db.Intervenientes.AptosParaOperacoesLedger() on intervenienteId equals interveniente.Id
          join perfil in db.Perfis on interveniente.PerfilId equals perfil.Id
          join credencial in db.Credenciais on vestigio.Id equals credencial.VestigioId
          where vestigio.Id == vestigioId

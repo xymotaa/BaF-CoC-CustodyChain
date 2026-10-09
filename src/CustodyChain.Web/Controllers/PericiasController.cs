@@ -202,7 +202,7 @@ public class PericiasController(
             .Select(v => new OpcaoVestigioViewModel(v.Id, v.RotuloEvidencia, v.Descricao))
             .ToListAsync();
 
-        modelo.PeritosDisponiveis = await db.Intervenientes
+        modelo.PeritosDisponiveis = await db.Intervenientes.AptosParaOperacoesLedger()
             .Include(i => i.Perfil)
             .Where(i => i.Situacao == SituacaoInterveniente.ATIVO && i.Perfil.Codigo == "PERITO")
             .OrderBy(i => i.Nome)

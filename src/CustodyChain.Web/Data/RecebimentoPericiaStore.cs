@@ -12,7 +12,7 @@ public sealed class RecebimentoPericiaStore(CustodyChainDbContext db) : IRecebim
         DateTime agora,
         CancellationToken cancellationToken) =>
         (from pericia in db.Pericias
-         join perito in db.Intervenientes on peritoId equals perito.Id
+         join perito in db.Intervenientes.AptosParaOperacoesLedger() on peritoId equals perito.Id
          where pericia.Id == periciaId
              && pericia.PeritoId == peritoId
              && pericia.Situacao == SituacaoPericia.DESIGNADA
@@ -40,8 +40,8 @@ public sealed class RecebimentoPericiaStore(CustodyChainDbContext db) : IRecebim
                 .SingleOrDefaultAsync(p => p.Id == recebimento.PericiaId
                     && p.PeritoId == recebimento.PeritoId
                     && p.Situacao == SituacaoPericia.DESIGNADA, cancellationToken);
-            var peritoAtivo = await db.Intervenientes.AnyAsync(i => i.Id == recebimento.PeritoId
-                && i.Situacao == SituacaoInterveniente.ATIVO, cancellationToken);
+            var peritoAtivo = await db.Intervenientes.AptosParaOperacoesLedger()
+                .AnyAsync(i => i.Id == recebimento.PeritoId, cancellationToken);
 
             if (pericia is null || !peritoAtivo || !PossuiCredencialValida(pericia, recebimento.RecebidoEm))
                 throw new ConflitoRecebimentoPericiaException(

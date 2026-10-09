@@ -45,7 +45,6 @@ public class GestaoPerfisController(
     public async Task<IActionResult> Index()
     {
         var intervenientes = await db.Intervenientes
-            .IgnoreQueryFilters()
             .Include(i => i.Perfil)
             .OrderByDescending(i => i.CriadoEm)
             .Select(i => new ItemIntervenienteViewModel(
@@ -59,7 +58,7 @@ public class GestaoPerfisController(
     [ValidateAntiForgeryToken]
     public async Task<IActionResult> SincronizarIdentidade(long intervenienteId, CancellationToken cancellationToken)
     {
-        var interveniente = await db.Intervenientes.IgnoreQueryFilters()
+        var interveniente = await db.Intervenientes
             .FirstOrDefaultAsync(i => i.Id == intervenienteId, cancellationToken);
         if (interveniente is null)
         {
@@ -88,7 +87,7 @@ public class GestaoPerfisController(
     [ValidateAntiForgeryToken]
     public async Task<IActionResult> ReinscreverDid(long intervenienteId, CancellationToken cancellationToken)
     {
-        var interveniente = await db.Intervenientes.IgnoreQueryFilters()
+        var interveniente = await db.Intervenientes
             .FirstOrDefaultAsync(i => i.Id == intervenienteId && i.Situacao == SituacaoInterveniente.ATIVO, cancellationToken);
         if (interveniente is null)
         {
@@ -293,7 +292,6 @@ public class GestaoPerfisController(
         var emissor = await db.Intervenientes.FindAsync(emissorId);
 
         var interveniente = await db.Intervenientes
-            .IgnoreQueryFilters()
             .FirstOrDefaultAsync(i => i.Id == intervenienteId);
 
         var inscricaoRegistrada = await db.InscricoesDid.AnyAsync(i => i.IntervenienteId == intervenienteId
@@ -314,7 +312,7 @@ public class GestaoPerfisController(
     public async Task<IActionResult> CriarComandoAtivacao(long intervenienteId, CancellationToken cancellationToken)
     {
         var emissorDid = User.FindFirstValue("did") ?? string.Empty;
-        var interveniente = await db.Intervenientes.IgnoreQueryFilters().FirstOrDefaultAsync(
+        var interveniente = await db.Intervenientes.FirstOrDefaultAsync(
             i => i.Id == intervenienteId,
             cancellationToken);
         if (interveniente is null || !PodeAtivarIdentidade(interveniente) || string.IsNullOrWhiteSpace(emissorDid))
@@ -334,7 +332,6 @@ public class GestaoPerfisController(
     {
         var emissorDid = User.FindFirstValue("did") ?? string.Empty;
         var interveniente = await db.Intervenientes
-            .IgnoreQueryFilters()
             .FirstOrDefaultAsync(i => i.Id == intervenienteId, cancellationToken);
         if (interveniente is null || !PodeAtivarIdentidade(interveniente)
             || !ComandoAtivacaoCorresponde(request?.Command, interveniente.Did, emissorDid))
@@ -360,7 +357,6 @@ public class GestaoPerfisController(
     public async Task<IActionResult> Revogar(long intervenienteId)
     {
         var interveniente = await db.Intervenientes
-            .IgnoreQueryFilters()
             .FirstOrDefaultAsync(i => i.Id == intervenienteId && i.Situacao == SituacaoInterveniente.ATIVO);
 
         if (interveniente is null)
@@ -593,7 +589,6 @@ public class GestaoPerfisController(
         }
 
         var inscricao = await db.InscricoesDid
-            .IgnoreQueryFilters()
             .Include(i => i.Interveniente)
             .FirstOrDefaultAsync(i => i.EnrollmentId == enrollmentId && i.Situacao == SituacaoInscricaoDid.PENDENTE);
         if (inscricao is null || inscricao.ExpiraEm <= DateTime.UtcNow)

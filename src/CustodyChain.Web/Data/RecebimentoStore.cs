@@ -10,9 +10,9 @@ public sealed class RecebimentoStore(CustodyChainDbContext db) : IRecebimentoSto
 {
     public Task<ContextoRecebimento?> ObterContextoAsync(long movimentacaoId, long destinoId, CancellationToken cancellationToken) =>
         (from movimentacao in db.Movimentacoes
-         join origem in db.Intervenientes on movimentacao.OrigemId equals origem.Id
+         join origem in db.Intervenientes.AptosParaOperacoesLedger() on movimentacao.OrigemId equals origem.Id
          join perfilOrigem in db.Perfis on origem.PerfilId equals perfilOrigem.Id
-         join destino in db.Intervenientes on movimentacao.DestinoId equals destino.Id
+         join destino in db.Intervenientes.AptosParaOperacoesLedger() on movimentacao.DestinoId equals destino.Id
          join perfilDestino in db.Perfis on destino.PerfilId equals perfilDestino.Id
          join credencial in db.Credenciais on destino.Id equals credencial.TitularId
          join remessa in db.RegistrosLedger on movimentacao.Id equals remessa.RegistroOrigemId
@@ -125,7 +125,7 @@ public sealed class RecebimentoStore(CustodyChainDbContext db) : IRecebimentoSto
             && m.DestinoId == destinoId && m.Situacao == SituacaoMovimentacao.PENDENTE && m.Vestigio.AssetRef != null, cancellationToken);
 
     private Task<bool> DestinoPossuiVcCustodiaVigenteAsync(Movimentacao movimentacao, long destinoId, CancellationToken cancellationToken) =>
-        (from destino in db.Intervenientes
+        (from destino in db.Intervenientes.AptosParaOperacoesLedger()
          join perfil in db.Perfis on destino.PerfilId equals perfil.Id
          join credencial in db.Credenciais on destino.Id equals credencial.TitularId
          where destino.Id == destinoId && destino.Situacao == SituacaoInterveniente.ATIVO && perfil.Codigo == "CUSTODIA"

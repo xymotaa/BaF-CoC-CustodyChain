@@ -13,7 +13,7 @@ public sealed class DestinacaoFinalStore(CustodyChainDbContext db) : IDestinacao
         long solicitanteId,
         CancellationToken cancellationToken) =>
         (from vestigio in db.Vestigios
-         join solicitante in db.Intervenientes on solicitanteId equals solicitante.Id
+         join solicitante in db.Intervenientes.AptosParaOperacoesLedger() on solicitanteId equals solicitante.Id
          join perfil in db.Perfis on solicitante.PerfilId equals perfil.Id
          join credencial in db.Credenciais on solicitante.Id equals credencial.TitularId
          join guarda in db.RegistrosLedger on vestigio.Id equals guarda.VestigioId
@@ -52,8 +52,8 @@ public sealed class DestinacaoFinalStore(CustodyChainDbContext db) : IDestinacao
         {
             var vestigioElegivel = await db.Vestigios.AnyAsync(v => v.Id == solicitacao.VestigioId
                 && (v.Estado == EstadoVestigio.Armazenado || v.Estado == EstadoVestigio.Periciado), cancellationToken);
-            var solicitanteAtivo = await db.Intervenientes.AnyAsync(i => i.Id == solicitacao.SolicitanteId
-                && i.Situacao == SituacaoInterveniente.ATIVO, cancellationToken);
+            var solicitanteAtivo = await db.Intervenientes.AptosParaOperacoesLedger()
+                .AnyAsync(i => i.Id == solicitacao.SolicitanteId, cancellationToken);
             var solicitanteAutorizado = await PossuiPermissaoCustodiaEGuardaAsync(solicitacao, cancellationToken);
             if (!vestigioElegivel || !solicitanteAtivo || !solicitanteAutorizado)
                 throw new ConflitoDestinacaoFinalException(
@@ -128,7 +128,7 @@ public sealed class DestinacaoFinalStore(CustodyChainDbContext db) : IDestinacao
         long aprovadorId,
         CancellationToken cancellationToken) =>
         (from descarte in db.Descartes
-         join aprovador in db.Intervenientes on aprovadorId equals aprovador.Id
+         join aprovador in db.Intervenientes.AptosParaOperacoesLedger() on aprovadorId equals aprovador.Id
          join perfil in db.Perfis on aprovador.PerfilId equals perfil.Id
          join solicitacao in db.RegistrosLedger on descarte.Id equals solicitacao.RegistroOrigemId
          where descarte.Id == descarteId
@@ -232,7 +232,7 @@ public sealed class DestinacaoFinalStore(CustodyChainDbContext db) : IDestinacao
         SolicitacaoDestinacaoPendente solicitacao,
         CancellationToken cancellationToken) =>
         (from vestigio in db.Vestigios
-         join solicitante in db.Intervenientes on solicitacao.SolicitanteId equals solicitante.Id
+         join solicitante in db.Intervenientes.AptosParaOperacoesLedger() on solicitacao.SolicitanteId equals solicitante.Id
          join perfil in db.Perfis on solicitante.PerfilId equals perfil.Id
          join credencial in db.Credenciais on solicitante.Id equals credencial.TitularId
          join guarda in db.RegistrosLedger on vestigio.Id equals guarda.VestigioId
@@ -257,7 +257,7 @@ public sealed class DestinacaoFinalStore(CustodyChainDbContext db) : IDestinacao
         AprovacaoDestinacaoPendente aprovacao,
         CancellationToken cancellationToken) =>
         (from descarte in db.Descartes
-         join aprovador in db.Intervenientes on aprovacao.AprovadorId equals aprovador.Id
+         join aprovador in db.Intervenientes.AptosParaOperacoesLedger() on aprovacao.AprovadorId equals aprovador.Id
          join perfil in db.Perfis on aprovador.PerfilId equals perfil.Id
          join solicitacao in db.RegistrosLedger on descarte.Id equals solicitacao.RegistroOrigemId
          where descarte.Id == aprovacao.DescarteId

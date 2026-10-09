@@ -16,7 +16,7 @@ public sealed class RemessaOpcoesQuery(CustodyChainDbContext db) : IRemessaOpcoe
             .ToListAsync(cancellationToken);
 
     public async Task<IReadOnlyList<OpcaoDestinoRemessa>> ListarDestinosDisponiveisAsync(long criadorId, CancellationToken cancellationToken = default) =>
-        await db.Intervenientes
+        await db.Intervenientes.AptosParaOperacoesLedger()
             .Include(i => i.Perfil)
             .Where(i => i.Situacao == SituacaoInterveniente.ATIVO
                         && i.Perfil.Codigo == "CUSTODIA"

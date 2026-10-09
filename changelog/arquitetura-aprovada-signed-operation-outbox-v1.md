@@ -135,4 +135,4 @@ resposta do ledger e o commit local divergirem.
 - [x] Fatia 8a — rotação de chave com dupla prova e histórico criptográfico;
 - [x] Fatia 8b — identidade Fabric por organização;
 - [x] Fatia 8c — recuperação administrativa de chave;
-- [ ] Fatia 8d — reconciliação de identidades implementada; falta reinscrever os titulares ausentes e configurar operação persistente.
+- [x] Fatia 8d — reconciliação de identidades: o estado local é visível para gestão e seed; consultas operacionais exigem identidade ledger ativa explicitamente. Falta reinscrever os titulares ausentes e configurar operação persistente.

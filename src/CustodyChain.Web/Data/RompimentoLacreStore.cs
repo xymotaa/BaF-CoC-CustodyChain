@@ -16,7 +16,8 @@ public sealed class RompimentoLacreStore(CustodyChainDbContext db) : IRompimento
     {
         var contexto = await db.Pericias
             .Where(p => p.Id == periciaId && p.PeritoId == peritoId && p.Situacao == SituacaoPericia.RECEBIDA
-                && p.Perito!.Situacao == SituacaoInterveniente.ATIVO)
+                && p.Perito!.Situacao == SituacaoInterveniente.ATIVO
+                && p.Perito.SituacaoIdentidadeLedger == SituacaoIdentidadeLedger.ATIVA)
             .Select(p => new
             {
                 p.Id,
@@ -64,8 +65,8 @@ public sealed class RompimentoLacreStore(CustodyChainDbContext db) : IRompimento
                 .SingleOrDefaultAsync(p => p.Id == rompimento.PericiaId
                     && p.PeritoId == rompimento.PeritoId
                     && p.Situacao == SituacaoPericia.RECEBIDA, cancellationToken);
-            var peritoAtivo = await db.Intervenientes.AnyAsync(i => i.Id == rompimento.PeritoId
-                && i.Situacao == SituacaoInterveniente.ATIVO, cancellationToken);
+            var peritoAtivo = await db.Intervenientes.AptosParaOperacoesLedger()
+                .AnyAsync(i => i.Id == rompimento.PeritoId, cancellationToken);
 
             if (pericia is null || !peritoAtivo || !PossuiCredencialValida(pericia, rompimento.RompidoEm))
                 throw new ConflitoRompimentoLacreException(

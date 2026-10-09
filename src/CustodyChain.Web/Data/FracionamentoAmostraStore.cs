@@ -14,7 +14,7 @@ public sealed class FracionamentoAmostraStore(CustodyChainDbContext db) : IFraci
         DateTime agora,
         CancellationToken cancellationToken) =>
         (from pericia in db.Pericias
-         join perito in db.Intervenientes on peritoId equals perito.Id
+         join perito in db.Intervenientes.AptosParaOperacoesLedger() on peritoId equals perito.Id
          where pericia.Id == periciaId
              && pericia.PeritoId == peritoId
              && pericia.Situacao == SituacaoPericia.EM_EXECUCAO
@@ -46,8 +46,8 @@ public sealed class FracionamentoAmostraStore(CustodyChainDbContext db) : IFraci
                 .SingleOrDefaultAsync(p => p.Id == fracionamento.PericiaId
                     && p.PeritoId == fracionamento.PeritoId
                     && p.Situacao == SituacaoPericia.EM_EXECUCAO, cancellationToken);
-            var peritoAtivo = await db.Intervenientes.AnyAsync(i => i.Id == fracionamento.PeritoId
-                && i.Situacao == SituacaoInterveniente.ATIVO, cancellationToken);
+            var peritoAtivo = await db.Intervenientes.AptosParaOperacoesLedger()
+                .AnyAsync(i => i.Id == fracionamento.PeritoId, cancellationToken);
             var rotuloEmUso = await db.Vestigios.AnyAsync(v => v.RotuloEvidencia == fracionamento.RotuloEvidenciaResultante, cancellationToken);
 
             if (pericia is null || !peritoAtivo || !PossuiCredencialValida(pericia, fracionamento.ExecutadoEm) || rotuloEmUso)

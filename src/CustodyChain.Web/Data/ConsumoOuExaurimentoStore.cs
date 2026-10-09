@@ -14,7 +14,7 @@ public sealed class ConsumoOuExaurimentoStore(CustodyChainDbContext db) : IConsu
         DateTime agora,
         CancellationToken cancellationToken) =>
         (from pericia in db.Pericias
-         join perito in db.Intervenientes on peritoId equals perito.Id
+         join perito in db.Intervenientes.AptosParaOperacoesLedger() on peritoId equals perito.Id
          where pericia.Id == periciaId
              && pericia.PeritoId == peritoId
              && pericia.Situacao == SituacaoPericia.EM_EXECUCAO
@@ -44,8 +44,8 @@ public sealed class ConsumoOuExaurimentoStore(CustodyChainDbContext db) : IConsu
                 .SingleOrDefaultAsync(p => p.Id == operacaoPendente.PericiaId
                     && p.PeritoId == operacaoPendente.PeritoId
                     && p.Situacao == SituacaoPericia.EM_EXECUCAO, cancellationToken);
-            var peritoAtivo = await db.Intervenientes.AnyAsync(i => i.Id == operacaoPendente.PeritoId
-                && i.Situacao == SituacaoInterveniente.ATIVO, cancellationToken);
+            var peritoAtivo = await db.Intervenientes.AptosParaOperacoesLedger()
+                .AnyAsync(i => i.Id == operacaoPendente.PeritoId, cancellationToken);
 
             if (pericia is null || !peritoAtivo || !PossuiCredencialValida(pericia, operacaoPendente.ExecutadoEm)
                 || pericia.VestigioId != operacaoPendente.VestigioId)

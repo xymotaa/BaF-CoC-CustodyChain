@@ -10,7 +10,7 @@ public sealed class EntradaArquivoStore(CustodyChainDbContext db) : IEntradaArqu
 {
     public Task<ContextoEntradaArquivo?> ObterContextoAsync(long vestigioId, long recebedorId, CancellationToken cancellationToken) =>
         (from vestigio in db.Vestigios
-         join recebedor in db.Intervenientes on recebedorId equals recebedor.Id
+         join recebedor in db.Intervenientes.AptosParaOperacoesLedger() on recebedorId equals recebedor.Id
          join perfil in db.Perfis on recebedor.PerfilId equals perfil.Id
          join credencial in db.Credenciais on recebedor.Id equals credencial.TitularId
          join movimentacao in db.Movimentacoes on vestigio.Id equals movimentacao.VestigioId
@@ -62,7 +62,7 @@ public sealed class EntradaArquivoStore(CustodyChainDbContext db) : IEntradaArqu
 
     private Task<bool> PossuiVcCustodiaVigenteAsync(long vestigioId, long recebedorId, CancellationToken cancellationToken) =>
         (from vestigio in db.Vestigios
-         join recebedor in db.Intervenientes on recebedorId equals recebedor.Id
+         join recebedor in db.Intervenientes.AptosParaOperacoesLedger() on recebedorId equals recebedor.Id
          join perfil in db.Perfis on recebedor.PerfilId equals perfil.Id
          join credencial in db.Credenciais on recebedor.Id equals credencial.TitularId
          where vestigio.Id == vestigioId && recebedor.Situacao == SituacaoInterveniente.ATIVO && perfil.Codigo == "CUSTODIA"

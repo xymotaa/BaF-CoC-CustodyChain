@@ -20,8 +20,8 @@ public sealed class DesignacaoPericiaStore(CustodyChainDbContext db) : IDesignac
         long solicitanteId,
         CancellationToken cancellationToken) =>
         (from vestigio in db.Vestigios
-         join perito in db.Intervenientes.Include(i => i.Perfil) on peritoId equals perito.Id
-         join solicitante in db.Intervenientes.Include(i => i.Perfil) on solicitanteId equals solicitante.Id
+         join perito in db.Intervenientes.AptosParaOperacoesLedger().Include(i => i.Perfil) on peritoId equals perito.Id
+         join solicitante in db.Intervenientes.AptosParaOperacoesLedger().Include(i => i.Perfil) on solicitanteId equals solicitante.Id
          where vestigio.Id == vestigioId
              && vestigio.Estado == EstadoVestigio.Armazenado
              && perito.Situacao == SituacaoInterveniente.ATIVO
@@ -49,12 +49,12 @@ public sealed class DesignacaoPericiaStore(CustodyChainDbContext db) : IDesignac
                 && v.ProcessoId == solicitacao.ProcessoId
                 && v.Estado == EstadoVestigio.Armazenado,
                 cancellationToken);
-            var peritoDisponivel = await db.Intervenientes.Include(i => i.Perfil).AnyAsync(i =>
+            var peritoDisponivel = await db.Intervenientes.AptosParaOperacoesLedger().Include(i => i.Perfil).AnyAsync(i =>
                 i.Id == solicitacao.PeritoId
                 && i.Situacao == SituacaoInterveniente.ATIVO
                 && i.Perfil.Codigo == "PERITO",
                 cancellationToken);
-            var solicitanteDisponivel = await db.Intervenientes.Include(i => i.Perfil).AnyAsync(i =>
+            var solicitanteDisponivel = await db.Intervenientes.AptosParaOperacoesLedger().Include(i => i.Perfil).AnyAsync(i =>
                 i.Id == solicitacao.SolicitanteId
                 && i.Situacao == SituacaoInterveniente.ATIVO
                 && i.Perfil.Codigo == "CUSTODIA",
@@ -140,7 +140,7 @@ public sealed class DesignacaoPericiaStore(CustodyChainDbContext db) : IDesignac
         try
         {
             var pericia = await ObterPericiaAsync(preparacao.PericiaId, cancellationToken);
-            var aprovador = await db.Intervenientes.Include(i => i.Perfil).SingleOrDefaultAsync(i =>
+            var aprovador = await db.Intervenientes.AptosParaOperacoesLedger().Include(i => i.Perfil).SingleOrDefaultAsync(i =>
                 i.Id == preparacao.AprovadorId
                 && i.Situacao == SituacaoInterveniente.ATIVO
                 && i.Perfil.Codigo == "ADMIN",
@@ -193,7 +193,7 @@ public sealed class DesignacaoPericiaStore(CustodyChainDbContext db) : IDesignac
         CancellationToken cancellationToken)
     {
         var pericia = await ObterPericiaAsync(periciaId, cancellationToken);
-        var aprovador = await db.Intervenientes.Include(i => i.Perfil).SingleOrDefaultAsync(i =>
+        var aprovador = await db.Intervenientes.AptosParaOperacoesLedger().Include(i => i.Perfil).SingleOrDefaultAsync(i =>
             i.Id == aprovadorId
             && i.Situacao == SituacaoInterveniente.ATIVO
             && i.Perfil.Codigo == "ADMIN",
@@ -239,6 +239,7 @@ public sealed class DesignacaoPericiaStore(CustodyChainDbContext db) : IDesignac
                 || pericia.Credencial.Situacao != SituacaoCredencial.PENDENTE
                 || pericia.Vestigio.Estado != EstadoVestigio.Armazenado
                 || pericia.Perito?.Situacao != SituacaoInterveniente.ATIVO
+                || pericia.Perito.SituacaoIdentidadeLedger != SituacaoIdentidadeLedger.ATIVA
                 || pericia.Credencial.ValidaAte is not null && pericia.Credencial.ValidaAte <= concluidaEm)
                 throw new ConflitoDesignacaoPericiaException(
                     "A perícia, o vestígio, o perito ou a validade mudou durante a aprovação.");
@@ -268,7 +269,7 @@ public sealed class DesignacaoPericiaStore(CustodyChainDbContext db) : IDesignac
             .SingleOrDefaultAsync(p => p.Id == periciaId, cancellationToken);
 
     private Task<bool> EhAdministradorAtivoAsync(long intervenienteId, CancellationToken cancellationToken) =>
-        db.Intervenientes.Include(i => i.Perfil).AnyAsync(i =>
+        db.Intervenientes.AptosParaOperacoesLedger().Include(i => i.Perfil).AnyAsync(i =>
             i.Id == intervenienteId
             && i.Situacao == SituacaoInterveniente.ATIVO
             && i.Perfil.Codigo == "ADMIN",
@@ -277,7 +278,11 @@ public sealed class DesignacaoPericiaStore(CustodyChainDbContext db) : IDesignac
     private static bool PodePreparar(Pericia? pericia, Interveniente? aprovador) =>
         pericia is not null
         && aprovador is not null
-        && pericia.Perito is { Situacao: SituacaoInterveniente.ATIVO }
+        && pericia.Perito is
+        {
+            Situacao: SituacaoInterveniente.ATIVO,
+            SituacaoIdentidadeLedger: SituacaoIdentidadeLedger.ATIVA
+        }
         && ((pericia.Situacao == SituacaoPericia.SOLICITADA
                 && pericia.Vestigio.Estado == EstadoVestigio.Armazenado)
             || (pericia.Situacao == SituacaoPericia.DESIGNADA

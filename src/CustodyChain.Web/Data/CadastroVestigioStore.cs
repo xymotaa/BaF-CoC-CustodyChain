@@ -28,7 +28,7 @@ public sealed class CadastroVestigioStore(CustodyChainDbContext db) : ICadastroV
         long processoId,
         DateTime agora,
         CancellationToken cancellationToken) =>
-        (from interveniente in db.Intervenientes
+        (from interveniente in db.Intervenientes.AptosParaOperacoesLedger()
          join perfil in db.Perfis on interveniente.PerfilId equals perfil.Id
          join credencial in db.Credenciais on interveniente.Id equals credencial.TitularId
          where interveniente.Id == intervenienteId

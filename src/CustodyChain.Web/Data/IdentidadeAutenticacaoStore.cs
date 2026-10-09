@@ -10,7 +10,6 @@ public sealed class IdentidadeAutenticacaoStore(CustodyChainDbContext db) : IIde
         string did,
         CancellationToken cancellationToken = default) =>
         db.Intervenientes
-            .IgnoreQueryFilters()
             .AsNoTracking()
             .Where(i => i.Did == did && i.Situacao == SituacaoInterveniente.ATIVO)
             .Select(i => new IdentidadeAutenticada(

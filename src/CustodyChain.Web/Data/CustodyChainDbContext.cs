@@ -57,7 +57,6 @@ public class CustodyChainDbContext(DbContextOptions<CustodyChainDbContext> optio
                 .WithMany(p => p.Intervenientes)
                 .HasForeignKey(i => i.PerfilId)
                 .OnDelete(DeleteBehavior.Restrict);
-            e.HasQueryFilter(i => i.SituacaoIdentidadeLedger == SituacaoIdentidadeLedger.ATIVA);
         });
 
         modelBuilder.Entity<InscricaoDid>(e =>

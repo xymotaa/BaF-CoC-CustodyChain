@@ -14,7 +14,7 @@ public sealed class UnificacaoAmostrasStore(CustodyChainDbContext db) : IUnifica
         DateTime agora,
         CancellationToken cancellationToken) =>
         (from pericia in db.Pericias
-         join perito in db.Intervenientes on peritoId equals perito.Id
+         join perito in db.Intervenientes.AptosParaOperacoesLedger() on peritoId equals perito.Id
          where pericia.Id == periciaId
              && pericia.PeritoId == peritoId
              && pericia.Situacao == SituacaoPericia.EM_EXECUCAO
@@ -64,8 +64,8 @@ public sealed class UnificacaoAmostrasStore(CustodyChainDbContext db) : IUnifica
                 .SingleOrDefaultAsync(item => item.Id == unificacao.PericiaId
                     && item.PeritoId == unificacao.PeritoId
                     && item.Situacao == SituacaoPericia.EM_EXECUCAO, cancellationToken);
-            var peritoAtivo = await db.Intervenientes.AnyAsync(item => item.Id == unificacao.PeritoId
-                && item.Situacao == SituacaoInterveniente.ATIVO, cancellationToken);
+            var peritoAtivo = await db.Intervenientes.AptosParaOperacoesLedger()
+                .AnyAsync(item => item.Id == unificacao.PeritoId, cancellationToken);
             var ids = unificacao.Origens.Select(origem => origem.VestigioId).ToList();
             var origensAtuais = await ObterOrigensAsync(ids, unificacao.PeritoId, unificacao.ExecutadoEm, cancellationToken);
             var rotuloEmUso = await RotuloEvidenciaExisteAsync(unificacao.RotuloEvidenciaResultante, cancellationToken);

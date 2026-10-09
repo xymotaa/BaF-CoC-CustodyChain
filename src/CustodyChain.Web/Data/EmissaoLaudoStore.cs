@@ -13,7 +13,7 @@ public sealed class EmissaoLaudoStore(CustodyChainDbContext db) : IEmissaoLaudoS
         long peritoId,
         CancellationToken cancellationToken) =>
         (from pericia in db.Pericias
-         join perito in db.Intervenientes on peritoId equals perito.Id
+         join perito in db.Intervenientes.AptosParaOperacoesLedger() on peritoId equals perito.Id
          where pericia.Id == periciaId
              && pericia.PeritoId == peritoId
              && pericia.Situacao == SituacaoPericia.EM_EXECUCAO
@@ -42,8 +42,8 @@ public sealed class EmissaoLaudoStore(CustodyChainDbContext db) : IEmissaoLaudoS
                 .SingleOrDefaultAsync(p => p.Id == laudoPendente.PericiaId
                     && p.PeritoId == laudoPendente.PeritoId
                     && p.Situacao == SituacaoPericia.EM_EXECUCAO, cancellationToken);
-            var peritoAtivo = await db.Intervenientes.AnyAsync(i => i.Id == laudoPendente.PeritoId
-                && i.Situacao == SituacaoInterveniente.ATIVO, cancellationToken);
+            var peritoAtivo = await db.Intervenientes.AptosParaOperacoesLedger()
+                .AnyAsync(i => i.Id == laudoPendente.PeritoId, cancellationToken);
 
             if (pericia is null || !peritoAtivo || pericia.Credencial is null
                 || pericia.Credencial.Situacao != SituacaoCredencial.VIGENTE
