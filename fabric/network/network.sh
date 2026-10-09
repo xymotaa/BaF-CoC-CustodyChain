@@ -390,6 +390,7 @@ function listChaincode() {
 function invokeChaincode() {
 
   export FABRIC_CFG_PATH=${PWD}/../config
+  DELAY=${CLI_DELAY:-3}
 
   . scripts/envVar.sh
   . scripts/ccutils.sh
@@ -404,6 +405,7 @@ function invokeChaincode() {
 function queryChaincode() {
 
   export FABRIC_CFG_PATH=${PWD}/../config
+  DELAY=${CLI_DELAY:-3}
   
   . scripts/envVar.sh
   . scripts/ccutils.sh

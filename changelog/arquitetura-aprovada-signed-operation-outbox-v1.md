@@ -135,4 +135,4 @@ resposta do ledger e o commit local divergirem.
 - [x] Fatia 8a — rotação de chave com dupla prova e histórico criptográfico;
 - [x] Fatia 8b — identidade Fabric por organização;
 - [x] Fatia 8c — recuperação administrativa de chave;
-- [ ] Fatia 8d — migração operacional e endurecimento.
+- [ ] Fatia 8d — concluir configuração operacional persistente; deploy e endurecimento do comando de homologação executados.
