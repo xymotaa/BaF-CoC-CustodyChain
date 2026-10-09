@@ -131,7 +131,9 @@ resposta do ledger e o commit local divergirem.
 - [x] Fatia 5e — `GUARDA_REGISTRAR`;
 - [x] Fatia 6a — `DESTINACAO_SOLICITAR` assinada pelo custodiante, vinculada à guarda;
 - [x] Fatia 6b — `DESTINACAO_APROVAR` assinada por administrador distinto;
-- [ ] Fatia 7 — remoção completa dos contratos CoC legados;
+- [x] Fatia 7 — escrita CoC descontinuada: gateway e chaincode preservam a
+  rejeição explícita para compatibilidade, e a leitura histórica permanece
+  somente para auditoria; operações reais usam exclusivamente contratos v2.
 - [x] Fatia 8a — rotação de chave com dupla prova e histórico criptográfico;
 - [x] Fatia 8b — identidade Fabric por organização;
 - [x] Fatia 8c — recuperação administrativa de chave;
