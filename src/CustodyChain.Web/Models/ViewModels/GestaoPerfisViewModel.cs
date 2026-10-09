@@ -115,3 +115,14 @@ public record EnviarProvaRecuperacaoDidRequest(
     string AdminKeyId,
     string AdminSignature,
     string CandidateSignature);
+
+public record RecuperarIdentidadeViewModel(string WalletEndpoint);
+
+public record CriarPedidoRecuperacaoDidRequest(
+    string Did,
+    string KeyId,
+    string PublicKeyMultibase);
+
+public record CriarComandoRecuperacaoDidRequest(
+    JsonElement RecoveryRequest,
+    string Reason);

@@ -142,6 +142,18 @@ const server = http.createServer(async (req, res) => {
             return json(res, 200, store.signKeyRecoveryRequest({ did: body.did, password: body.password, candidateId: body.candidateId, request: body.request }), origin);
         }
 
+        if (req.method === 'POST' && req.url === '/v1/proofs/did-key-recovery') {
+            const body = await readJson(req);
+            const proof = store.signDidCommand({
+                did: body.did,
+                password: body.password,
+                command: body.command,
+                expectedType: 'CustodyChainDidKeyRecovery',
+                actorField: 'actorDid'
+            });
+            return json(res, 200, proof, origin);
+        }
+
         if (req.method === 'POST' && req.url === '/v1/proofs/did-key-rotation') {
             const body = await readJson(req);
             const proof = store.signKeyRotation({

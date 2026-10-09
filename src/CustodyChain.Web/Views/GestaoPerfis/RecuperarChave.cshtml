@@ -1,0 +1,104 @@
+@model CustodyChain.Web.Models.ViewModels.RecuperarIdentidadeViewModel
+@{
+    ViewData["Title"] = "Aprovar recuperação de chave DID";
+}
+
+<div class="pagina-cabecalho">
+    <h1>Aprovar recuperação de chave DID</h1>
+    <p class="campo-ajuda">Importe o pacote assinado pelo titular, revise a solicitação e assine a decisão administrativa.</p>
+</div>
+
+<section id="admin-recovery" class="cartao painel-recuperacao" data-wallet-endpoint="@Model.WalletEndpoint">
+    @Html.AntiForgeryToken()
+    <div id="recovery-error" class="alerta alerta-erro" role="alert" tabindex="-1" hidden></div>
+    <div class="campo">
+        <label class="campo-rotulo" for="package">Pacote de recuperação do titular</label>
+        <textarea id="package" class="campo-entrada mono" rows="12" spellcheck="false" required></textarea>
+    </div>
+    <div class="campo">
+        <label class="campo-rotulo" for="reason">Motivo confirmado</label>
+        <select id="reason" class="campo-entrada">
+            <option value="LOST_KEY">Chave perdida</option>
+            <option value="DEVICE_LOST">Dispositivo perdido</option>
+            <option value="COMPROMISED">Chave comprometida</option>
+        </select>
+    </div>
+    <div class="campo">
+        <label class="campo-rotulo" for="wallet-password">Senha da wallet administrativa</label>
+        <input id="wallet-password" class="campo-entrada" type="password" autocomplete="current-password" required />
+    </div>
+    <div class="campo">
+        <label class="campo-rotulo" for="pairing-token">Código de pareamento</label>
+        <input id="pairing-token" class="campo-entrada" type="password" autocomplete="off" required />
+    </div>
+    <button id="approve-recovery" class="botao botao-primario" type="button">Assinar e confirmar recuperação</button>
+    <p id="recovery-status" role="status" aria-live="polite" class="campo-ajuda"></p>
+</section>
+
+@section Scripts {
+    <script>
+        (() => {
+            const panel = document.getElementById('admin-recovery');
+            const button = document.getElementById('approve-recovery');
+            const error = document.getElementById('recovery-error');
+            const status = document.getElementById('recovery-status');
+            const packageField = document.getElementById('package');
+            const password = document.getElementById('wallet-password');
+            const pairing = document.getElementById('pairing-token');
+            const token = document.querySelector('input[name="__RequestVerificationToken"]').value;
+            const walletEndpoint = panel.dataset.walletEndpoint;
+            const post = async (url, body) => {
+                const response = await fetch(url, { method: 'POST', credentials: 'same-origin',
+                    headers: { 'Content-Type': 'application/json', 'RequestVerificationToken': token }, body: JSON.stringify(body) });
+                const payload = await response.json().catch(() => ({}));
+                if (!response.ok) throw new Error(payload.message || 'Não foi possível confirmar a recuperação.');
+                return payload;
+            };
+            const walletPost = async (path, body) => {
+                const response = await fetch(`${walletEndpoint}${path}`, { method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'X-Wallet-Pairing-Token': pairing.value }, body: JSON.stringify(body) });
+                const payload = await response.json().catch(() => ({}));
+                if (!response.ok) throw new Error(payload.message || 'A wallet administrativa recusou a assinatura.');
+                return payload;
+            };
+            button.addEventListener('click', async () => {
+                error.hidden = true;
+                let recoveryPackage;
+                try { recoveryPackage = JSON.parse(packageField.value); }
+                catch { error.textContent = 'O pacote de recuperação não contém JSON válido.'; error.hidden = false; error.focus(); return; }
+                if (!recoveryPackage.request || !recoveryPackage.candidateSignature || !password.value || !pairing.value) {
+                    error.textContent = 'Informe o pacote completo, a senha da wallet e o código de pareamento.';
+                    error.hidden = false; error.focus(); return;
+                }
+                button.disabled = true;
+                try {
+                    status.textContent = 'Montando a decisão administrativa.';
+                    const command = await post('/gestao-perfis/recuperar-chave/comando', { recoveryRequest: recoveryPackage.request, reason: document.getElementById('reason').value });
+                    status.textContent = 'Assinando a decisão na wallet administrativa.';
+                    const proof = await walletPost('/v1/proofs/did-key-recovery', { did: command.actorDid, password: password.value, command });
+                    password.value = '';
+                    status.textContent = 'Confirmando as duas provas no ledger.';
+                    const result = await post('/identidade/chave/recuperacao/prova', {
+                        command, adminKeyId: proof.keyId, adminSignature: proof.signature, candidateSignature: recoveryPackage.candidateSignature
+                    });
+                    status.textContent = `Recuperação confirmada no ledger. Nova chave: ${result.keyId}.`;
+                    button.disabled = true;
+                } catch (exception) {
+                    password.value = '';
+                    error.textContent = exception.message; error.hidden = false; error.focus();
+                    button.disabled = false;
+                }
+            });
+        })();
+    </script>
+}
+
+@section Styles {
+    <style>
+        .pagina-cabecalho { margin-bottom: 1.5rem; }
+        .painel-recuperacao { max-width: 720px; padding: 1.5rem; }
+        .painel-recuperacao .campo { margin-top: 1rem; }
+        .painel-recuperacao .botao { min-height: 44px; margin-top: 1rem; }
+        .painel-recuperacao textarea { width: 100%; resize: vertical; }
+    </style>
+}

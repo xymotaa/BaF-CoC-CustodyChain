@@ -1,0 +1,144 @@
+@model CustodyChain.Web.Models.ViewModels.RecuperarIdentidadeViewModel
+@{
+    ViewData["Title"] = "Recuperar identidade DID";
+}
+
+<div class="pagina-cabecalho">
+    <h1>Recuperar identidade DID</h1>
+    <p class="campo-ajuda">Crie uma chave candidata na nova wallet e entregue o pacote assinado a um administrador. A aplicação nunca recebe sua chave privada.</p>
+</div>
+
+<section id="recovery-panel" class="cartao painel-recuperacao" data-wallet-endpoint="@Model.WalletEndpoint">
+    @Html.AntiForgeryToken()
+    <div class="alerta alerta-aviso">
+        A recuperação depende de aprovação administrativa. A chave anterior será marcada como comprometida no ledger.
+    </div>
+    <div id="recovery-error" class="alerta alerta-erro" role="alert" tabindex="-1" hidden></div>
+
+    <div class="campo">
+        <label class="campo-rotulo" for="did">DID a recuperar</label>
+        <input id="did" class="campo-entrada" autocomplete="username" spellcheck="false" placeholder="did:legal:expert:..." required />
+    </div>
+    <div class="campo">
+        <label class="campo-rotulo" for="wallet-password">Senha da nova wallet</label>
+        <input id="wallet-password" class="campo-entrada" type="password" autocomplete="new-password" required />
+    </div>
+    <div class="campo">
+        <label class="campo-rotulo" for="pairing-token">Código de pareamento</label>
+        <input id="pairing-token" class="campo-entrada" type="password" autocomplete="off" required />
+    </div>
+    <button id="create-recovery" class="botao botao-primario" type="button">Criar pacote de recuperação</button>
+    <p id="recovery-status" role="status" aria-live="polite" class="campo-ajuda"></p>
+
+    <div id="recovery-package" class="campo" hidden>
+        <label class="campo-rotulo" for="package">Pacote assinado para o administrador</label>
+        <textarea id="package" class="campo-entrada mono" rows="12" readonly></textarea>
+        <p class="campo-ajuda">Envie este pacote por um canal seguro ao administrador. Ele expira em cinco minutos.</p>
+        <button id="copy-package" class="botao botao-secundario" type="button">Copiar pacote</button>
+        <button id="confirm-recovery" class="botao botao-secundario" type="button">Confirmar chave após aprovação</button>
+    </div>
+</section>
+
+@section Scripts {
+    <script>
+        (() => {
+            const panel = document.getElementById('recovery-panel');
+            const button = document.getElementById('create-recovery');
+            const error = document.getElementById('recovery-error');
+            const status = document.getElementById('recovery-status');
+            const did = document.getElementById('did');
+            const password = document.getElementById('wallet-password');
+            const pairing = document.getElementById('pairing-token');
+            const packagePanel = document.getElementById('recovery-package');
+            const packageField = document.getElementById('package');
+            const token = document.querySelector('input[name="__RequestVerificationToken"]').value;
+            const walletEndpoint = panel.dataset.walletEndpoint;
+            let candidate = null;
+
+            const application = async (url, options = {}) => {
+                const response = await fetch(url, {
+                    credentials: 'same-origin', ...options,
+                    headers: { 'RequestVerificationToken': token, ...(options.headers || {}) }
+                });
+                const payload = await response.json().catch(() => ({}));
+                if (!response.ok) throw new Error(payload.message || 'Não foi possível preparar a recuperação.');
+                return payload;
+            };
+            const walletPost = async (path, body) => {
+                const response = await fetch(`${walletEndpoint}${path}`, {
+                    method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Wallet-Pairing-Token': pairing.value },
+                    body: JSON.stringify(body)
+                });
+                const payload = await response.json().catch(() => ({}));
+                if (!response.ok) throw new Error(payload.message || 'A wallet recusou a solicitação.');
+                return payload;
+            };
+
+            button.addEventListener('click', async () => {
+                error.hidden = true;
+                packagePanel.hidden = true;
+                if (!did.value.trim() || !password.value || !pairing.value) {
+                    error.textContent = 'Informe o DID, a senha da nova wallet e o código de pareamento.';
+                    error.hidden = false; error.focus(); return;
+                }
+                button.disabled = true;
+                try {
+                    status.textContent = 'Consultando o estado atual do DID.';
+                    const preparation = await application(`/recuperar-identidade/preparar?did=${encodeURIComponent(did.value.trim())}`);
+                    status.textContent = 'Criando chave candidata na wallet.';
+                    candidate = await walletPost('/v1/key-recoveries/candidates', {
+                        did: preparation.did, keyId: preparation.keyId, password: password.value
+                    });
+                    status.textContent = 'Montando e assinando o pedido de recuperação.';
+                    const request = await application('/recuperar-identidade/pedido', {
+                        method: 'POST', headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ did: preparation.did, keyId: candidate.keyId, publicKeyMultibase: candidate.publicKeyMultibase })
+                    });
+                    const proof = await walletPost('/v1/proofs/did-key-recovery-request', {
+                        did: preparation.did, password: password.value, candidateId: candidate.candidateId, request
+                    });
+                    password.value = '';
+                    packageField.value = JSON.stringify({ request, candidateSignature: proof.signature }, null, 2);
+                    packagePanel.hidden = false;
+                    status.textContent = 'Pacote criado. Envie-o ao administrador antes da expiração.';
+                } catch (exception) {
+                    password.value = '';
+                    error.textContent = exception.message;
+                    error.hidden = false; error.focus();
+                } finally { button.disabled = false; }
+            });
+
+            document.getElementById('copy-package').addEventListener('click', async () => {
+                try { await navigator.clipboard.writeText(packageField.value); status.textContent = 'Pacote copiado.'; }
+                catch { packageField.select(); status.textContent = 'Selecione e copie o pacote manualmente.'; }
+            });
+
+            document.getElementById('confirm-recovery').addEventListener('click', async () => {
+                error.hidden = true;
+                if (!candidate) {
+                    error.textContent = 'Crie novamente o pacote nesta sessão para confirmar a chave candidata.';
+                    error.hidden = false; error.focus(); return;
+                }
+                try {
+                    status.textContent = 'Verificando a aprovação no ledger.';
+                    const confirmation = await application(`/recuperar-identidade/confirmar?did=${encodeURIComponent(candidate.did)}&keyId=${encodeURIComponent(candidate.keyId)}`);
+                    if (!confirmation.confirmed) throw new Error('A recuperação ainda não foi aprovada no ledger.');
+                    await walletPost('/v1/key-rotations/confirm', { did: candidate.did, candidateId: candidate.candidateId, keyId: candidate.keyId });
+                    status.textContent = 'Chave ativada na wallet. Você já pode entrar com a identidade recuperada.';
+                } catch (exception) {
+                    error.textContent = exception.message; error.hidden = false; error.focus();
+                }
+            });
+        })();
+    </script>
+}
+
+@section Styles {
+    <style>
+        .pagina-cabecalho { margin-bottom: 1.5rem; }
+        .painel-recuperacao { max-width: 720px; padding: 1.5rem; }
+        .painel-recuperacao .campo { margin-top: 1rem; }
+        .painel-recuperacao .botao { min-height: 44px; margin-top: 1rem; }
+        .painel-recuperacao textarea { width: 100%; resize: vertical; }
+    </style>
+}

@@ -91,6 +91,36 @@ test('cria identidade titular e assina somente comando de registro correspondent
     }
 });
 
+test('cria chave candidata de recuperação sem chave ativa e assina somente o pedido correspondente', () => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'custodychain-wallet-'));
+    const store = new WalletStore(path.join(directory, 'wallet.db'));
+    const did = 'did:legal:expert:recuperacao-unitario';
+    const password = 'senha-local-forte';
+
+    try {
+        const candidate = store.createRecoveryCandidate({ did, keyId: `${did}#key-2`, password });
+        const request = {
+            type: 'CustodyChainDidKeyRecoveryRequest', version: 1,
+            requestId: 'urn:uuid:11111111-1111-1111-1111-111111111111', subjectDid: did,
+            newVerificationMethod: { id: candidate.keyId, publicKeyMultibase: candidate.publicKeyMultibase }
+        };
+        const proof = store.signKeyRecoveryRequest({ did, password, candidateId: candidate.candidateId, request });
+        const publicKey = crypto.createPublicKey({
+            key: Buffer.concat([Buffer.from('302a300506032b6570032100', 'hex'), decodeMultikey(candidate.publicKeyMultibase).subarray(2)]),
+            format: 'der', type: 'spki'
+        });
+        assert.equal(crypto.verify(null, Buffer.from(canonicalize(request)), publicKey,
+            Buffer.from(proof.signature, 'base64url')), true);
+        assert.throws(() => store.signKeyRecoveryRequest({
+            did, password, candidateId: candidate.candidateId,
+            request: { ...request, subjectDid: 'did:legal:expert:outro' }
+        }), /não corresponde/);
+    } finally {
+        store.close();
+        fs.rmSync(directory, { recursive: true, force: true });
+    }
+});
+
 test('assina VC de permissão somente para o DID emissor', () => {
     const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'custodychain-wallet-'));
     const store = new WalletStore(path.join(directory, 'wallet.db'));

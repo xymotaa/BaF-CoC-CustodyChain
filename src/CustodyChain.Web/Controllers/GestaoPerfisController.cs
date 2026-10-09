@@ -52,6 +52,40 @@ public class GestaoPerfisController(
         return View(new GestaoPerfisListaViewModel { Intervenientes = intervenientes });
     }
 
+    [HttpGet("/gestao-perfis/recuperar-chave")]
+    public IActionResult RecuperarChave() => View(new RecuperarIdentidadeViewModel(
+        configuration["AuthenticationDid:WalletEndpoint"] ?? "http://127.0.0.1:43123"));
+
+    [HttpPost("/gestao-perfis/recuperar-chave/comando")]
+    [ValidateAntiForgeryToken]
+    public IActionResult CriarComandoRecuperacao([FromBody] CriarComandoRecuperacaoDidRequest? request)
+    {
+        var administradorDid = User.FindFirstValue("did");
+        if (request is null || string.IsNullOrWhiteSpace(administradorDid)
+            || !PedidoRecuperacaoValido(request.RecoveryRequest))
+        {
+            return BadRequest(new { message = "O pedido de recuperação importado é inválido." });
+        }
+
+        var agora = DateTime.UtcNow;
+        return Ok(new
+        {
+            type = "CustodyChainDidKeyRecovery",
+            version = 1,
+            commandId = $"urn:uuid:{Guid.NewGuid()}",
+            actorDid = administradorDid,
+            subjectDid = request.RecoveryRequest.GetProperty("subjectDid").GetString(),
+            reason = NormalizarMotivoRecuperacao(request.Reason),
+            recoveryRequest = request.RecoveryRequest,
+            algorithm = "Ed25519",
+            canonicalization = "custodychain-json-c14n-v1",
+            audience = "custodychain-ledger",
+            issuedAt = agora.ToString("O"),
+            expiresAt = agora.AddMinutes(5).ToString("O"),
+            nonce = Base64Url(RandomNumberGenerator.GetBytes(24))
+        });
+    }
+
     [HttpGet("/gestao-perfis/cadastrar")]
     public async Task<IActionResult> Cadastrar()
     {
@@ -545,6 +579,28 @@ public class GestaoPerfisController(
             && json.TryGetProperty("actorDid", out var actor) && actor.GetString() == actorDid
             && json.TryGetProperty("expectedDocumentVersion", out var version) && version.GetInt32() == 1;
     }
+
+    private static bool PedidoRecuperacaoValido(JsonElement pedido) =>
+        pedido.ValueKind == JsonValueKind.Object
+        && pedido.TryGetProperty("type", out var type) && type.GetString() == "CustodyChainDidKeyRecoveryRequest"
+        && pedido.TryGetProperty("version", out var version) && version.GetInt32() == 1
+        && pedido.TryGetProperty("requestId", out var requestId) && !string.IsNullOrWhiteSpace(requestId.GetString())
+        && pedido.TryGetProperty("subjectDid", out var did) && !string.IsNullOrWhiteSpace(did.GetString())
+        && pedido.TryGetProperty("newVerificationMethod", out var method)
+        && method.ValueKind == JsonValueKind.Object
+        && method.TryGetProperty("id", out var keyId) && keyId.GetString()?.StartsWith($"{did.GetString()}#", StringComparison.Ordinal) == true
+        && method.TryGetProperty("publicKeyMultibase", out var publicKey) && !string.IsNullOrWhiteSpace(publicKey.GetString())
+        && pedido.TryGetProperty("expiresAt", out var expiresAt) && DateTime.TryParse(expiresAt.GetString(), out _);
+
+    private static string NormalizarMotivoRecuperacao(string? motivo) => motivo switch
+    {
+        "DEVICE_LOST" => "DEVICE_LOST",
+        "COMPROMISED" => "COMPROMISED",
+        _ => "LOST_KEY"
+    };
+
+    private static string Base64Url(ReadOnlySpan<byte> bytes) =>
+        Convert.ToBase64String(bytes).TrimEnd('=').Replace('+', '-').Replace('/', '_');
 
     private static bool CredencialCorresponde(JsonElement semAssinatura, JsonElement assinada)
     {

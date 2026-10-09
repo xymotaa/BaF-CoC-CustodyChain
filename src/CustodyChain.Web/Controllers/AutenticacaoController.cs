@@ -235,6 +235,99 @@ public class AutenticacaoController(
         return Ok(new { keyId = documento.KeyId, documentVersion = documento.DocumentVersion });
     }
 
+    [HttpGet("/recuperar-identidade")]
+    [AllowAnonymous]
+    public IActionResult RecuperarIdentidade() => View(new RecuperarIdentidadeViewModel(
+        configuration["AuthenticationDid:WalletEndpoint"] ?? "http://127.0.0.1:43123"));
+
+    [HttpGet("/recuperar-identidade/preparar")]
+    [AllowAnonymous]
+    [EnableRateLimiting("AutenticacaoDid")]
+    public async Task<IActionResult> PrepararRecuperacao(string? did, CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(did))
+        {
+            return BadRequest(new { message = "Informe o DID a recuperar." });
+        }
+
+        var documento = await didRegistry.ResolverAsync(did.Trim(), cancellationToken);
+        var chaveAtual = documento?.Authentication.FirstOrDefault();
+        if (documento is null || !documento.Ativo || string.IsNullOrWhiteSpace(chaveAtual))
+        {
+            return NotFound(new { message = "DID ativo não encontrado para recuperação." });
+        }
+
+        var proximaChave = ProximaChaveId(documento.Did, chaveAtual);
+        return Ok(new { did = documento.Did, keyId = proximaChave, documentVersion = documento.DocumentVersion });
+    }
+
+    [HttpPost("/recuperar-identidade/pedido")]
+    [AllowAnonymous]
+    [ValidateAntiForgeryToken]
+    [EnableRateLimiting("AutenticacaoDid")]
+    public async Task<IActionResult> CriarPedidoRecuperacao(
+        [FromBody] CriarPedidoRecuperacaoDidRequest? request,
+        CancellationToken cancellationToken)
+    {
+        if (request is null || string.IsNullOrWhiteSpace(request.Did))
+        {
+            return BadRequest(new { message = "Dados da chave candidata são obrigatórios." });
+        }
+
+        var documento = await didRegistry.ResolverAsync(request.Did.Trim(), cancellationToken);
+        var chaveAtual = documento?.Authentication.FirstOrDefault();
+        if (documento is null || !documento.Ativo || string.IsNullOrWhiteSpace(chaveAtual)
+            || !ChaveCandidataValida(documento.Did, request.KeyId, request.PublicKeyMultibase)
+            || request.KeyId != ProximaChaveId(documento.Did, chaveAtual))
+        {
+            return BadRequest(new { message = "A chave candidata não corresponde ao estado atual do DID." });
+        }
+
+        var agora = DateTime.UtcNow;
+        return Ok(new
+        {
+            type = "CustodyChainDidKeyRecoveryRequest",
+            version = 1,
+            requestId = $"urn:uuid:{Guid.NewGuid()}",
+            subjectDid = documento.Did,
+            expectedDocumentVersion = documento.DocumentVersion,
+            newVerificationMethod = new
+            {
+                id = request.KeyId,
+                type = "Multikey",
+                controller = documento.Did,
+                publicKeyMultibase = request.PublicKeyMultibase
+            },
+            algorithm = "Ed25519",
+            canonicalization = "custodychain-json-c14n-v1",
+            audience = "custodychain-ledger",
+            issuedAt = agora.ToString("O"),
+            expiresAt = agora.AddMinutes(5).ToString("O"),
+            nonce = Base64Url(RandomNumberGenerator.GetBytes(24))
+        });
+    }
+
+    [HttpGet("/recuperar-identidade/confirmar")]
+    [AllowAnonymous]
+    [EnableRateLimiting("AutenticacaoDid")]
+    public async Task<IActionResult> VerificarRecuperacaoConfirmada(
+        string? did,
+        string? keyId,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(did) || string.IsNullOrWhiteSpace(keyId))
+        {
+            return BadRequest(new { message = "DID e chave candidata são obrigatórios." });
+        }
+
+        var documento = await didRegistry.ResolverAsync(did.Trim(), cancellationToken);
+        return Ok(new
+        {
+            confirmed = documento?.Ativo == true && documento.Authentication.Contains(keyId, StringComparer.Ordinal),
+            documentVersion = documento?.DocumentVersion
+        });
+    }
+
     [HttpPost("/sair")]
     [ValidateAntiForgeryToken]
     public async Task<IActionResult> Sair()
@@ -267,5 +360,14 @@ public class AutenticacaoController(
 
     private static string Base64Url(ReadOnlySpan<byte> bytes) =>
         Convert.ToBase64String(bytes).TrimEnd('=').Replace('+', '-').Replace('/', '_');
+
+    private static string ProximaChaveId(string did, string chaveAtual)
+    {
+        var separador = chaveAtual.LastIndexOf('-');
+        var prefixo = chaveAtual.Contains("#auth-", StringComparison.Ordinal) ? "auth" : "key";
+        return separador >= 0 && int.TryParse(chaveAtual[(separador + 1)..], out var sequencia)
+            ? $"{did}#{prefixo}-{sequencia + 1}"
+            : $"{did}#{prefixo}-2";
+    }
 
 }
