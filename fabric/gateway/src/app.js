@@ -19,11 +19,16 @@ const LEGACY_IDENTITY_WRITES_ENABLED = process.env.ENABLE_LEGACY_IDENTITY_WRITES
 const MSP_POR_METODO_DID = new Map([
     ['did:legal:admin', 'Org1MSP'],
     ['did:legal:delegate', 'Org1MSP'],
+    // O perfil externo não publica operações de custódia. A Org1 é a
+    // autoridade de governança que registra, ativa e recupera seu DID.
+    ['did:legal:judge', 'Org1MSP'],
     ['did:legal:custodian', 'Org2MSP'],
     ['did:legal:expert', 'Org2MSP']
 ]);
 const SUPPORTED_SIGNED_OPERATIONS = new Set([
-    'COLETA_REGISTRAR', 'REMESSA_CRIAR', 'PERICIA_RECEBER', 'LACRE_ROMPER', 'LAUDO_EMITIR', 'AMOSTRA_CONSUMIR', 'AMOSTRA_EXAURIR', 'AMOSTRA_FRACIONAR', 'AMOSTRA_UNIFICAR'
+    'COLETA_REGISTRAR', 'REMESSA_CRIAR', 'REMESSA_RECEBER', 'REMESSA_RECUSAR', 'GUARDA_REGISTRAR',
+    'DESTINACAO_SOLICITAR', 'DESTINACAO_APROVAR', 'PERICIA_RECEBER', 'LACRE_ROMPER', 'LAUDO_EMITIR',
+    'AMOSTRA_CONSUMIR', 'AMOSTRA_EXAURIR', 'AMOSTRA_FRACIONAR', 'AMOSTRA_UNIFICAR'
 ]);
 const ALLOWED_ORIGINS = (process.env.ALLOWED_ORIGINS || 'http://localhost:5143')
     .split(',')

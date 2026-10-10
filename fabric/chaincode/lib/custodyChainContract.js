@@ -21,6 +21,10 @@ const MSP_ADMINISTRADOR = 'Org1MSP';
 const MSP_POR_METODO_DID = new Map([
     ['did:legal:admin', 'Org1MSP'],
     ['did:legal:delegate', 'Org1MSP'],
+    // Participante externo somente para consulta/validação. A Org1 mantém
+    // sua governança de identidade; o contrato não autoriza operações de
+    // custódia assinadas por este método DID.
+    ['did:legal:judge', 'Org1MSP'],
     ['did:legal:custodian', 'Org2MSP'],
     ['did:legal:expert', 'Org2MSP']
 ]);

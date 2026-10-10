@@ -12,7 +12,8 @@ public static class OrganizacaoFabricDid
     public static string ResolverMsp(string did)
     {
         if (did.StartsWith("did:legal:admin:", StringComparison.Ordinal)
-            || did.StartsWith("did:legal:delegate:", StringComparison.Ordinal))
+            || did.StartsWith("did:legal:delegate:", StringComparison.Ordinal)
+            || did.StartsWith("did:legal:judge:", StringComparison.Ordinal))
         {
             return Org1Msp;
         }

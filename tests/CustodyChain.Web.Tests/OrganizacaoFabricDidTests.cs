@@ -11,6 +11,7 @@ public sealed class OrganizacaoFabricDidTests
     [Theory]
     [InlineData("did:legal:admin:governanca", OrganizacaoFabricDid.Org1Msp)]
     [InlineData("did:legal:delegate:coletor", OrganizacaoFabricDid.Org1Msp)]
+    [InlineData("did:legal:judge:externo", OrganizacaoFabricDid.Org1Msp)]
     [InlineData("did:legal:custodian:guarda", OrganizacaoFabricDid.Org2Msp)]
     [InlineData("did:legal:expert:perito", OrganizacaoFabricDid.Org2Msp)]
     public void ResolveMspPelaPoliticaDoMetodoDid(string did, string mspEsperado)
@@ -22,7 +23,7 @@ public sealed class OrganizacaoFabricDidTests
     public void RecusaDidSemPoliticaFabric()
     {
         var exception = Assert.Throws<InvalidOperationException>(
-            () => OrganizacaoFabricDid.ResolverMsp("did:legal:judge:magistrado"));
+            () => OrganizacaoFabricDid.ResolverMsp("did:legal:unknown:sem-politica"));
 
         Assert.Contains("sem organização Fabric", exception.Message);
     }

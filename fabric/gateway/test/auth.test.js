@@ -124,9 +124,34 @@ test('valida vetor canônico da operação assinada', () => {
     }), /Envelope/);
 });
 
+test('aceita todas as operações que o chaincode suporta', () => {
+    const operation = {
+        type: 'CustodyChainSignedOperation', version: 1,
+        operationId: 'urn:uuid:33333333-3333-3333-3333-333333333333',
+        payload: {}, signerDid: 'did:legal:admin:teste-operacoes',
+        keyId: 'did:legal:admin:teste-operacoes#auth-1', algorithm: 'Ed25519',
+        canonicalization: 'custodychain-json-c14n-v1', audience: 'custodychain-ledger',
+        timestamp: '2027-01-01T00:00:00.000Z', expiresAt: '2027-01-01T00:05:00.000Z',
+        nonce: 'abcdefghij0123456789kl', signature: 'A'.repeat(86)
+    };
+    const operations = [
+        'COLETA_REGISTRAR', 'REMESSA_CRIAR', 'REMESSA_RECEBER', 'REMESSA_RECUSAR',
+        'GUARDA_REGISTRAR', 'DESTINACAO_SOLICITAR', 'DESTINACAO_APROVAR', 'PERICIA_RECEBER',
+        'LACRE_ROMPER', 'LAUDO_EMITIR', 'AMOSTRA_CONSUMIR', 'AMOSTRA_EXAURIR',
+        'AMOSTRA_FRACIONAR', 'AMOSTRA_UNIFICAR'
+    ];
+
+    for (const operationName of operations) {
+        assert.doesNotThrow(() => validarOperacaoAssinada({ ...operation, operation: operationName }));
+    }
+});
+
 test('gateway recusa DID de organização diferente da sua identidade Fabric', () => {
     assert.doesNotThrow(() => validarMspDoDid({
         did: 'did:legal:admin:teste', metodoDid: 'did:legal:admin', organizationMspId: 'Org1MSP'
+    }));
+    assert.doesNotThrow(() => validarMspDoDid({
+        did: 'did:legal:judge:externo', metodoDid: 'did:legal:judge', organizationMspId: 'Org1MSP'
     }));
     assert.throws(() => validarMspDoDid({
         did: 'did:legal:expert:teste', metodoDid: 'did:legal:expert', organizationMspId: 'Org2MSP'
