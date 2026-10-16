@@ -495,48 +495,61 @@ class CustodyChainContract extends Contract {
 
     async RevogarDidV2Assinado(ctx, comandoJson, keyId, assinatura) {
         this._garantirOrganizacaoAdministradora(ctx);
-        const comando = this._lerComando(comandoJson, 'CustodyChainDidRevocation');
-        this._validarComandoRevogacaoDid(comando, keyId);
+        let comando;
+        try {
+            comando = this._lerComando(comandoJson, 'CustodyChainDidRevocation');
+            this._validarComandoRevogacaoDid(comando, keyId);
+        } catch (erro) {
+            throw new Error(`DID_REVOCATION_COMMAND_INVALID: ${erro.message}`);
+        }
         const chaveComando = ctx.stub.createCompositeKey(PREFIXO_GOVERNANCA, ['command', comando.commandId]);
         const hash = this._hashComando(comando);
         const existente = await ctx.stub.getState(chaveComando);
         if (existente && existente.length > 0) {
             if (JSON.parse(existente.toString()).hash !== hash) {
-                throw new Error('Conflito de idempotência para a revogação DID.');
+                throw new Error('DID_REVOCATION_IDEMPOTENCY_CONFLICT: Conflito de idempotência para a revogação DID.');
             }
             return this.ResolverDid(ctx, comando.subjectDid);
         }
-        this._validarJanelaComando(ctx, comando);
+        try {
+            this._validarJanelaComando(ctx, comando);
+        } catch (erro) {
+            throw new Error(`DID_REVOCATION_COMMAND_EXPIRED: ${erro.message}`);
+        }
 
         const governanca = await this._obterGovernancaIdentidades(ctx);
         if (comando.actorDid === comando.subjectDid) {
-            throw new Error('Um administrador não pode revogar a própria identidade.');
+            throw new Error('DID_REVOCATION_SELF_REVOKE: Um administrador não pode revogar a própria identidade.');
         }
         if (governanca.revision !== comando.expectedGovernanceRevision) {
-            throw new Error('A governança de identidades mudou; prepare uma nova revogação.');
+            throw new Error('DID_REVOCATION_GOVERNANCE_CHANGED: A governança de identidades mudou; prepare uma nova revogação.');
         }
         if (!governanca.activeAdminDids.includes(comando.actorDid)) {
-            throw new Error('O DID signatário não é administrador ativo na governança.');
+            throw new Error('DID_REVOCATION_ACTOR_INACTIVE: O DID signatário não é administrador ativo na governança.');
         }
 
         const administrador = await this._obterDocumentoDid(ctx, comando.actorDid);
         const chaveAdministrativa = administrador.verificationMethod?.find((metodo) => metodo.id === keyId);
         if (administrador.status !== 'ATIVO' || administrador.ativo !== true
             || !chaveAdministrativa || !administrador.capabilityInvocation?.includes(keyId)) {
-            throw new Error('DID administrador não possui capacidade para revogar identidades.');
+            throw new Error('DID_REVOCATION_KEY_NOT_AUTHORIZED: DID administrador não possui capacidade para revogar identidades.');
         }
-        this._verificarAssinatura(comando, assinatura, chaveAdministrativa.publicKeyMultibase);
+        try {
+            this._verificarAssinatura(comando, assinatura, chaveAdministrativa.publicKeyMultibase);
+        } catch (erro) {
+            throw new Error(`DID_REVOCATION_SIGNATURE_INVALID: ${erro.message}`);
+        }
 
         const chaveDid = ctx.stub.createCompositeKey(PREFIXO_DID, [comando.subjectDid]);
         const bytes = await ctx.stub.getState(chaveDid);
-        if (!bytes || bytes.length === 0) throw new Error(`DID não encontrado: ${comando.subjectDid}`);
+        if (!bytes || bytes.length === 0) throw new Error(`DID_REVOCATION_SUBJECT_NOT_FOUND: DID não encontrado: ${comando.subjectDid}`);
         const documento = JSON.parse(bytes.toString());
         if (documento.version !== 2 || documento.status !== 'ATIVO' || documento.ativo !== true
             || documento.documentVersion !== comando.expectedDocumentVersion) {
-            throw new Error('DID não está ativo na versão esperada para revogação.');
+            throw new Error('DID_REVOCATION_SUBJECT_VERSION_CONFLICT: DID não está ativo na versão esperada para revogação.');
         }
         if (documento.metodoDid === 'did:legal:admin' && governanca.activeAdminDids.length <= 1) {
-            throw new Error('Não é permitido revogar o último administrador ativo.');
+            throw new Error('DID_REVOCATION_LAST_ADMIN: Não é permitido revogar o último administrador ativo.');
         }
 
         const agora = this._agora(ctx);

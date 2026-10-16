@@ -410,9 +410,9 @@ public class GestaoPerfisController(
         var administradorId = long.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);
         try
         {
-            if (request is null) throw new RevogacaoDidInvalidaException("Informe a prova de revogação.");
             var resultado = await revogarDid.ExecutarAsync(new ExecutarRevogacaoDidCommand(intervenienteId, administradorId,
-                administradorDid, JsonSerializer.SerializeToElement(request.Command), request.KeyId, request.Signature,
+                administradorDid, request is null ? default : JsonSerializer.SerializeToElement(request.Command),
+                request?.KeyId ?? string.Empty, request?.Signature ?? string.Empty,
                 new ContextoAuditoriaRevogacaoDid(HttpContext.Connection.RemoteIpAddress?.ToString(), Request.Headers.UserAgent.ToString())), cancellationToken);
             return resultado.Estado == EstadoRevogacaoDid.FalhaPermanente
                 ? BadRequest(new { message = "A revogação foi rejeitada definitivamente pelo ledger." })

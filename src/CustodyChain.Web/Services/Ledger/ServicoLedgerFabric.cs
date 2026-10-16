@@ -244,9 +244,26 @@ public class ServicoLedgerFabric(HttpClient httpClient) : IServicoLedger
     {
         if (resposta.IsSuccessStatusCode) return;
         var corpo = await resposta.Content.ReadAsStringAsync();
-        if ((int)resposta.StatusCode is >= 400 and < 500)
+        var codigo = ExtrairCodigoRevogacaoDid(corpo);
+        if (codigo is not null || (int)resposta.StatusCode is >= 400 and < 500)
             throw new LedgerRejeicaoDefinitivaException($"Revogação rejeitada pelo gateway ({(int)resposta.StatusCode}): {corpo}");
         throw new HttpRequestException($"Falha transitória ao chamar o gateway ({(int)resposta.StatusCode}): {corpo}");
+    }
+
+    private static string? ExtrairCodigoRevogacaoDid(string corpo)
+    {
+        try
+        {
+            using var documento = JsonDocument.Parse(corpo);
+            return documento.RootElement.TryGetProperty("code", out var codigo)
+                && codigo.GetString()?.StartsWith("DID_REVOCATION_", StringComparison.Ordinal) == true
+                ? codigo.GetString()
+                : null;
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
     }
 
     private record DidDocumentoGatewayDto(

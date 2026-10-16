@@ -7,7 +7,8 @@ process.env.GATEWAY_SERVICE_TOKEN = 'token-de-teste-comprido';
 const crypto = require('node:crypto');
 const {
     autenticarServico, tratarErro, validarComandoDid, verificarProvaDid,
-    validarVcPermissao, verificarVcPermissao, validarOperacaoAssinada, validarMspDoDid
+    validarVcPermissao, verificarVcPermissao, validarOperacaoAssinada, validarMspDoDid,
+    extrairCodigoErro, statusParaCodigoDid
 } = require('../src/app');
 
 test('middleware aceita bearer token configurado', () => {
@@ -47,6 +48,15 @@ test('classifica migração administrativa repetida como conflito', () => {
         details: [{ message: 'O bootstrap ou a migração do DID administrador já foi concluída.' }]
     });
     assert.equal(response.statusCode, 409);
+});
+
+test('classifica rejeição DID tipada sem depender da mensagem humana', () => {
+    const response = responseFake();
+    tratarErro(response, { message: 'DID_REVOCATION_GOVERNANCE_CHANGED: texto alterável' });
+    assert.equal(response.statusCode, 409);
+    assert.equal(response.body.code, 'DID_REVOCATION_GOVERNANCE_CHANGED');
+    assert.equal(extrairCodigoErro(response.body.error), response.body.code);
+    assert.equal(statusParaCodigoDid('DID_REVOCATION_SELF_REVOKE'), 400);
 });
 
 test('valida a assinatura da VC de permissão sobre o envelope sem proof', () => {

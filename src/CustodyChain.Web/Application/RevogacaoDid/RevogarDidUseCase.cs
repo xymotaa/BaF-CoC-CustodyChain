@@ -39,7 +39,13 @@ public sealed class RevogarDidUseCase(
 
     public async Task<ResultadoRevogacaoDid> ExecutarAsync(ExecutarRevogacaoDidCommand command, CancellationToken cancellationToken = default)
     {
-        var commandId = LerCommandId(command.Command);
+        string commandId;
+        try { commandId = LerCommandId(command.Command); }
+        catch (RevogacaoDidInvalidaException)
+        {
+            await RegistrarComandoInvalidoAsync(command, cancellationToken);
+            throw;
+        }
         string commandCanonico;
         try { commandCanonico = CanonicalizadorJsonCustodyChain.Canonicalizar(command.Command); }
         catch (Exception) when (!cancellationToken.IsCancellationRequested)
@@ -68,7 +74,10 @@ public sealed class RevogarDidUseCase(
             throw;
         }
         if (string.IsNullOrWhiteSpace(command.KeyId) || string.IsNullOrWhiteSpace(command.Signature))
+        {
+            await RegistrarComandoInvalidoAsync(command, cancellationToken);
             throw new RevogacaoDidInvalidaException("Informe keyId e assinatura da wallet.");
+        }
 
         var agora = DateTime.SpecifyKind(clock.UtcNow, DateTimeKind.Utc);
         var saga = await store.CriarOuObterAsync(new NovaSagaRevogacaoDid(commandId, contexto.IntervenienteId,

@@ -95,13 +95,28 @@ function tratarErro(res, erro) {
     const mensagem = Array.isArray(detalhes)
         ? detalhes.map((detalhe) => detalhe.message || String(detalhe)).join(' ')
         : detalhes || (erro && erro.message) || 'Erro desconhecido no gateway.';
-    const status = mensagem.includes('não encontrado') ? 404
+    const codigo = extrairCodigoErro(mensagem);
+    const status = codigo ? statusParaCodigoDid(codigo)
+        : mensagem.includes('não encontrado') ? 404
         : mensagem.includes('já existe') || mensagem.includes('já foi concluído')
             || mensagem.includes('já foi concluída') || mensagem.includes('Conflito de idempotência')
             || mensagem.includes('versão do documento DID mudou') ? 409
             : mensagem.includes('inválid') || mensagem.includes('não autorizado') ? 400
                 : 500;
-    res.status(status).json({ error: mensagem });
+    res.status(status).json(codigo ? { error: mensagem, code: codigo } : { error: mensagem });
+}
+
+function extrairCodigoErro(mensagem) {
+    const encontrado = /\bDID_REVOCATION_[A-Z_]+\b/.exec(mensagem);
+    return encontrado?.[0];
+}
+
+function statusParaCodigoDid(codigo) {
+    return codigo === 'DID_REVOCATION_SUBJECT_NOT_FOUND' ? 404
+        : codigo === 'DID_REVOCATION_GOVERNANCE_CHANGED'
+            || codigo === 'DID_REVOCATION_SUBJECT_VERSION_CONFLICT'
+            || codigo === 'DID_REVOCATION_IDEMPOTENCY_CONFLICT' ? 409
+            : 400;
 }
 
 function autenticarServico(req, res, next) {
@@ -640,5 +655,5 @@ process.on('SIGINT', () => {
 module.exports = {
     app, autenticarServico, decodificar, tratarErro, validarComandoDid,
     verificarProvaDid, validarVcPermissao, verificarVcPermissao,
-    validarOperacaoAssinada, validarMspDoDid
+    validarOperacaoAssinada, validarMspDoDid, extrairCodigoErro, statusParaCodigoDid
 };

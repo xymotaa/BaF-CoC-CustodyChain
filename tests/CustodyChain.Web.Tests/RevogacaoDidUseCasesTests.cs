@@ -60,6 +60,31 @@ public sealed class RevogacaoDidUseCasesTests
         Assert.Contains("DID_REVOGACAO_REJEITADA", store.Acoes);
     }
 
+    [Fact]
+    public async Task ExecutarAsync_AuditaComandoSemCommandIdAntesDaSaga()
+    {
+        var store = new StoreFake();
+        var useCase = CriarRevogar(store, new LedgerFake());
+        var semCommandId = Comando() with { Command = JsonSerializer.SerializeToElement(new { type = "CustodyChainDidRevocation" }) };
+
+        await Assert.ThrowsAsync<RevogacaoDidInvalidaException>(() => useCase.ExecutarAsync(semCommandId));
+
+        Assert.Contains("REJEICAO", store.Acoes);
+        Assert.Null(store.Saga);
+    }
+
+    [Fact]
+    public async Task ExecutarAsync_AuditaProvaAusenteAntesDaSaga()
+    {
+        var store = new StoreFake();
+        var useCase = CriarRevogar(store, new LedgerFake());
+
+        await Assert.ThrowsAsync<RevogacaoDidInvalidaException>(() => useCase.ExecutarAsync(Comando() with { KeyId = "", Signature = "" }));
+
+        Assert.Contains("REJEICAO", store.Acoes);
+        Assert.Null(store.Saga);
+    }
+
     private static RevogarDidUseCase CriarRevogar(StoreFake store, LedgerFake ledger) =>
         new(store, ledger, new DidRegistryFake(), new ClockFake(), new NonceFake());
 
