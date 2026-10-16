@@ -437,6 +437,7 @@ public class GestaoPerfisController(
         };
         db.SagasRevogacaoDid.Add(saga);
         interveniente.Situacao = SituacaoInterveniente.REVOGACAO_PENDENTE;
+        await RegistrarAuditoriaRevogacaoAsync("DID_REVOGACAO_PREPARADA", interveniente.Id, administradorId, cancellationToken);
         await db.SaveChangesAsync(cancellationToken);
 
         try
@@ -450,6 +451,7 @@ public class GestaoPerfisController(
             saga.UltimaTentativaEm = saga.ConfirmadaEm;
             interveniente.Situacao = SituacaoInterveniente.REVOGADO;
             interveniente.SituacaoIdentidadeLedger = SituacaoIdentidadeLedger.INATIVA;
+            await RegistrarAuditoriaRevogacaoAsync("DID_REVOGACAO_CONFIRMADA", interveniente.Id, administradorId, cancellationToken);
             await db.SaveChangesAsync(cancellationToken);
             return Ok(new { redirectUrl = Url.Action(nameof(Index)), message = $"{interveniente.Nome} revogado." });
         }
@@ -460,6 +462,7 @@ public class GestaoPerfisController(
             saga.Tentativas = 1;
             saga.UltimaTentativaEm = DateTime.UtcNow;
             saga.ProximaTentativaEm = DateTime.UtcNow.AddMinutes(2);
+            await RegistrarAuditoriaRevogacaoAsync("DID_REVOGACAO_FALHOU", interveniente.Id, administradorId, cancellationToken);
             await db.SaveChangesAsync(cancellationToken);
             return StatusCode(StatusCodes.Status503ServiceUnavailable, new
             {
@@ -772,6 +775,21 @@ public class GestaoPerfisController(
             && p.Situacao != SituacaoPericia.CONCLUIDA && p.Situacao != SituacaoPericia.RECUSADA, cancellationToken)
         || await db.Descartes.AnyAsync(d => d.ExecutadoEm == null
             && (d.SolicitadoPorId == intervenienteId || d.AprovadoPorId == intervenienteId), cancellationToken);
+
+    private async Task RegistrarAuditoriaRevogacaoAsync(string acao, long intervenienteId, long administradorId,
+        CancellationToken cancellationToken)
+    {
+        var agora = DateTime.UtcNow;
+        var hashAnterior = await db.LogsAuditoria.OrderByDescending(log => log.Id)
+            .Select(log => log.HashRegistro).FirstOrDefaultAsync(cancellationToken) ?? new string('0', 64);
+        var conteudo = string.Join('|', hashAnterior, acao, "INTERVENIENTE", intervenienteId, administradorId, agora.Ticks);
+        db.LogsAuditoria.Add(new LogAuditoria
+        {
+            IntervenienteId = administradorId, Acao = acao, Entidade = "INTERVENIENTE", RegistroId = intervenienteId,
+            DataHora = agora, Ip = HttpContext.Connection.RemoteIpAddress?.ToString(), UserAgent = Request.Headers.UserAgent.ToString(),
+            HashAnterior = hashAnterior, HashRegistro = Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(conteudo)))
+        });
+    }
 
     private static bool PodeAtivarIdentidade(Interveniente interveniente) =>
         interveniente.Situacao == SituacaoInterveniente.GERADO

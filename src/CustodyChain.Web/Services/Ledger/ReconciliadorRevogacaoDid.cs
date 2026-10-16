@@ -1,4 +1,6 @@
 using System.Text.Json;
+using System.Security.Cryptography;
+using System.Text;
 using CustodyChain.Web.Data;
 using CustodyChain.Web.Models.Entities;
 using Microsoft.EntityFrameworkCore;
@@ -44,12 +46,14 @@ public sealed class ReconciliadorRevogacaoDid(IServiceScopeFactory scopeFactory,
                 saga.Erro = null;
                 saga.Interveniente.Situacao = SituacaoInterveniente.REVOGADO;
                 saga.Interveniente.SituacaoIdentidadeLedger = SituacaoIdentidadeLedger.INATIVA;
+                await RegistrarAuditoriaAsync(db, saga, "DID_REVOGACAO_RECONCILIADA", agora, cancellationToken);
             }
             catch (Exception exception) when (exception is not OperationCanceledException)
             {
                 saga.Estado = EstadoSagaRevogacaoDid.FALHA_RECONCILIACAO;
                 saga.Erro = exception.Message;
                 saga.ProximaTentativaEm = agora.Add(AtrasoTentativa);
+                await RegistrarAuditoriaAsync(db, saga, "DID_REVOGACAO_RECONCILIACAO_FALHOU", agora, cancellationToken);
                 logger.LogWarning(exception, "Falha ao reconciliar a revogação DID {CommandId}.", saga.CommandId);
             }
             finally
@@ -59,5 +63,20 @@ public sealed class ReconciliadorRevogacaoDid(IServiceScopeFactory scopeFactory,
             }
         }
         if (pendencias.Count > 0) await db.SaveChangesAsync(cancellationToken);
+    }
+
+    private static async Task RegistrarAuditoriaAsync(CustodyChainDbContext db, SagaRevogacaoDid saga,
+        string acao, DateTime ocorridoEm, CancellationToken cancellationToken)
+    {
+        var hashAnterior = await db.LogsAuditoria.OrderByDescending(log => log.Id)
+            .Select(log => log.HashRegistro).FirstOrDefaultAsync(cancellationToken) ?? new string('0', 64);
+        var conteudo = string.Join('|', hashAnterior, acao, "INTERVENIENTE", saga.IntervenienteId,
+            saga.AdministradorId, ocorridoEm.Ticks);
+        db.LogsAuditoria.Add(new LogAuditoria
+        {
+            IntervenienteId = saga.AdministradorId, Acao = acao, Entidade = "INTERVENIENTE",
+            RegistroId = saga.IntervenienteId, DataHora = ocorridoEm, HashAnterior = hashAnterior,
+            HashRegistro = Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(conteudo)))
+        });
     }
 }
