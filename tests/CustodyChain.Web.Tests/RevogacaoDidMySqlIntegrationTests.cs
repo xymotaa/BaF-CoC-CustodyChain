@@ -103,6 +103,7 @@ public sealed class RevogacaoDidMySqlIntegrationTests
         var perfilId = (byte)239;
         var administradorId = 8_000_000_000L + Random.Shared.Next(1_000_000);
         var alvoId = administradorId + 1;
+        var prefixoAcao = $"TEST_AUD_{id[..16]}";
 
         try
         {
@@ -114,11 +115,11 @@ public sealed class RevogacaoDidMySqlIntegrationTests
             }
 
             await Task.WhenAll(
-                AcrescentarAuditoriaAsync(connectionString, alvoId, administradorId, $"TEST_AUDITORIA_{id}_A"),
-                AcrescentarAuditoriaAsync(connectionString, alvoId, administradorId, $"TEST_AUDITORIA_{id}_B"));
+                AcrescentarAuditoriaAsync(connectionString, alvoId, administradorId, $"{prefixoAcao}_A"),
+                AcrescentarAuditoriaAsync(connectionString, alvoId, administradorId, $"{prefixoAcao}_B"));
 
             await using var verificacao = CriarContexto(connectionString);
-            var logs = await verificacao.LogsAuditoria.Where(log => log.Acao.StartsWith($"TEST_AUDITORIA_{id}"))
+            var logs = await verificacao.LogsAuditoria.Where(log => log.Acao.StartsWith(prefixoAcao))
                 .OrderBy(log => log.Id).ToListAsync();
             Assert.Equal(2, logs.Count);
             Assert.Equal(logs[0].HashRegistro, logs[1].HashAnterior);
