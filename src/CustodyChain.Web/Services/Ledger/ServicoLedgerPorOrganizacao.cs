@@ -17,6 +17,12 @@ public sealed class ServicoLedgerPorOrganizacao(
     public Task AtivarDidV2Async(string did, AtivacaoDidV2Dto dto, CancellationToken cancellationToken = default) =>
         Administrador().AtivarDidV2Async(did, dto, cancellationToken);
 
+    public Task RevogarDidV2Async(string did, RevogacaoDidV2Dto dto, CancellationToken cancellationToken = default) =>
+        Administrador().RevogarDidV2Async(did, dto, cancellationToken);
+
+    public Task<GovernancaIdentidadesDto> ObterGovernancaIdentidadesAsync(CancellationToken cancellationToken = default) =>
+        Administrador().ObterGovernancaIdentidadesAsync(cancellationToken);
+
     public Task<DocumentoDidRotacionadoDto> RotacionarChaveDidV2Async(
         string did, RotacaoChaveDidV2Dto dto, CancellationToken cancellationToken = default) =>
         ParaDid(did).RotacionarChaveDidV2Async(did, dto, cancellationToken);

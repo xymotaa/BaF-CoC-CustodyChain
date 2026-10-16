@@ -44,6 +44,32 @@ public class ServicoLedgerFabric(HttpClient httpClient) : IServicoLedger
         await LancarSeFalhaAsync(resposta);
     }
 
+    public async Task RevogarDidV2Async(
+        string did,
+        RevogacaoDidV2Dto dto,
+        CancellationToken cancellationToken = default)
+    {
+        var resposta = await httpClient.PostAsJsonAsync(
+            $"/v2/dids/{Uri.EscapeDataString(did)}/revocations", new
+            {
+                command = dto.Command,
+                keyId = dto.KeyId,
+                signature = dto.Signature
+            }, OpcoesJson, cancellationToken);
+        await LancarSeFalhaAsync(resposta);
+    }
+
+    public async Task<GovernancaIdentidadesDto> ObterGovernancaIdentidadesAsync(
+        CancellationToken cancellationToken = default)
+    {
+        var resposta = await httpClient.GetAsync("/v2/governanca/identidades", cancellationToken);
+        await LancarSeFalhaAsync(resposta);
+        var governanca = await resposta.Content.ReadFromJsonAsync<GovernancaIdentidadesGatewayDto>(
+            OpcoesJson, cancellationToken)
+            ?? throw new InvalidOperationException("Resposta vazia do gateway ao consultar a governança.");
+        return new GovernancaIdentidadesDto(governanca.Revision, governanca.ActiveAdminDids);
+    }
+
     public async Task<DocumentoDidRotacionadoDto> RotacionarChaveDidV2Async(
         string did,
         RotacaoChaveDidV2Dto dto,
@@ -221,6 +247,8 @@ public class ServicoLedgerFabric(HttpClient httpClient) : IServicoLedger
         [property: JsonPropertyName("didEmissor")] string? DidEmissor,
         [property: JsonPropertyName("criadoEm")] DateTime? CriadoEm,
         [property: JsonPropertyName("ativadoEm")] DateTime? AtivadoEm);
+
+    private record GovernancaIdentidadesGatewayDto(int Revision, IReadOnlyList<string> ActiveAdminDids);
 
     private record ResultadoVerificacaoGatewayDto(bool Valido, string? Motivo);
 

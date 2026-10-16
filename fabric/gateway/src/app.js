@@ -315,9 +315,35 @@ app.get('/v2/dids/:did', async (req, res) => {
 });
 
 app.post('/v2/dids/:did/revogar', async (req, res) => {
+    res.status(410).json({ error: 'Revogação DID sem prova desabilitada; use /v2/dids/:did/revocations.' });
+});
+
+app.post('/v2/dids/:did/revocations', async (req, res) => {
     try {
+        const { command, keyId, signature } = req.body;
+        validarComandoDid(command, 'CustodyChainDidRevocation');
+        if (command.subjectDid !== req.params.did || typeof keyId !== 'string' || typeof signature !== 'string') {
+            throw new Error('Prova de revogação DID inválida.');
+        }
         const contrato = obterContrato();
-        const resultado = await contrato.submitTransaction('RevogarDidV2', req.params.did);
+        const administrador = JSON.parse(decodificar(await contrato.evaluateTransaction('ResolverDid', command.actorDid)));
+        validarMspDoDid(administrador);
+        const metodo = administrador.verificationMethod?.find((item) => item.id === keyId);
+        if (!administrador.capabilityInvocation?.includes(keyId) || !metodo) {
+            throw new Error('A chave não possui capacidade para revogar identidades.');
+        }
+        verificarProvaDid(command, signature, metodo.publicKeyMultibase);
+        const resultado = await contrato.submitTransaction(
+            'RevogarDidV2Assinado', JSON.stringify(command), keyId, signature);
+        res.json(JSON.parse(decodificar(resultado)));
+    } catch (erro) {
+        tratarErro(res, erro);
+    }
+});
+
+app.get('/v2/governanca/identidades', async (req, res) => {
+    try {
+        const resultado = await obterContrato().evaluateTransaction('ConsultarGovernancaIdentidadesV1');
         res.json(JSON.parse(decodificar(resultado)));
     } catch (erro) {
         tratarErro(res, erro);

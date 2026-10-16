@@ -59,6 +59,8 @@ public record EnviarProvaRegistroDidRequest(object Command, string Signature);
 public record EnviarProvaAtivacaoDidRequest(object Command, string KeyId, string Signature);
 
 public record AtivarDidV2ViewModel(long IntervenienteId, string Did, string Nome, string DidAdministrador, string WalletEndpoint);
+public record RevogarDidV2ViewModel(long IntervenienteId, string Did, string Nome, string DidAdministrador, string WalletEndpoint);
+public record EnviarProvaRevogacaoDidRequest(object Command, string KeyId, string Signature);
 
 public class EmitirCredencialPermissaoViewModel
 {

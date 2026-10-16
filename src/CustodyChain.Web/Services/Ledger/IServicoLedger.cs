@@ -16,6 +16,8 @@ public record DidDocument(string Did, string MetodoDid, bool Ativo);
 public record RegistroDidPendenteDto(object Command, string Signature);
 
 public record AtivacaoDidV2Dto(object Command, string KeyId, string Signature);
+public record RevogacaoDidV2Dto(object Command, string KeyId, string Signature);
+public record GovernancaIdentidadesDto(int Revision, IReadOnlyList<string> ActiveAdminDids);
 
 public record ProvaChaveDidLedgerDto(string KeyId, string Algorithm, string Signature);
 
@@ -44,6 +46,10 @@ public interface IServicoLedger
 {
     Task RegistrarDidV2PendenteAsync(RegistroDidPendenteDto dto, CancellationToken cancellationToken = default);
     Task AtivarDidV2Async(string did, AtivacaoDidV2Dto dto, CancellationToken cancellationToken = default);
+    Task RevogarDidV2Async(string did, RevogacaoDidV2Dto dto, CancellationToken cancellationToken = default) =>
+        throw new NotSupportedException("Revogação DID v2 não implementada por este ledger.");
+    Task<GovernancaIdentidadesDto> ObterGovernancaIdentidadesAsync(CancellationToken cancellationToken = default) =>
+        throw new NotSupportedException("Consulta de governança de identidades não implementada por este ledger.");
     Task<DocumentoDidRotacionadoDto> RotacionarChaveDidV2Async(
         string did,
         RotacaoChaveDidV2Dto dto,

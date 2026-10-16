@@ -82,11 +82,7 @@ else
                                         <button type="submit" class="botao botao-primario">Reinscrever DID</button>
                                     </form>
                                 }
-                                <form asp-controller="GestaoPerfis" asp-action="Revogar" method="post" class="formulario-acao-tabela">
-                                    @Html.AntiForgeryToken()
-                                    <input type="hidden" name="intervenienteId" value="@item.Id" />
-                                    <button type="submit" class="botao botao-secundario">Revogar</button>
-                                </form>
+                                <a class="botao botao-secundario" href="/gestao-perfis/@item.Id/revogar">Revogar com prova</a>
                             }
                         </td>
                     </tr>

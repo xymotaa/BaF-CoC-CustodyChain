@@ -352,25 +352,79 @@ public class GestaoPerfisController(
         return Ok(new { redirectUrl = Url.Action(nameof(Index)), message = $"{interveniente.Nome} ativado." });
     }
 
-    [HttpPost("/gestao-perfis/revogar")]
-    [ValidateAntiForgeryToken]
-    public async Task<IActionResult> Revogar(long intervenienteId)
+    [HttpGet("/gestao-perfis/{intervenienteId:long}/revogar")]
+    public async Task<IActionResult> Revogar(long intervenienteId, CancellationToken cancellationToken)
     {
+        var administradorDid = User.FindFirstValue("did") ?? string.Empty;
         var interveniente = await db.Intervenientes
-            .FirstOrDefaultAsync(i => i.Id == intervenienteId && i.Situacao == SituacaoInterveniente.ATIVO);
+            .FirstOrDefaultAsync(i => i.Id == intervenienteId && i.Situacao == SituacaoInterveniente.ATIVO, cancellationToken);
 
-        if (interveniente is null)
+        if (interveniente is null || interveniente.Did == administradorDid)
         {
-            TempData["MensagemErro"] = "Interveniente não encontrado ou não está ativo.";
+            TempData["MensagemErro"] = interveniente?.Did == administradorDid
+                ? "Um administrador não pode revogar a própria identidade."
+                : "Interveniente não encontrado ou não está ativo.";
             return RedirectToAction(nameof(Index));
         }
 
+        if (await PossuiResponsabilidadesPendentesAsync(interveniente.Id, cancellationToken))
+        {
+            TempData["MensagemErro"] = "O interveniente possui responsabilidades de custódia pendentes e não pode ser revogado.";
+            return RedirectToAction(nameof(Index));
+        }
+
+        return View("RevogarDidV2", new RevogarDidV2ViewModel(interveniente.Id, interveniente.Did,
+            interveniente.Nome, administradorDid,
+            configuration["AuthenticationDid:WalletEndpoint"] ?? "http://127.0.0.1:43123"));
+    }
+
+    [HttpPost("/gestao-perfis/{intervenienteId:long}/revogar/comando")]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> CriarComandoRevogacaoDid(long intervenienteId, CancellationToken cancellationToken)
+    {
+        var administradorDid = User.FindFirstValue("did") ?? string.Empty;
+        var interveniente = await db.Intervenientes.FirstOrDefaultAsync(i => i.Id == intervenienteId
+            && i.Situacao == SituacaoInterveniente.ATIVO, cancellationToken);
+        if (interveniente is null || interveniente.Did == administradorDid
+            || await PossuiResponsabilidadesPendentesAsync(intervenienteId, cancellationToken))
+            return BadRequest(new { message = "Interveniente não está disponível para revogação." });
+
+        var documento = await didRegistry.ResolverAsync(interveniente.Did, cancellationToken);
+        var governanca = await ledger.ObterGovernancaIdentidadesAsync(cancellationToken);
+        if (documento is null || !documento.Ativo || !governanca.ActiveAdminDids.Contains(administradorDid))
+            return BadRequest(new { message = "A identidade ou a governança no ledger não permite esta revogação." });
+
+        var agora = DateTime.UtcNow;
+        return Ok(new {
+            type = "CustodyChainDidRevocation", version = 1, commandId = $"urn:uuid:{Guid.NewGuid()}",
+            actorDid = administradorDid, subjectDid = interveniente.Did,
+            expectedDocumentVersion = documento.DocumentVersion, expectedGovernanceRevision = governanca.Revision,
+            reason = "ADMINISTRATIVE_REVOCATION", algorithm = "Ed25519",
+            canonicalization = "custodychain-json-c14n-v1", audience = "custodychain-ledger",
+            issuedAt = agora.ToString("O"), expiresAt = agora.AddMinutes(5).ToString("O"),
+            nonce = Base64Url(RandomNumberGenerator.GetBytes(24))
+        });
+    }
+
+    [HttpPost("/gestao-perfis/{intervenienteId:long}/revogar/prova")]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> RevogarComProva(long intervenienteId,
+        [FromBody] EnviarProvaRevogacaoDidRequest? request, CancellationToken cancellationToken)
+    {
+        var administradorDid = User.FindFirstValue("did") ?? string.Empty;
+        var interveniente = await db.Intervenientes.FirstOrDefaultAsync(i => i.Id == intervenienteId
+            && i.Situacao == SituacaoInterveniente.ATIVO, cancellationToken);
+        if (interveniente is null || interveniente.Did == administradorDid
+            || await PossuiResponsabilidadesPendentesAsync(intervenienteId, cancellationToken)
+            || !ComandoRevogacaoDidCorresponde(request?.Command, interveniente.Did, administradorDid))
+            return BadRequest(new { message = "O comando de revogação não corresponde à identidade disponível." });
+
+        await ledger.RevogarDidV2Async(interveniente.Did,
+            new RevogacaoDidV2Dto(request!.Command, request.KeyId, request.Signature), cancellationToken);
         interveniente.Situacao = SituacaoInterveniente.REVOGADO;
         interveniente.SituacaoIdentidadeLedger = SituacaoIdentidadeLedger.INATIVA;
-        await db.SaveChangesAsync();
-
-        TempData["MensagemSucesso"] = $"{interveniente.Nome} revogado.";
-        return RedirectToAction(nameof(Index));
+        await db.SaveChangesAsync(cancellationToken);
+        return Ok(new { redirectUrl = Url.Action(nameof(Index)), message = $"{interveniente.Nome} revogado." });
     }
 
     [HttpGet("/gestao-perfis/emitir-credencial")]
@@ -658,6 +712,25 @@ public class GestaoPerfisController(
             && json.TryGetProperty("actorDid", out var actor) && actor.GetString() == actorDid
             && json.TryGetProperty("expectedDocumentVersion", out var version) && version.GetInt32() == 1;
     }
+
+    private static bool ComandoRevogacaoDidCorresponde(object? comando, string subjectDid, string actorDid)
+    {
+        var json = JsonSerializer.SerializeToElement(comando);
+        return json.TryGetProperty("type", out var type) && type.GetString() == "CustodyChainDidRevocation"
+            && json.TryGetProperty("subjectDid", out var subject) && subject.GetString() == subjectDid
+            && json.TryGetProperty("actorDid", out var actor) && actor.GetString() == actorDid
+            && json.TryGetProperty("expectedDocumentVersion", out var version) && version.ValueKind == JsonValueKind.Number
+            && json.TryGetProperty("expectedGovernanceRevision", out var governance) && governance.ValueKind == JsonValueKind.Number;
+    }
+
+    private async Task<bool> PossuiResponsabilidadesPendentesAsync(long intervenienteId, CancellationToken cancellationToken) =>
+        await db.Vestigios.AnyAsync(v => v.CustodianteAtualId == intervenienteId, cancellationToken)
+        || await db.Movimentacoes.AnyAsync(m => m.Situacao == SituacaoMovimentacao.PENDENTE
+            && (m.OrigemId == intervenienteId || m.DestinoId == intervenienteId || m.CriadoPorId == intervenienteId), cancellationToken)
+        || await db.Pericias.AnyAsync(p => p.PeritoId == intervenienteId
+            && p.Situacao != SituacaoPericia.CONCLUIDA && p.Situacao != SituacaoPericia.RECUSADA, cancellationToken)
+        || await db.Descartes.AnyAsync(d => d.ExecutadoEm == null
+            && (d.SolicitadoPorId == intervenienteId || d.AprovadoPorId == intervenienteId), cancellationToken);
 
     private static bool PodeAtivarIdentidade(Interveniente interveniente) =>
         interveniente.Situacao == SituacaoInterveniente.GERADO

@@ -123,6 +123,18 @@ const server = http.createServer(async (req, res) => {
             return json(res, 200, proof, origin);
         }
 
+        if (req.method === 'POST' && req.url === '/v1/proofs/did-revocation') {
+            const body = await readJson(req);
+            const proof = store.signDidCommand({
+                did: body.did,
+                password: body.password,
+                command: body.command,
+                expectedType: 'CustodyChainDidRevocation',
+                actorField: 'actorDid'
+            });
+            return json(res, 200, proof, origin);
+        }
+
         if (req.method === 'POST' && req.url === '/v1/key-rotations/candidates') {
             const body = await readJson(req);
             const candidate = store.createRotationCandidate({
