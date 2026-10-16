@@ -22,6 +22,7 @@ public class CustodyChainDbContext(DbContextOptions<CustodyChainDbContext> optio
     public DbSet<Credencial> Credenciais => Set<Credencial>();
     public DbSet<RegistroLedger> RegistrosLedger => Set<RegistroLedger>();
     public DbSet<LogAuditoria> LogsAuditoria => Set<LogAuditoria>();
+    public DbSet<SagaRevogacaoDid> SagasRevogacaoDid => Set<SagaRevogacaoDid>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -488,6 +489,27 @@ public class CustodyChainDbContext(DbContextOptions<CustodyChainDbContext> optio
                 .WithMany()
                 .HasForeignKey(l => l.IntervenienteId)
                 .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        modelBuilder.Entity<SagaRevogacaoDid>(e =>
+        {
+            e.ToTable("SAGA_REVOGACAO_DID");
+            e.HasKey(s => s.Id);
+            e.Property(s => s.CommandId).HasMaxLength(45).IsRequired();
+            e.HasIndex(s => s.CommandId).IsUnique();
+            e.Property(s => s.DidAlvo).HasMaxLength(200).IsRequired();
+            e.Property(s => s.CommandJson).HasColumnType("longtext").IsRequired();
+            e.Property(s => s.KeyId).HasMaxLength(250).IsRequired();
+            e.Property(s => s.Signature).HasMaxLength(128).IsRequired();
+            e.Property(s => s.Estado).HasConversion<string>().HasMaxLength(24).IsRequired();
+            e.Property(s => s.Erro).HasColumnType("text");
+            e.Property(s => s.CriadaEm).HasColumnType("datetime(6)").IsRequired();
+            e.Property(s => s.UltimaTentativaEm).HasColumnType("datetime(6)");
+            e.Property(s => s.ConfirmadaEm).HasColumnType("datetime(6)");
+            e.Property(s => s.ProximaTentativaEm).HasColumnType("datetime(6)");
+            e.HasIndex(s => new { s.Estado, s.ProximaTentativaEm });
+            e.HasOne(s => s.Interveniente).WithMany().HasForeignKey(s => s.IntervenienteId).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne(s => s.Administrador).WithMany().HasForeignKey(s => s.AdministradorId).OnDelete(DeleteBehavior.Restrict);
         });
     }
 }

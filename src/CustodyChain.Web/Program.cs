@@ -107,6 +107,7 @@ var ledgerOrg2Token = builder.Configuration["Ledger:Organizations:Org2MSP:Servic
 ConfigurarGatewayFabric(OrganizacaoFabricDid.Org1Msp, ledgerOrg1Url, ledgerOrg1Token);
 ConfigurarGatewayFabric(OrganizacaoFabricDid.Org2Msp, ledgerOrg2Url, ledgerOrg2Token);
 builder.Services.AddScoped<IServicoLedger, ServicoLedgerPorOrganizacao>();
+builder.Services.AddHostedService<ReconciliadorRevogacaoDid>();
 builder.Services.AddHttpClient<DidRegistryFabric>(client =>
 {
     client.BaseAddress = new Uri(ledgerOrg1Url);

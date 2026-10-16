@@ -4,6 +4,7 @@ public enum SituacaoInterveniente
 {
     GERADO,
     ATIVO,
+    REVOGACAO_PENDENTE,
     REVOGADO
 }
 

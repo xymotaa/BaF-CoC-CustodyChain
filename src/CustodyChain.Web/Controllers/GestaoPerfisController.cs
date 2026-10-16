@@ -412,6 +412,7 @@ public class GestaoPerfisController(
         [FromBody] EnviarProvaRevogacaoDidRequest? request, CancellationToken cancellationToken)
     {
         var administradorDid = User.FindFirstValue("did") ?? string.Empty;
+        var administradorId = long.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);
         var interveniente = await db.Intervenientes.FirstOrDefaultAsync(i => i.Id == intervenienteId
             && i.Situacao == SituacaoInterveniente.ATIVO, cancellationToken);
         if (interveniente is null || interveniente.Did == administradorDid
@@ -419,12 +420,52 @@ public class GestaoPerfisController(
             || !ComandoRevogacaoDidCorresponde(request?.Command, interveniente.Did, administradorDid))
             return BadRequest(new { message = "O comando de revogação não corresponde à identidade disponível." });
 
-        await ledger.RevogarDidV2Async(interveniente.Did,
-            new RevogacaoDidV2Dto(request!.Command, request.KeyId, request.Signature), cancellationToken);
-        interveniente.Situacao = SituacaoInterveniente.REVOGADO;
-        interveniente.SituacaoIdentidadeLedger = SituacaoIdentidadeLedger.INATIVA;
+        var command = JsonSerializer.SerializeToElement(request!.Command);
+        var commandId = command.GetProperty("commandId").GetString()!;
+        var saga = new SagaRevogacaoDid
+        {
+            CommandId = commandId,
+            IntervenienteId = interveniente.Id,
+            AdministradorId = administradorId,
+            DidAlvo = interveniente.Did,
+            CommandJson = command.GetRawText(),
+            KeyId = request.KeyId,
+            Signature = request.Signature,
+            Estado = EstadoSagaRevogacaoDid.PENDENTE_LEDGER,
+            CriadaEm = DateTime.UtcNow,
+            ProximaTentativaEm = DateTime.UtcNow
+        };
+        db.SagasRevogacaoDid.Add(saga);
+        interveniente.Situacao = SituacaoInterveniente.REVOGACAO_PENDENTE;
         await db.SaveChangesAsync(cancellationToken);
-        return Ok(new { redirectUrl = Url.Action(nameof(Index)), message = $"{interveniente.Nome} revogado." });
+
+        try
+        {
+            await ledger.RevogarDidV2Async(interveniente.Did,
+                new RevogacaoDidV2Dto(command, request.KeyId, request.Signature), cancellationToken);
+            saga.Estado = EstadoSagaRevogacaoDid.CONFIRMADA_NO_LEDGER;
+            saga.ConfirmadaEm = DateTime.UtcNow;
+            saga.ProximaTentativaEm = null;
+            saga.Tentativas = 1;
+            saga.UltimaTentativaEm = saga.ConfirmadaEm;
+            interveniente.Situacao = SituacaoInterveniente.REVOGADO;
+            interveniente.SituacaoIdentidadeLedger = SituacaoIdentidadeLedger.INATIVA;
+            await db.SaveChangesAsync(cancellationToken);
+            return Ok(new { redirectUrl = Url.Action(nameof(Index)), message = $"{interveniente.Nome} revogado." });
+        }
+        catch (Exception exception) when (exception is not OperationCanceledException)
+        {
+            saga.Estado = EstadoSagaRevogacaoDid.FALHA_RECONCILIACAO;
+            saga.Erro = exception.Message;
+            saga.Tentativas = 1;
+            saga.UltimaTentativaEm = DateTime.UtcNow;
+            saga.ProximaTentativaEm = DateTime.UtcNow.AddMinutes(2);
+            await db.SaveChangesAsync(cancellationToken);
+            return StatusCode(StatusCodes.Status503ServiceUnavailable, new
+            {
+                message = "A revogação permanece pendente de confirmação no ledger e será reconciliada automaticamente."
+            });
+        }
     }
 
     [HttpGet("/gestao-perfis/emitir-credencial")]
