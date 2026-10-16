@@ -1,6 +1,7 @@
-# Ignore documentation files
+# Ignore documentation files, exceto o procedimento versionado de implantação.
 *.docs
-docs/
+docs/*
+!docs/PROCEDIMENTO-IMPLANTACAO-REVOGACAO-DID-CUSTODYLAB2.md
 
 # .NET
 bin/
