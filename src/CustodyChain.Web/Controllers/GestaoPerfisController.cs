@@ -5,6 +5,7 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using CustodyChain.Web.Application.VerifiableCredentials;
 using CustodyChain.Web.Application.Autenticacao;
+using CustodyChain.Web.Application.RevogacaoDid;
 using CustodyChain.Web.Data;
 using CustodyChain.Web.Models.Entities;
 using CustodyChain.Web.Models.ViewModels;
@@ -415,19 +416,27 @@ public class GestaoPerfisController(
         var administradorId = long.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);
         var interveniente = await db.Intervenientes.FirstOrDefaultAsync(i => i.Id == intervenienteId
             && i.Situacao == SituacaoInterveniente.ATIVO, cancellationToken);
-        if (interveniente is null || interveniente.Did == administradorDid
-            || await PossuiResponsabilidadesPendentesAsync(intervenienteId, cancellationToken)
-            || !ComandoRevogacaoDidCorresponde(request?.Command, interveniente.Did, administradorDid))
+        var motivoRejeicao = PoliticaRevogacaoDid.Avaliar(
+            interveniente is not null,
+            administradorDid,
+            interveniente?.Did,
+            interveniente is not null && await PossuiResponsabilidadesPendentesAsync(intervenienteId, cancellationToken),
+            interveniente is not null && ComandoRevogacaoDidCorresponde(request?.Command, interveniente.Did, administradorDid));
+        if (motivoRejeicao != MotivoRejeicaoRevogacaoDid.Nenhum)
+        {
+            await RegistrarAuditoriaRejeicaoRevogacaoAsync(motivoRejeicao, intervenienteId, administradorId, cancellationToken);
             return BadRequest(new { message = "O comando de revogação não corresponde à identidade disponível." });
+        }
 
+        var alvo = interveniente!;
         var command = JsonSerializer.SerializeToElement(request!.Command);
         var commandId = command.GetProperty("commandId").GetString()!;
         var saga = new SagaRevogacaoDid
         {
             CommandId = commandId,
-            IntervenienteId = interveniente.Id,
+            IntervenienteId = alvo.Id,
             AdministradorId = administradorId,
-            DidAlvo = interveniente.Did,
+            DidAlvo = alvo.Did,
             CommandJson = command.GetRawText(),
             KeyId = request.KeyId,
             Signature = request.Signature,
@@ -436,24 +445,24 @@ public class GestaoPerfisController(
             ProximaTentativaEm = DateTime.UtcNow
         };
         db.SagasRevogacaoDid.Add(saga);
-        interveniente.Situacao = SituacaoInterveniente.REVOGACAO_PENDENTE;
-        await RegistrarAuditoriaRevogacaoAsync("DID_REVOGACAO_PREPARADA", interveniente.Id, administradorId, cancellationToken);
+        alvo.Situacao = SituacaoInterveniente.REVOGACAO_PENDENTE;
+        await RegistrarAuditoriaRevogacaoAsync("DID_REVOGACAO_PREPARADA", alvo.Id, administradorId, cancellationToken);
         await db.SaveChangesAsync(cancellationToken);
 
         try
         {
-            await ledger.RevogarDidV2Async(interveniente.Did,
+            await ledger.RevogarDidV2Async(alvo.Did,
                 new RevogacaoDidV2Dto(command, request.KeyId, request.Signature), cancellationToken);
             saga.Estado = EstadoSagaRevogacaoDid.CONFIRMADA_NO_LEDGER;
             saga.ConfirmadaEm = DateTime.UtcNow;
             saga.ProximaTentativaEm = null;
             saga.Tentativas = 1;
             saga.UltimaTentativaEm = saga.ConfirmadaEm;
-            interveniente.Situacao = SituacaoInterveniente.REVOGADO;
-            interveniente.SituacaoIdentidadeLedger = SituacaoIdentidadeLedger.INATIVA;
-            await RegistrarAuditoriaRevogacaoAsync("DID_REVOGACAO_CONFIRMADA", interveniente.Id, administradorId, cancellationToken);
+            alvo.Situacao = SituacaoInterveniente.REVOGADO;
+            alvo.SituacaoIdentidadeLedger = SituacaoIdentidadeLedger.INATIVA;
+            await RegistrarAuditoriaRevogacaoAsync("DID_REVOGACAO_CONFIRMADA", alvo.Id, administradorId, cancellationToken);
             await db.SaveChangesAsync(cancellationToken);
-            return Ok(new { redirectUrl = Url.Action(nameof(Index)), message = $"{interveniente.Nome} revogado." });
+            return Ok(new { redirectUrl = Url.Action(nameof(Index)), message = $"{alvo.Nome} revogado." });
         }
         catch (Exception exception) when (exception is not OperationCanceledException)
         {
@@ -462,7 +471,7 @@ public class GestaoPerfisController(
             saga.Tentativas = 1;
             saga.UltimaTentativaEm = DateTime.UtcNow;
             saga.ProximaTentativaEm = DateTime.UtcNow.AddMinutes(2);
-            await RegistrarAuditoriaRevogacaoAsync("DID_REVOGACAO_FALHOU", interveniente.Id, administradorId, cancellationToken);
+            await RegistrarAuditoriaRevogacaoAsync("DID_REVOGACAO_FALHOU", alvo.Id, administradorId, cancellationToken);
             await db.SaveChangesAsync(cancellationToken);
             return StatusCode(StatusCodes.Status503ServiceUnavailable, new
             {
@@ -790,6 +799,16 @@ public class GestaoPerfisController(
             HashAnterior = hashAnterior, HashRegistro = Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(conteudo)))
         });
     }
+
+    private Task RegistrarAuditoriaRejeicaoRevogacaoAsync(MotivoRejeicaoRevogacaoDid motivo, long intervenienteId,
+        long administradorId, CancellationToken cancellationToken) =>
+        RegistrarAuditoriaRevogacaoAsync(motivo switch
+        {
+            MotivoRejeicaoRevogacaoDid.AutoRevogacao => "DID_REVOGACAO_REJ_AUTO",
+            MotivoRejeicaoRevogacaoDid.ResponsabilidadesPendentes => "DID_REVOGACAO_REJ_PEND",
+            MotivoRejeicaoRevogacaoDid.ComandoInvalido => "DID_REVOGACAO_REJ_COMANDO",
+            _ => "DID_REVOGACAO_REJ_INDISP"
+        }, intervenienteId, administradorId, cancellationToken);
 
     private static bool PodeAtivarIdentidade(Interveniente interveniente) =>
         interveniente.Situacao == SituacaoInterveniente.GERADO
