@@ -5,6 +5,7 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using CustodyChain.Web.Application.VerifiableCredentials;
 using CustodyChain.Web.Application.Autenticacao;
+using CustodyChain.Web.Application.RevogacaoDid;
 using CustodyChain.Web.Data;
 using CustodyChain.Web.Models.Entities;
 using CustodyChain.Web.Models.ViewModels;
@@ -22,6 +23,7 @@ public class GestaoPerfisController(
     CustodyChainDbContext db,
     IServicoLedger ledger,
     IDidRegistry didRegistry,
+    IRevogarDid revogarDid,
     IConfiguration configuration,
     CriarVcPermissao criarVcPermissao,
     IEmissaoVcPendenteStore emissoesPendentes) : Controller
@@ -352,25 +354,93 @@ public class GestaoPerfisController(
         return Ok(new { redirectUrl = Url.Action(nameof(Index)), message = $"{interveniente.Nome} ativado." });
     }
 
-    [HttpPost("/gestao-perfis/revogar")]
-    [ValidateAntiForgeryToken]
-    public async Task<IActionResult> Revogar(long intervenienteId)
+    [HttpGet("/gestao-perfis/{intervenienteId:long}/revogar")]
+    public async Task<IActionResult> Revogar(long intervenienteId, CancellationToken cancellationToken)
     {
+        var administradorDid = User.FindFirstValue("did") ?? string.Empty;
         var interveniente = await db.Intervenientes
-            .FirstOrDefaultAsync(i => i.Id == intervenienteId && i.Situacao == SituacaoInterveniente.ATIVO);
+            .FirstOrDefaultAsync(i => i.Id == intervenienteId && i.Situacao == SituacaoInterveniente.ATIVO, cancellationToken);
 
-        if (interveniente is null)
+        if (interveniente is null || interveniente.Did == administradorDid)
         {
-            TempData["MensagemErro"] = "Interveniente não encontrado ou não está ativo.";
+            TempData["MensagemErro"] = interveniente?.Did == administradorDid
+                ? "Um administrador não pode revogar a própria identidade."
+                : "Interveniente não encontrado ou não está ativo.";
             return RedirectToAction(nameof(Index));
         }
 
-        interveniente.Situacao = SituacaoInterveniente.REVOGADO;
-        interveniente.SituacaoIdentidadeLedger = SituacaoIdentidadeLedger.INATIVA;
-        await db.SaveChangesAsync();
+        if (await PossuiResponsabilidadesPendentesAsync(interveniente.Id, cancellationToken))
+        {
+            TempData["MensagemErro"] = "O interveniente possui responsabilidades de custódia pendentes e não pode ser revogado.";
+            return RedirectToAction(nameof(Index));
+        }
 
-        TempData["MensagemSucesso"] = $"{interveniente.Nome} revogado.";
-        return RedirectToAction(nameof(Index));
+        return View("RevogarDidV2", new RevogarDidV2ViewModel(interveniente.Id, interveniente.Did,
+            interveniente.Nome, administradorDid,
+            configuration["AuthenticationDid:WalletEndpoint"] ?? "http://127.0.0.1:43123"));
+    }
+
+    [HttpPost("/gestao-perfis/{intervenienteId:long}/revogar/comando")]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> CriarComandoRevogacaoDid(long intervenienteId, CancellationToken cancellationToken)
+    {
+        var administradorDid = User.FindFirstValue("did") ?? string.Empty;
+        var administradorId = long.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);
+        try
+        {
+            var preparacao = await revogarDid.PrepararAsync(new PrepararRevogacaoDidCommand(intervenienteId, administradorId, administradorDid,
+                new ContextoAuditoriaRevogacaoDid(HttpContext.Connection.RemoteIpAddress?.ToString(), Request.Headers.UserAgent.ToString())), cancellationToken);
+            return Ok(preparacao.Command);
+        }
+        catch (LedgerRevogacaoDidIndisponivelException exception)
+        {
+            return StatusCode(StatusCodes.Status503ServiceUnavailable, new { message = exception.Message });
+        }
+        catch (RevogacaoDidInvalidaException exception)
+        {
+            return BadRequest(new { message = exception.Message });
+        }
+    }
+
+    [HttpPost("/gestao-perfis/{intervenienteId:long}/revogar/prova")]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> RevogarComProva(long intervenienteId,
+        [FromBody] EnviarProvaRevogacaoDidRequest? request, CancellationToken cancellationToken)
+    {
+        var administradorDid = User.FindFirstValue("did") ?? string.Empty;
+        var administradorId = long.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);
+        try
+        {
+            var resultado = await revogarDid.ExecutarAsync(new ExecutarRevogacaoDidCommand(intervenienteId, administradorId,
+                administradorDid, request is null ? default : JsonSerializer.SerializeToElement(request.Command),
+                request?.KeyId ?? string.Empty, request?.Signature ?? string.Empty,
+                new ContextoAuditoriaRevogacaoDid(HttpContext.Connection.RemoteIpAddress?.ToString(), Request.Headers.UserAgent.ToString())), cancellationToken);
+            return resultado.Estado switch
+            {
+                EstadoRevogacaoDid.ConfirmadaNoLedger => Ok(new
+                {
+                    redirectUrl = Url.Action(nameof(Index)),
+                    message = $"{resultado.NomeAlvo} revogado."
+                }),
+                EstadoRevogacaoDid.FalhaPermanente => BadRequest(new
+                {
+                    message = "A revogação foi rejeitada definitivamente pelo ledger."
+                }),
+                _ => Accepted(new
+                {
+                    message = $"A revogação de {resultado.NomeAlvo} está em processamento e será confirmada pelo reconciliador.",
+                    estado = resultado.Estado.ToString()
+                })
+            };
+        }
+        catch (LedgerRevogacaoDidIndisponivelException exception)
+        {
+            return StatusCode(StatusCodes.Status503ServiceUnavailable, new { message = exception.Message });
+        }
+        catch (RevogacaoDidInvalidaException exception)
+        {
+            return BadRequest(new { message = exception.Message });
+        }
     }
 
     [HttpGet("/gestao-perfis/emitir-credencial")]
@@ -658,6 +728,25 @@ public class GestaoPerfisController(
             && json.TryGetProperty("actorDid", out var actor) && actor.GetString() == actorDid
             && json.TryGetProperty("expectedDocumentVersion", out var version) && version.GetInt32() == 1;
     }
+
+    private static bool ComandoRevogacaoDidCorresponde(object? comando, string subjectDid, string actorDid)
+    {
+        var json = JsonSerializer.SerializeToElement(comando);
+        return json.TryGetProperty("type", out var type) && type.GetString() == "CustodyChainDidRevocation"
+            && json.TryGetProperty("subjectDid", out var subject) && subject.GetString() == subjectDid
+            && json.TryGetProperty("actorDid", out var actor) && actor.GetString() == actorDid
+            && json.TryGetProperty("expectedDocumentVersion", out var version) && version.ValueKind == JsonValueKind.Number
+            && json.TryGetProperty("expectedGovernanceRevision", out var governance) && governance.ValueKind == JsonValueKind.Number;
+    }
+
+    private async Task<bool> PossuiResponsabilidadesPendentesAsync(long intervenienteId, CancellationToken cancellationToken) =>
+        await db.Vestigios.AnyAsync(v => v.CustodianteAtualId == intervenienteId, cancellationToken)
+        || await db.Movimentacoes.AnyAsync(m => m.Situacao == SituacaoMovimentacao.PENDENTE
+            && (m.OrigemId == intervenienteId || m.DestinoId == intervenienteId || m.CriadoPorId == intervenienteId), cancellationToken)
+        || await db.Pericias.AnyAsync(p => p.PeritoId == intervenienteId
+            && p.Situacao != SituacaoPericia.CONCLUIDA && p.Situacao != SituacaoPericia.RECUSADA, cancellationToken)
+        || await db.Descartes.AnyAsync(d => d.ExecutadoEm == null
+            && (d.SolicitadoPorId == intervenienteId || d.AprovadoPorId == intervenienteId), cancellationToken);
 
     private static bool PodeAtivarIdentidade(Interveniente interveniente) =>
         interveniente.Situacao == SituacaoInterveniente.GERADO

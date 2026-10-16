@@ -1,6 +1,7 @@
 using System.Net.Http.Json;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using CustodyChain.Web.Application.RevogacaoDid;
 
 namespace CustodyChain.Web.Services.Ledger;
 
@@ -42,6 +43,32 @@ public class ServicoLedgerFabric(HttpClient httpClient) : IServicoLedger
                 signature = dto.Signature
             }, OpcoesJson, cancellationToken);
         await LancarSeFalhaAsync(resposta);
+    }
+
+    public async Task RevogarDidV2Async(
+        string did,
+        RevogacaoDidV2Dto dto,
+        CancellationToken cancellationToken = default)
+    {
+        var resposta = await httpClient.PostAsJsonAsync(
+            $"/v2/dids/{Uri.EscapeDataString(did)}/revocations", new
+            {
+                command = dto.Command,
+                keyId = dto.KeyId,
+                signature = dto.Signature
+            }, OpcoesJson, cancellationToken);
+        await LancarFalhaRevogacaoSeNecessarioAsync(resposta);
+    }
+
+    public async Task<GovernancaIdentidadesDto> ObterGovernancaIdentidadesAsync(
+        CancellationToken cancellationToken = default)
+    {
+        var resposta = await httpClient.GetAsync("/v2/governanca/identidades", cancellationToken);
+        await LancarSeFalhaAsync(resposta);
+        var governanca = await resposta.Content.ReadFromJsonAsync<GovernancaIdentidadesGatewayDto>(
+            OpcoesJson, cancellationToken)
+            ?? throw new InvalidOperationException("Resposta vazia do gateway ao consultar a governança.");
+        return new GovernancaIdentidadesDto(governanca.Revision, governanca.ActiveAdminDids);
     }
 
     public async Task<DocumentoDidRotacionadoDto> RotacionarChaveDidV2Async(
@@ -214,6 +241,32 @@ public class ServicoLedgerFabric(HttpClient httpClient) : IServicoLedger
         throw new InvalidOperationException($"Falha ao chamar o gateway do ledger ({(int)resposta.StatusCode}): {corpo}");
     }
 
+    private static async Task LancarFalhaRevogacaoSeNecessarioAsync(HttpResponseMessage resposta)
+    {
+        if (resposta.IsSuccessStatusCode) return;
+        var corpo = await resposta.Content.ReadAsStringAsync();
+        var codigo = ExtrairCodigoRevogacaoDid(corpo);
+        if (CodigosRevogacaoDid.EhRejeicaoDefinitiva(codigo))
+            throw new LedgerRejeicaoDefinitivaException(codigo!, $"Revogação rejeitada pelo gateway ({(int)resposta.StatusCode}): {corpo}");
+        throw new HttpRequestException($"Falha transitória ao chamar o gateway ({(int)resposta.StatusCode}): {corpo}");
+    }
+
+    private static string? ExtrairCodigoRevogacaoDid(string corpo)
+    {
+        try
+        {
+            using var documento = JsonDocument.Parse(corpo);
+            return documento.RootElement.TryGetProperty("code", out var codigo)
+                && codigo.GetString()?.StartsWith("DID_REVOCATION_", StringComparison.Ordinal) == true
+                ? codigo.GetString()
+                : null;
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
+    }
+
     private record DidDocumentoGatewayDto(
         string Did,
         string MetodoDid,
@@ -221,6 +274,8 @@ public class ServicoLedgerFabric(HttpClient httpClient) : IServicoLedger
         [property: JsonPropertyName("didEmissor")] string? DidEmissor,
         [property: JsonPropertyName("criadoEm")] DateTime? CriadoEm,
         [property: JsonPropertyName("ativadoEm")] DateTime? AtivadoEm);
+
+    private record GovernancaIdentidadesGatewayDto(int Revision, IReadOnlyList<string> ActiveAdminDids);
 
     private record ResultadoVerificacaoGatewayDto(bool Valido, string? Motivo);
 

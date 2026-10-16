@@ -30,6 +30,13 @@ const SUPPORTED_SIGNED_OPERATIONS = new Set([
     'DESTINACAO_SOLICITAR', 'DESTINACAO_APROVAR', 'PERICIA_RECEBER', 'LACRE_ROMPER', 'LAUDO_EMITIR',
     'AMOSTRA_CONSUMIR', 'AMOSTRA_EXAURIR', 'AMOSTRA_FRACIONAR', 'AMOSTRA_UNIFICAR'
 ]);
+const DID_REVOCATION_REJECTION_CODES = new Set([
+    'DID_REVOCATION_COMMAND_EXPIRED', 'DID_REVOCATION_SELF_REVOKE',
+    'DID_REVOCATION_GOVERNANCE_CHANGED', 'DID_REVOCATION_ACTOR_INACTIVE',
+    'DID_REVOCATION_KEY_NOT_AUTHORIZED', 'DID_REVOCATION_SIGNATURE_INVALID',
+    'DID_REVOCATION_SUBJECT_NOT_FOUND', 'DID_REVOCATION_SUBJECT_VERSION_CONFLICT',
+    'DID_REVOCATION_LAST_ADMIN', 'DID_REVOCATION_IDEMPOTENCY_CONFLICT'
+]);
 const ALLOWED_ORIGINS = (process.env.ALLOWED_ORIGINS || 'http://localhost:5143')
     .split(',')
     .map((origin) => origin.trim())
@@ -95,13 +102,29 @@ function tratarErro(res, erro) {
     const mensagem = Array.isArray(detalhes)
         ? detalhes.map((detalhe) => detalhe.message || String(detalhe)).join(' ')
         : detalhes || (erro && erro.message) || 'Erro desconhecido no gateway.';
-    const status = mensagem.includes('não encontrado') ? 404
+    const codigo = extrairCodigoErro(mensagem);
+    const codigoReconhecido = codigo && DID_REVOCATION_REJECTION_CODES.has(codigo);
+    const status = codigoReconhecido ? statusParaCodigoDid(codigo)
+        : mensagem.includes('não encontrado') ? 404
         : mensagem.includes('já existe') || mensagem.includes('já foi concluído')
             || mensagem.includes('já foi concluída') || mensagem.includes('Conflito de idempotência')
             || mensagem.includes('versão do documento DID mudou') ? 409
             : mensagem.includes('inválid') || mensagem.includes('não autorizado') ? 400
                 : 500;
-    res.status(status).json({ error: mensagem });
+    res.status(status).json(codigoReconhecido ? { error: mensagem, code: codigo } : { error: mensagem });
+}
+
+function extrairCodigoErro(mensagem) {
+    const encontrado = /\bDID_REVOCATION_[A-Z_]+\b/.exec(mensagem);
+    return encontrado?.[0];
+}
+
+function statusParaCodigoDid(codigo) {
+    return codigo === 'DID_REVOCATION_SUBJECT_NOT_FOUND' ? 404
+        : codigo === 'DID_REVOCATION_GOVERNANCE_CHANGED'
+            || codigo === 'DID_REVOCATION_SUBJECT_VERSION_CONFLICT'
+            || codigo === 'DID_REVOCATION_IDEMPOTENCY_CONFLICT' ? 409
+            : 400;
 }
 
 function autenticarServico(req, res, next) {
@@ -304,6 +327,18 @@ app.post('/v2/bootstrap/admin/legacy-migration', async (req, res) => {
     }
 });
 
+app.post('/v2/governanca/identidades/inicializar', async (_req, res) => {
+    if (MSP_ID !== 'Org1MSP') {
+        return res.status(403).json({ error: 'Somente o gateway da Org1 pode inicializar a governança de identidades.' });
+    }
+    try {
+        const resultado = await obterContrato().submitTransaction('InicializarGovernancaIdentidadesV1');
+        return res.json(JSON.parse(decodificar(resultado)));
+    } catch (erro) {
+        return tratarErro(res, erro);
+    }
+});
+
 app.get('/v2/dids/:did', async (req, res) => {
     try {
         const contrato = obterContrato();
@@ -315,9 +350,35 @@ app.get('/v2/dids/:did', async (req, res) => {
 });
 
 app.post('/v2/dids/:did/revogar', async (req, res) => {
+    res.status(410).json({ error: 'Revogação DID sem prova desabilitada; use /v2/dids/:did/revocations.' });
+});
+
+app.post('/v2/dids/:did/revocations', async (req, res) => {
     try {
+        const { command, keyId, signature } = req.body;
+        validarComandoDid(command, 'CustodyChainDidRevocation');
+        if (command.subjectDid !== req.params.did || typeof keyId !== 'string' || typeof signature !== 'string') {
+            throw new Error('Prova de revogação DID inválida.');
+        }
         const contrato = obterContrato();
-        const resultado = await contrato.submitTransaction('RevogarDidV2', req.params.did);
+        const administrador = JSON.parse(decodificar(await contrato.evaluateTransaction('ResolverDid', command.actorDid)));
+        validarMspDoDid(administrador);
+        const metodo = administrador.verificationMethod?.find((item) => item.id === keyId);
+        if (!administrador.capabilityInvocation?.includes(keyId) || !metodo) {
+            throw new Error('A chave não possui capacidade para revogar identidades.');
+        }
+        verificarProvaDid(command, signature, metodo.publicKeyMultibase);
+        const resultado = await contrato.submitTransaction(
+            'RevogarDidV2Assinado', JSON.stringify(command), keyId, signature);
+        res.json(JSON.parse(decodificar(resultado)));
+    } catch (erro) {
+        tratarErro(res, erro);
+    }
+});
+
+app.get('/v2/governanca/identidades', async (req, res) => {
+    try {
+        const resultado = await obterContrato().evaluateTransaction('ConsultarGovernancaIdentidadesV1');
         res.json(JSON.parse(decodificar(resultado)));
     } catch (erro) {
         tratarErro(res, erro);
@@ -614,5 +675,6 @@ process.on('SIGINT', () => {
 module.exports = {
     app, autenticarServico, decodificar, tratarErro, validarComandoDid,
     verificarProvaDid, validarVcPermissao, verificarVcPermissao,
-    validarOperacaoAssinada, validarMspDoDid
+    validarOperacaoAssinada, validarMspDoDid, extrairCodigoErro, statusParaCodigoDid,
+    DID_REVOCATION_REJECTION_CODES
 };

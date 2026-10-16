@@ -105,6 +105,14 @@ class CustodyChainContract extends Contract {
 
         await ctx.stub.putState(chaveDid, Buffer.from(JSON.stringify(documento)));
         await ctx.stub.putState(chaveBootstrap, Buffer.from(JSON.stringify({ did, criadoEm: agora })));
+        await this._salvarGovernancaIdentidades(ctx, {
+            type: 'CustodyChainIdentityGovernance',
+            version: 1,
+            revision: 1,
+            activeAdminDids: [did],
+            initializedAt: agora,
+            updatedAt: agora
+        });
         return JSON.stringify(documento);
     }
 
@@ -165,7 +173,51 @@ class CustodyChainContract extends Contract {
             criadoEm: agora,
             origem: 'MIGRACAO_LEGADA_V1'
         })));
+        await this._salvarGovernancaIdentidades(ctx, {
+            type: 'CustodyChainIdentityGovernance',
+            version: 1,
+            revision: 1,
+            activeAdminDids: [did],
+            initializedAt: agora,
+            updatedAt: agora,
+            origem: 'MIGRACAO_LEGADA_V1'
+        });
         return JSON.stringify(documento);
+    }
+
+    async InicializarGovernancaIdentidadesV1(ctx) {
+        this._garantirOrganizacaoAdministradora(ctx);
+
+        const chaveGovernanca = ctx.stub.createCompositeKey(PREFIXO_GOVERNANCA, ['identity-governance']);
+        const governancaExistente = await ctx.stub.getState(chaveGovernanca);
+        if (governancaExistente && governancaExistente.length > 0) {
+            return JSON.stringify(await this._obterGovernancaIdentidades(ctx));
+        }
+
+        const chaveBootstrap = ctx.stub.createCompositeKey(PREFIXO_GOVERNANCA, ['admin-bootstrap']);
+        const bootstrap = await ctx.stub.getState(chaveBootstrap);
+        if (!bootstrap || bootstrap.length === 0) {
+            throw new Error('Não é possível inicializar a governança sem o bootstrap administrativo existente.');
+        }
+
+        const didBootstrap = JSON.parse(bootstrap.toString()).did;
+        const administradoresAtivos = await this._listarAdministradoresV2Ativos(ctx);
+        if (!administradoresAtivos.includes(didBootstrap)) {
+            throw new Error('O DID administrativo do bootstrap deve permanecer ativo para inicializar a governança.');
+        }
+
+        const agora = this._agora(ctx);
+        const governanca = {
+            type: 'CustodyChainIdentityGovernance',
+            version: 1,
+            revision: 1,
+            activeAdminDids: administradoresAtivos,
+            initializedAt: agora,
+            updatedAt: agora,
+            origem: 'COMPATIBILIDADE_LEDGER_V2'
+        };
+        await this._salvarGovernancaIdentidades(ctx, governanca);
+        return JSON.stringify(governanca);
     }
 
     async AtualizarCapacidadeAdminDidV2(ctx) {
@@ -268,14 +320,11 @@ class CustodyChainContract extends Contract {
         this._validarJanelaComando(ctx, comando);
         this._validarComandoAtivacao(comando, keyId);
 
-        const chaveBootstrap = ctx.stub.createCompositeKey(PREFIXO_GOVERNANCA, ['admin-bootstrap']);
-        const bootstrap = await ctx.stub.getState(chaveBootstrap);
-        if (!bootstrap || bootstrap.length === 0 || JSON.parse(bootstrap.toString()).did !== comando.actorDid) {
-            throw new Error('Somente o DID administrador de governança pode ativar identidades.');
-        }
-
         const administrador = await this._obterDocumentoDid(ctx, comando.actorDid);
-        if (administrador.status !== 'ATIVO' || !administrador.capabilityInvocation?.includes(keyId)) {
+        const governanca = await this._obterGovernancaIdentidades(ctx);
+        if (!governanca.activeAdminDids.includes(comando.actorDid)
+            || administrador.status !== 'ATIVO' || administrador.ativo !== true
+            || !administrador.capabilityInvocation?.includes(keyId)) {
             throw new Error('DID administrador não possui capacidade para ativar identidades.');
         }
         const chaveAdministrativa = administrador.verificationMethod.find((metodo) => metodo.id === keyId);
@@ -317,6 +366,16 @@ class CustodyChainContract extends Contract {
         }
         documento.documentVersion += 1;
         await ctx.stub.putState(chaveDid, Buffer.from(JSON.stringify(documento)));
+        if (documento.metodoDid === 'did:legal:admin') {
+            if (governanca.activeAdminDids.includes(documento.did)) {
+                throw new Error('DID administrativo já consta na governança.');
+            }
+            governanca.activeAdminDids.push(documento.did);
+            governanca.activeAdminDids.sort();
+            governanca.revision += 1;
+            governanca.updatedAt = documento.ativadoEm;
+            await this._salvarGovernancaIdentidades(ctx, governanca);
+        }
         await ctx.stub.putState(chaveComando, Buffer.from(JSON.stringify({
             hash: this._hashComando(comando),
             did: comando.subjectDid,
@@ -415,6 +474,11 @@ class CustodyChainContract extends Contract {
         this._validarComandoRecuperacao(comando, keyIdAdmin);
         this._validarJanelaComando(ctx, comando);
         const administrador = await this._obterDocumentoDid(ctx, comando.actorDid);
+        const governanca = await this._obterGovernancaIdentidades(ctx);
+        if (!governanca.activeAdminDids.includes(comando.actorDid)
+            || administrador.status !== 'ATIVO' || administrador.ativo !== true) {
+            throw new Error('DID administrador não está ativo na governança de identidades.');
+        }
         const chaveAdmin = administrador.verificationMethod?.find((chave) => chave.id === keyIdAdmin);
         if (!chaveAdmin || !administrador.capabilityInvocation?.includes(keyIdAdmin)) {
             throw new Error('A chave administrativa não possui capacidade para recuperar identidade.');
@@ -460,26 +524,94 @@ class CustodyChainContract extends Contract {
         return JSON.stringify(documento);
     }
 
-    async RevogarDidV2(ctx, did) {
+    async RevogarDidV2(ctx) {
+        throw new Error('LEGACY_REVOCATION_DISABLED: use RevogarDidV2Assinado com comando e prova DID.');
+    }
+
+    async RevogarDidV2Assinado(ctx, comandoJson, keyId, assinatura) {
         this._garantirOrganizacaoAdministradora(ctx);
-        const chave = ctx.stub.createCompositeKey(PREFIXO_DID, [did]);
-        const bytes = await ctx.stub.getState(chave);
-        if (!bytes || bytes.length === 0) {
-            throw new Error(`DID não encontrado: ${did}`);
+        let comando;
+        try {
+            comando = this._lerComando(comandoJson, 'CustodyChainDidRevocation');
+            this._validarComandoRevogacaoDid(comando, keyId);
+        } catch (erro) {
+            throw new Error(`DID_REVOCATION_COMMAND_INVALID: ${erro.message}`);
+        }
+        const chaveComando = ctx.stub.createCompositeKey(PREFIXO_GOVERNANCA, ['command', comando.commandId]);
+        const hash = this._hashComando(comando);
+        const existente = await ctx.stub.getState(chaveComando);
+        if (existente && existente.length > 0) {
+            if (JSON.parse(existente.toString()).hash !== hash) {
+                throw new Error('DID_REVOCATION_IDEMPOTENCY_CONFLICT: Conflito de idempotência para a revogação DID.');
+            }
+            return this.ResolverDid(ctx, comando.subjectDid);
+        }
+        try {
+            this._validarJanelaComando(ctx, comando);
+        } catch (erro) {
+            throw new Error(`DID_REVOCATION_COMMAND_EXPIRED: ${erro.message}`);
         }
 
+        const governanca = await this._obterGovernancaIdentidades(ctx);
+        if (comando.actorDid === comando.subjectDid) {
+            throw new Error('DID_REVOCATION_SELF_REVOKE: Um administrador não pode revogar a própria identidade.');
+        }
+        if (governanca.revision !== comando.expectedGovernanceRevision) {
+            throw new Error('DID_REVOCATION_GOVERNANCE_CHANGED: A governança de identidades mudou; prepare uma nova revogação.');
+        }
+        if (!governanca.activeAdminDids.includes(comando.actorDid)) {
+            throw new Error('DID_REVOCATION_ACTOR_INACTIVE: O DID signatário não é administrador ativo na governança.');
+        }
+
+        const administrador = await this._obterDocumentoDid(ctx, comando.actorDid);
+        const chaveAdministrativa = administrador.verificationMethod?.find((metodo) => metodo.id === keyId);
+        if (administrador.status !== 'ATIVO' || administrador.ativo !== true
+            || !chaveAdministrativa || !administrador.capabilityInvocation?.includes(keyId)) {
+            throw new Error('DID_REVOCATION_KEY_NOT_AUTHORIZED: DID administrador não possui capacidade para revogar identidades.');
+        }
+        try {
+            this._verificarAssinatura(comando, assinatura, chaveAdministrativa.publicKeyMultibase);
+        } catch (erro) {
+            throw new Error(`DID_REVOCATION_SIGNATURE_INVALID: ${erro.message}`);
+        }
+
+        const chaveDid = ctx.stub.createCompositeKey(PREFIXO_DID, [comando.subjectDid]);
+        const bytes = await ctx.stub.getState(chaveDid);
+        if (!bytes || bytes.length === 0) throw new Error(`DID_REVOCATION_SUBJECT_NOT_FOUND: DID não encontrado: ${comando.subjectDid}`);
         const documento = JSON.parse(bytes.toString());
-        if (documento.version !== 2) {
-            throw new Error('Somente documentos DID v2 podem ser revogados por esta operação.');
+        if (documento.version !== 2 || documento.status !== 'ATIVO' || documento.ativo !== true
+            || documento.documentVersion !== comando.expectedDocumentVersion) {
+            throw new Error('DID_REVOCATION_SUBJECT_VERSION_CONFLICT: DID não está ativo na versão esperada para revogação.');
+        }
+        if (documento.metodoDid === 'did:legal:admin' && governanca.activeAdminDids.length <= 1) {
+            throw new Error('DID_REVOCATION_LAST_ADMIN: Não é permitido revogar o último administrador ativo.');
         }
 
-        if (documento.status !== 'REVOGADO') {
-            documento.status = 'REVOGADO';
-            documento.ativo = false;
-            documento.revogadoEm = this._agora(ctx);
-            await ctx.stub.putState(chave, Buffer.from(JSON.stringify(documento)));
+        const agora = this._agora(ctx);
+        documento.status = 'REVOGADO';
+        documento.ativo = false;
+        documento.revogadoEm = agora;
+        documento.revogadoPorDid = comando.actorDid;
+        documento.motivoRevogacao = comando.reason;
+        documento.documentVersion += 1;
+        for (const metodo of documento.verificationMethod || []) {
+            if (metodo.status === 'ACTIVE') {
+                metodo.status = 'REVOKED';
+                metodo.validUntil = agora;
+                metodo.retirementReason = 'ADMIN_REVOCATION';
+            }
         }
-
+        if (documento.metodoDid === 'did:legal:admin') {
+            governanca.activeAdminDids = governanca.activeAdminDids.filter((did) => did !== documento.did);
+        }
+        governanca.revision += 1;
+        governanca.updatedAt = agora;
+        await ctx.stub.putState(chaveDid, Buffer.from(JSON.stringify(documento)));
+        await this._salvarGovernancaIdentidades(ctx, governanca);
+        await ctx.stub.putState(chaveComando, Buffer.from(JSON.stringify({
+            hash, did: comando.subjectDid, actorDid: comando.actorDid, criadoEm: agora,
+            tipo: 'REVOGACAO_DID', governanceRevision: governanca.revision
+        })));
         return JSON.stringify(documento);
     }
 
@@ -1492,6 +1624,66 @@ class CustodyChainContract extends Contract {
             || !pedido || typeof pedido !== 'object' || Array.isArray(pedido)) {
             throw new Error('Conteúdo do comando de recuperação DID inválido.');
         }
+    }
+
+    _validarComandoRevogacaoDid(comando, keyId) {
+        if (!/^did:legal:admin:[a-zA-Z0-9._-]{3,128}$/.test(comando.actorDid)
+            || !/^did:legal:(admin|custodian|delegate|expert|judge):[a-zA-Z0-9._-]{3,128}$/.test(comando.subjectDid)
+            || typeof keyId !== 'string' || !keyId.startsWith(`${comando.actorDid}#`)
+            || !Number.isInteger(comando.expectedDocumentVersion) || comando.expectedDocumentVersion < 1
+            || !Number.isInteger(comando.expectedGovernanceRevision) || comando.expectedGovernanceRevision < 1
+            || typeof comando.reason !== 'string' || !/^[A-Z_]{3,64}$/.test(comando.reason)
+            || comando.algorithm !== 'Ed25519'
+            || comando.canonicalization !== 'custodychain-json-c14n-v1'
+            || typeof comando.nonce !== 'string' || !/^[A-Za-z0-9_-]{22,128}$/.test(comando.nonce)) {
+            throw new Error('Conteúdo do comando de revogação DID inválido.');
+        }
+    }
+
+    async ConsultarGovernancaIdentidadesV1(ctx) {
+        this._garantirOrganizacaoAdministradora(ctx);
+        return JSON.stringify(await this._obterGovernancaIdentidades(ctx));
+    }
+
+    async _obterGovernancaIdentidades(ctx) {
+        const chave = ctx.stub.createCompositeKey(PREFIXO_GOVERNANCA, ['identity-governance']);
+        const bytes = await ctx.stub.getState(chave);
+        if (!bytes || bytes.length === 0) {
+            throw new Error('GOVERNANCE_NOT_INITIALIZED: inicialize a governança de identidades antes de administrar DIDs.');
+        }
+        const governanca = JSON.parse(bytes.toString());
+        if (governanca.type !== 'CustodyChainIdentityGovernance' || governanca.version !== 1
+            || !Number.isInteger(governanca.revision) || governanca.revision < 1
+            || !Array.isArray(governanca.activeAdminDids) || governanca.activeAdminDids.length === 0
+            || governanca.activeAdminDids.some((did) => !/^did:legal:admin:[a-zA-Z0-9._-]{3,128}$/.test(did))) {
+            throw new Error('O registro de governança de identidades está inválido.');
+        }
+        return governanca;
+    }
+
+    async _listarAdministradoresV2Ativos(ctx) {
+        const iterator = await ctx.stub.getStateByPartialCompositeKey(PREFIXO_DID, []);
+        const administradores = [];
+        try {
+            for (;;) {
+                const proximo = await iterator.next();
+                if (proximo.done) break;
+                const documento = JSON.parse(proximo.value.value.toString());
+                if (documento.version === 2 && documento.metodoDid === 'did:legal:admin'
+                    && documento.status === 'ATIVO' && documento.ativo === true
+                    && /^did:legal:admin:[a-zA-Z0-9._-]{3,128}$/.test(documento.did)) {
+                    administradores.push(documento.did);
+                }
+            }
+        } finally {
+            await iterator.close();
+        }
+        return [...new Set(administradores)].sort();
+    }
+
+    async _salvarGovernancaIdentidades(ctx, governanca) {
+        const chave = ctx.stub.createCompositeKey(PREFIXO_GOVERNANCA, ['identity-governance']);
+        await ctx.stub.putState(chave, Buffer.from(JSON.stringify(governanca)));
     }
 
     _validarPedidoRecuperacao(ctx, pedido, documento, comando) {

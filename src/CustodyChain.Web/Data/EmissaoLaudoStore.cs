@@ -33,6 +33,7 @@ public sealed class EmissaoLaudoStore(CustodyChainDbContext db) : IEmissaoLaudoS
 
     public async Task PersistirAsync(LaudoPendente laudoPendente, CancellationToken cancellationToken)
     {
+        await using var bloqueioAuditoria = await AuditoriaEncadeada.AdquirirAsync(db, cancellationToken);
         await using var transacao = await db.Database.BeginTransactionAsync(cancellationToken);
         try
         {
@@ -91,7 +92,7 @@ public sealed class EmissaoLaudoStore(CustodyChainDbContext db) : IEmissaoLaudoS
                 CriadoEm = laudoPendente.EmitidoEm,
                 AncoradoEm = laudoPendente.ConfirmadoEm,
             });
-            db.LogsAuditoria.Add(CriarLogLaudo(laudo.Id, laudoPendente));
+            await AuditoriaEncadeada.AdicionarAsync(db, hashAnterior => CriarLogLaudo(laudo.Id, laudoPendente, hashAnterior), cancellationToken);
 
             await db.SaveChangesAsync(cancellationToken);
             await transacao.CommitAsync(cancellationToken);
@@ -104,10 +105,8 @@ public sealed class EmissaoLaudoStore(CustodyChainDbContext db) : IEmissaoLaudoS
         }
     }
 
-    private LogAuditoria CriarLogLaudo(long laudoId, LaudoPendente laudo)
+    private static LogAuditoria CriarLogLaudo(long laudoId, LaudoPendente laudo, string hashAnterior)
     {
-        var hashAnterior = db.LogsAuditoria.OrderByDescending(log => log.Id)
-            .Select(log => log.HashRegistro).FirstOrDefault() ?? new string('0', 64);
         var conteudo = string.Join('|', hashAnterior, "LAUDO", "LAUDO", laudoId,
             laudo.PeritoId, laudo.EmitidoEm.Ticks);
 

@@ -1,4 +1,5 @@
 using System.Text.Json;
+using CustodyChain.Web.Application.RevogacaoDid;
 
 namespace CustodyChain.Web.Services.Ledger;
 
@@ -9,13 +10,41 @@ namespace CustodyChain.Web.Services.Ledger;
 /// </summary>
 public sealed class ServicoLedgerPorOrganizacao(
     IHttpClientFactory httpClientFactory,
-    IConfiguration configuration) : IServicoLedger
+    IConfiguration configuration) : IServicoLedger, IRevogacaoDidLedger
 {
     public Task RegistrarDidV2PendenteAsync(RegistroDidPendenteDto dto, CancellationToken cancellationToken = default) =>
         Administrador().RegistrarDidV2PendenteAsync(dto, cancellationToken);
 
     public Task AtivarDidV2Async(string did, AtivacaoDidV2Dto dto, CancellationToken cancellationToken = default) =>
         Administrador().AtivarDidV2Async(did, dto, cancellationToken);
+
+    public Task RevogarDidV2Async(string did, RevogacaoDidV2Dto dto, CancellationToken cancellationToken = default) =>
+        Administrador().RevogarDidV2Async(did, dto, cancellationToken);
+
+    public Task<GovernancaIdentidadesDto> ObterGovernancaIdentidadesAsync(CancellationToken cancellationToken = default) =>
+        Administrador().ObterGovernancaIdentidadesAsync(cancellationToken);
+
+    async Task<GovernancaRevogacaoDid> IRevogacaoDidLedger.ObterGovernancaAsync(CancellationToken cancellationToken)
+    {
+        var governanca = await ObterGovernancaIdentidadesAsync(cancellationToken);
+        return new GovernancaRevogacaoDid(governanca.Revision, governanca.ActiveAdminDids);
+    }
+
+    async Task IRevogacaoDidLedger.RevogarAsync(string did, ProvaRevogacaoDid prova, CancellationToken cancellationToken)
+    {
+        try
+        {
+            await RevogarDidV2Async(did, new RevogacaoDidV2Dto(prova.Command, prova.KeyId, prova.Signature), cancellationToken);
+        }
+        catch (LedgerRejeicaoDefinitivaException exception)
+        {
+            throw new RevogacaoDidRejeitadaException(exception.Codigo, exception.Message, exception);
+        }
+        catch (Exception exception) when (exception is not OperationCanceledException)
+        {
+            throw new LedgerRevogacaoDidIndisponivelException("Falha transitória ao chamar o gateway do ledger.", exception);
+        }
+    }
 
     public Task<DocumentoDidRotacionadoDto> RotacionarChaveDidV2Async(
         string did, RotacaoChaveDidV2Dto dto, CancellationToken cancellationToken = default) =>

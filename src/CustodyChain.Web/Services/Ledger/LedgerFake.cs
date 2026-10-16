@@ -34,6 +34,19 @@ public class LedgerFake : IServicoLedger
         return Task.CompletedTask;
     }
 
+    public Task RevogarDidV2Async(string did, RevogacaoDidV2Dto dto, CancellationToken cancellationToken = default)
+    {
+        if (!_dids.TryGetValue(did, out var doc))
+            throw new InvalidOperationException($"DID não encontrado: {did}");
+        _dids[did] = doc with { Ativo = false };
+        return Task.CompletedTask;
+    }
+
+    public Task<GovernancaIdentidadesDto> ObterGovernancaIdentidadesAsync(CancellationToken cancellationToken = default) =>
+        Task.FromResult(new GovernancaIdentidadesDto(1, _dids.Values
+            .Where(d => d.Ativo && d.MetodoDid == "did:legal:admin")
+            .Select(d => d.Did).ToArray()));
+
     public Task<string> GerarDidAsync(TipoAtor tipo)
     {
         var did = $"did:legal:{tipo.ToString().ToLowerInvariant()}:{Interlocked.Increment(ref _sequencial):D6}";

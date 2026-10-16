@@ -35,6 +35,7 @@ public sealed class ConsumoOuExaurimentoStore(CustodyChainDbContext db) : IConsu
         ConsumoOuExaurimentoPendente operacaoPendente,
         CancellationToken cancellationToken)
     {
+        await using var bloqueioAuditoria = await AuditoriaEncadeada.AdquirirAsync(db, cancellationToken);
         await using var transacao = await db.Database.BeginTransactionAsync(cancellationToken);
         try
         {
@@ -85,7 +86,7 @@ public sealed class ConsumoOuExaurimentoStore(CustodyChainDbContext db) : IConsu
                 CriadoEm = operacaoPendente.ExecutadoEm,
                 AncoradoEm = operacaoPendente.ConfirmadoEm,
             });
-            db.LogsAuditoria.Add(CriarLog(operacao.Id, operacaoPendente));
+            await AuditoriaEncadeada.AdicionarAsync(db, hashAnterior => CriarLog(operacao.Id, operacaoPendente, hashAnterior), cancellationToken);
 
             await db.SaveChangesAsync(cancellationToken);
             await transacao.CommitAsync(cancellationToken);
@@ -111,10 +112,8 @@ public sealed class ConsumoOuExaurimentoStore(CustodyChainDbContext db) : IConsu
         && pericia.Credencial.VestigioId == pericia.VestigioId
         && (pericia.Credencial.ValidaAte is null || pericia.Credencial.ValidaAte > agora);
 
-    private LogAuditoria CriarLog(long operacaoId, ConsumoOuExaurimentoPendente operacao)
+    private static LogAuditoria CriarLog(long operacaoId, ConsumoOuExaurimentoPendente operacao, string hashAnterior)
     {
-        var hashAnterior = db.LogsAuditoria.OrderByDescending(log => log.Id)
-            .Select(log => log.HashRegistro).FirstOrDefault() ?? new string('0', 64);
         var conteudo = string.Join('|', hashAnterior, operacao.Tipo, "OPERACAO_AMOSTRA", operacaoId,
             operacao.PeritoId, operacao.ExecutadoEm.Ticks);
 

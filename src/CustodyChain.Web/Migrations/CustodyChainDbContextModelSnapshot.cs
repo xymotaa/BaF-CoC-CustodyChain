@@ -289,6 +289,32 @@ namespace CustodyChain.Web.Migrations
                     b.ToTable("INTERVENIENTE", (string)null);
                 });
 
+            modelBuilder.Entity("CustodyChain.Web.Models.Entities.SagaRevogacaoDid", b =>
+                {
+                    b.Property<long>("Id").ValueGeneratedOnAdd().HasColumnType("bigint");
+                    MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<long>("Id"));
+                    b.Property<long>("AdministradorId").HasColumnType("bigint");
+                    b.Property<string>("CommandId").IsRequired().HasMaxLength(45).HasColumnType("varchar(45)");
+                    b.Property<string>("CommandJson").IsRequired().HasColumnType("longtext");
+                    b.Property<DateTime?>("ConfirmadaEm").HasColumnType("datetime(6)");
+                    b.Property<DateTime>("CriadaEm").HasColumnType("datetime(6)");
+                    b.Property<string>("DidAlvo").IsRequired().HasMaxLength(200).HasColumnType("varchar(200)");
+                    b.Property<string>("Erro").HasColumnType("text");
+                    b.Property<string>("Estado").IsRequired().HasMaxLength(24).HasColumnType("varchar(24)");
+                    b.Property<long>("IntervenienteId").HasColumnType("bigint");
+                    b.Property<string>("KeyId").IsRequired().HasMaxLength(250).HasColumnType("varchar(250)");
+                    b.Property<DateTime?>("ProximaTentativaEm").HasColumnType("datetime(6)");
+                    b.Property<string>("Signature").IsRequired().HasMaxLength(128).HasColumnType("varchar(128)");
+                    b.Property<byte>("Tentativas").HasColumnType("tinyint unsigned");
+                    b.Property<DateTime?>("UltimaTentativaEm").HasColumnType("datetime(6)");
+                    b.HasKey("Id");
+                    b.HasIndex("AdministradorId");
+                    b.HasIndex("CommandId").IsUnique();
+                    b.HasIndex("IntervenienteId");
+                    b.HasIndex("Estado", "ProximaTentativaEm");
+                    b.ToTable("SAGA_REVOGACAO_DID", (string)null);
+                });
+
             modelBuilder.Entity("CustodyChain.Web.Models.Entities.InscricaoDid", b =>
                 {
                     b.Property<long>("Id")
@@ -866,6 +892,16 @@ namespace CustodyChain.Web.Migrations
                         .IsUnique();
 
                     b.ToTable("REGISTRO_LEDGER", (string)null);
+                });
+
+            modelBuilder.Entity("CustodyChain.Web.Models.Entities.SagaRevogacaoDid", b =>
+                {
+                    b.HasOne("CustodyChain.Web.Models.Entities.Interveniente", "Administrador")
+                        .WithMany().HasForeignKey("AdministradorId").OnDelete(DeleteBehavior.Restrict).IsRequired();
+                    b.HasOne("CustodyChain.Web.Models.Entities.Interveniente", "Interveniente")
+                        .WithMany().HasForeignKey("IntervenienteId").OnDelete(DeleteBehavior.Restrict).IsRequired();
+                    b.Navigation("Administrador");
+                    b.Navigation("Interveniente");
                 });
 
             modelBuilder.Entity("CustodyChain.Web.Models.Entities.TipoVestigio", b =>

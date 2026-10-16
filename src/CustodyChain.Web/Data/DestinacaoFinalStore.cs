@@ -47,6 +47,7 @@ public sealed class DestinacaoFinalStore(CustodyChainDbContext db) : IDestinacao
         SolicitacaoDestinacaoPendente solicitacao,
         CancellationToken cancellationToken)
     {
+        await using var bloqueioAuditoria = await AuditoriaEncadeada.AdquirirAsync(db, cancellationToken);
         await using var transacao = await db.Database.BeginTransactionAsync(cancellationToken);
         try
         {
@@ -107,11 +108,8 @@ public sealed class DestinacaoFinalStore(CustodyChainDbContext db) : IDestinacao
                 AncoradoEm = solicitacao.SolicitadoEm,
             });
 
-            db.LogsAuditoria.Add(CriarLog(
-                "SOLICITACAO_DESTINACAO",
-                descarte.Id,
-                solicitacao.SolicitanteId,
-                solicitacao.SolicitadoEm));
+            await AuditoriaEncadeada.AdicionarAsync(db, hashAnterior => CriarLog(
+                "SOLICITACAO_DESTINACAO", descarte.Id, solicitacao.SolicitanteId, solicitacao.SolicitadoEm, hashAnterior), cancellationToken);
             await db.SaveChangesAsync(cancellationToken);
             await transacao.CommitAsync(cancellationToken);
         }
@@ -161,6 +159,7 @@ public sealed class DestinacaoFinalStore(CustodyChainDbContext db) : IDestinacao
         AprovacaoDestinacaoPendente aprovacao,
         CancellationToken cancellationToken)
     {
+        await using var bloqueioAuditoria = await AuditoriaEncadeada.AdquirirAsync(db, cancellationToken);
         await using var transacao = await db.Database.BeginTransactionAsync(cancellationToken);
         try
         {
@@ -204,11 +203,8 @@ public sealed class DestinacaoFinalStore(CustodyChainDbContext db) : IDestinacao
                 CriadoEm = aprovacao.ExecutadoEm,
                 AncoradoEm = aprovacao.ExecutadoEm,
             });
-            db.LogsAuditoria.Add(CriarLog(
-                "DESTINACAO_APROVAR",
-                descarte.Id,
-                aprovacao.AprovadorId,
-                aprovacao.ExecutadoEm));
+            await AuditoriaEncadeada.AdicionarAsync(db, hashAnterior => CriarLog(
+                "DESTINACAO_APROVAR", descarte.Id, aprovacao.AprovadorId, aprovacao.ExecutadoEm, hashAnterior), cancellationToken);
 
             await db.SaveChangesAsync(cancellationToken);
             await transacao.CommitAsync(cancellationToken);
@@ -270,10 +266,8 @@ public sealed class DestinacaoFinalStore(CustodyChainDbContext db) : IDestinacao
              && solicitacao.OperacaoAssinadaId == aprovacao.SolicitacaoOperationId
          select solicitacao.Id).AnyAsync(cancellationToken);
 
-    private LogAuditoria CriarLog(string acao, long descarteId, long responsavelId, DateTime ocorridoEm)
+    private static LogAuditoria CriarLog(string acao, long descarteId, long responsavelId, DateTime ocorridoEm, string hashAnterior)
     {
-        var hashAnterior = db.LogsAuditoria.OrderByDescending(log => log.Id)
-            .Select(log => log.HashRegistro).FirstOrDefault() ?? new string('0', 64);
         var conteudo = string.Join('|', hashAnterior, acao, "DESCARTE", descarteId, responsavelId, ocorridoEm.Ticks);
 
         return new LogAuditoria
