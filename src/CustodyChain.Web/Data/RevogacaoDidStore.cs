@@ -1,6 +1,7 @@
 using CustodyChain.Web.Application.RevogacaoDid;
 using CustodyChain.Web.Models.Entities;
 using Microsoft.EntityFrameworkCore;
+using MySqlConnector;
 
 namespace CustodyChain.Web.Data;
 
@@ -38,15 +39,26 @@ public sealed class RevogacaoDidStore(CustodyChainDbContext db) : IRevogacaoDidS
         if (existente is not null)
         {
             if (!string.Equals(existente.CommandJson, nova.CommandJson, StringComparison.Ordinal))
+            {
+                await RegistrarRejeicaoAposRollbackAsync(transacao, nova, MotivoRejeicaoRevogacaoDid.ComandoInvalido, cancellationToken);
                 throw new RevogacaoDidInvalidaException("commandId já foi usado com conteúdo diferente.");
+            }
             await transacao.CommitAsync(cancellationToken);
             return Mapear(existente);
         }
 
         var alvo = await db.Intervenientes.SingleOrDefaultAsync(i => i.Id == nova.IntervenienteId, cancellationToken)
-            ?? throw new RevogacaoDidInvalidaException("Interveniente não encontrado.");
+            ;
+        if (alvo is null)
+        {
+            await RegistrarRejeicaoAposRollbackAsync(transacao, nova, MotivoRejeicaoRevogacaoDid.IdentidadeIndisponivel, cancellationToken);
+            throw new RevogacaoDidInvalidaException("Interveniente não encontrado.");
+        }
         if (alvo.Situacao != SituacaoInterveniente.ATIVO || await PossuiResponsabilidadesPendentesAsync(alvo.Id, cancellationToken))
+        {
+            await RegistrarRejeicaoAposRollbackAsync(transacao, nova, MotivoRejeicaoRevogacaoDid.IdentidadeIndisponivel, cancellationToken);
             throw new RevogacaoDidInvalidaException("Interveniente não está disponível para revogação.");
+        }
 
         var saga = new SagaRevogacaoDid
         {
@@ -64,15 +76,20 @@ public sealed class RevogacaoDidStore(CustodyChainDbContext db) : IRevogacaoDidS
             await transacao.CommitAsync(cancellationToken);
             return Mapear(saga, alvo.Nome);
         }
-        catch (DbUpdateException)
+        catch (DbUpdateException exception)
         {
             await transacao.RollbackAsync(cancellationToken);
+            await transacao.DisposeAsync();
             db.ChangeTracker.Clear();
+            if (!EhConflitoCommandId(exception)) throw;
             var concorrente = await db.SagasRevogacaoDid.AsNoTracking().Include(s => s.Interveniente)
                 .SingleOrDefaultAsync(s => s.CommandId == nova.CommandId, cancellationToken);
             if (concorrente is null) throw;
             if (!string.Equals(concorrente.CommandJson, nova.CommandJson, StringComparison.Ordinal))
+            {
+                await RegistrarRejeicaoAsync(nova, MotivoRejeicaoRevogacaoDid.ComandoInvalido, cancellationToken);
                 throw new RevogacaoDidInvalidaException("commandId já foi usado com conteúdo diferente.");
+            }
             return Mapear(concorrente);
         }
     }
@@ -164,6 +181,39 @@ public sealed class RevogacaoDidStore(CustodyChainDbContext db) : IRevogacaoDidS
                 DataHora = agora, Ip = contexto.Ip, UserAgent = contexto.UserAgent, HashAnterior = anterior,
                 HashRegistro = Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(conteudo))) };
         }, cancellationToken);
+    }
+
+    private async Task RegistrarRejeicaoAposRollbackAsync(
+        Microsoft.EntityFrameworkCore.Storage.IDbContextTransaction transacao,
+        NovaSagaRevogacaoDid nova,
+        MotivoRejeicaoRevogacaoDid motivo,
+        CancellationToken cancellationToken)
+    {
+        await transacao.RollbackAsync(cancellationToken);
+        await transacao.DisposeAsync();
+        db.ChangeTracker.Clear();
+        await RegistrarRejeicaoAsync(nova, motivo, cancellationToken);
+    }
+
+    private async Task RegistrarRejeicaoAsync(
+        NovaSagaRevogacaoDid nova,
+        MotivoRejeicaoRevogacaoDid motivo,
+        CancellationToken cancellationToken)
+    {
+        await AdicionarAuditoriaAsync(AcaoRejeicao(motivo), nova.IntervenienteId, nova.AdministradorId,
+            nova.Auditoria, DateTime.SpecifyKind(nova.CriadaEm, DateTimeKind.Utc), cancellationToken);
+        await db.SaveChangesAsync(cancellationToken);
+    }
+
+    private static bool EhConflitoCommandId(DbUpdateException exception)
+    {
+        for (var atual = exception.InnerException; atual is not null; atual = atual.InnerException)
+        {
+            if (atual is MySqlException { Number: 1062 } mysql
+                && mysql.Message.Contains("IX_SAGA_REVOGACAO_DID_CommandId", StringComparison.OrdinalIgnoreCase))
+                return true;
+        }
+        return false;
     }
 
     private static string AcaoRejeicao(MotivoRejeicaoRevogacaoDid motivo) => motivo switch

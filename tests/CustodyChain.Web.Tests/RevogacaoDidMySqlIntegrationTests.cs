@@ -37,6 +37,12 @@ public sealed class RevogacaoDidMySqlIntegrationTests
             var criacoes = await Task.WhenAll(CriarSagaAsync(connectionString, nova), CriarSagaAsync(connectionString, nova));
             Assert.All(criacoes, saga => Assert.Equal(commandId, saga.CommandId));
 
+            await Assert.ThrowsAsync<RevogacaoDidInvalidaException>(() =>
+                CriarSagaAsync(connectionString, nova with { CommandJson = "{\"commandId\":\"divergente\"}" }));
+            await using (var conflito = CriarContexto(connectionString))
+                Assert.Contains(await conflito.LogsAuditoria.Where(log => log.RegistroId == alvoId).Select(log => log.Acao).ToListAsync(),
+                    acao => acao == "DID_REVOGACAO_REJ_COMANDO");
+
             var agora = DateTime.UtcNow.AddMinutes(1);
             var leases = await Task.WhenAll(AssumirAsync(connectionString, commandId, agora), AssumirAsync(connectionString, commandId, agora));
             Assert.Single(leases, lease => lease is not null);
@@ -46,6 +52,42 @@ public sealed class RevogacaoDidMySqlIntegrationTests
             Assert.Equal(1, await verificacao.SagasRevogacaoDid.CountAsync(s => s.CommandId == commandId));
             var logs = await verificacao.LogsAuditoria.Where(log => log.RegistroId == alvoId).OrderBy(log => log.Id).ToListAsync();
             Assert.All(logs.Skip(1), (log, indice) => Assert.Equal(logs[indice].HashRegistro, log.HashAnterior));
+        }
+        finally
+        {
+            await LimparAsync(connectionString, commandId, alvoId, administradorId, perfilId);
+        }
+    }
+
+    [Fact]
+    public async Task Store_audita_interveniente_inativo_apos_rollback()
+    {
+        var connectionString = ObterConnectionStringDeTeste();
+        var id = Guid.NewGuid().ToString("N");
+        var perfilId = (byte)238;
+        var administradorId = 7_000_000_000L + Random.Shared.Next(1_000_000);
+        var alvoId = administradorId + 1;
+        var commandId = $"urn:uuid:{Guid.NewGuid()}";
+
+        try
+        {
+            await using (var contexto = CriarContexto(connectionString))
+            {
+                contexto.Perfis.Add(new Perfil { Id = perfilId, Codigo = $"TEST_{id[..8]}", Nome = "Teste", MetodoDid = "did:legal:admin" });
+                contexto.Intervenientes.AddRange(
+                    new Interveniente { Id = administradorId, PerfilId = perfilId, Did = $"did:legal:admin:{id}", Nome = "Administrador", Situacao = SituacaoInterveniente.ATIVO, CriadoEm = DateTime.UtcNow },
+                    new Interveniente { Id = alvoId, PerfilId = perfilId, Did = $"did:legal:expert:{id}", Nome = "Alvo", Situacao = SituacaoInterveniente.GERADO, CriadoEm = DateTime.UtcNow });
+                await contexto.SaveChangesAsync();
+            }
+
+            var nova = new NovaSagaRevogacaoDid(commandId, alvoId, administradorId, $"did:legal:expert:{id}",
+                "{\"commandId\":\"inativo\"}", $"did:legal:admin:{id}#key-1", "assinatura", new ContextoAuditoriaRevogacaoDid(null, null), DateTime.UtcNow);
+            await Assert.ThrowsAsync<RevogacaoDidInvalidaException>(() => CriarSagaAsync(connectionString, nova));
+
+            await using var verificacao = CriarContexto(connectionString);
+            Assert.Contains(await verificacao.LogsAuditoria.Where(log => log.RegistroId == alvoId).Select(log => log.Acao).ToListAsync(),
+                acao => acao == "DID_REVOGACAO_REJ_INDISP");
+            Assert.Equal(0, await verificacao.SagasRevogacaoDid.CountAsync(s => s.CommandId == commandId));
         }
         finally
         {
