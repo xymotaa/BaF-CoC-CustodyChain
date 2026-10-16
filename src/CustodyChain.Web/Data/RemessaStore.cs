@@ -18,6 +18,7 @@ public sealed class RemessaStore(CustodyChainDbContext db) : ICriarRemessaStore
 
     public async Task PersistirAsync(RemessaConfirmada remessa, CancellationToken cancellationToken)
     {
+        await using var bloqueioAuditoria = await AuditoriaEncadeada.AdquirirAsync(db, cancellationToken);
         await using var transacao = await db.Database.BeginTransactionAsync(cancellationToken);
         try
         {
@@ -59,7 +60,7 @@ public sealed class RemessaStore(CustodyChainDbContext db) : ICriarRemessaStore
             await db.SaveChangesAsync(cancellationToken);
 
             db.RegistrosLedger.Add(CriarRegistroLedger(movimentacao.Id, vestigio.Id, remessa));
-            db.LogsAuditoria.Add(CriarLogRemessa(movimentacao.Id, remessa));
+            await AuditoriaEncadeada.AdicionarAsync(db, hashAnterior => CriarLogRemessa(movimentacao.Id, remessa, hashAnterior), cancellationToken);
             await db.SaveChangesAsync(cancellationToken);
             await transacao.CommitAsync(cancellationToken);
         }
@@ -177,10 +178,8 @@ public sealed class RemessaStore(CustodyChainDbContext db) : ICriarRemessaStore
             AncoradoEm = remessa.ConfirmadoEm,
         };
 
-    private LogAuditoria CriarLogRemessa(long movimentacaoId, RemessaConfirmada remessa)
+    private static LogAuditoria CriarLogRemessa(long movimentacaoId, RemessaConfirmada remessa, string hashAnterior)
     {
-        var hashAnterior = db.LogsAuditoria.OrderByDescending(log => log.Id)
-            .Select(log => log.HashRegistro).FirstOrDefault() ?? new string('0', 64);
         var conteudo = string.Join('|', hashAnterior, "REMESSA", "MOVIMENTACAO", movimentacaoId, remessa.CriadorId, remessa.CriadoEm.Ticks);
         return new LogAuditoria
         {

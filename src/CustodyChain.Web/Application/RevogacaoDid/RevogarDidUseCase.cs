@@ -17,12 +17,19 @@ public sealed class RevogarDidUseCase(
 
     public async Task<PreparacaoRevogacaoDid> PrepararAsync(PrepararRevogacaoDidCommand command, CancellationToken cancellationToken = default)
     {
-        var contexto = await ObterContextoElegivelAsync(command.IntervenienteId, command.AdministradorId, command.DidAdministrador, cancellationToken);
-        var documento = await didRegistry.ResolverAsync(contexto.DidAlvo, cancellationToken)
-            ?? throw new RevogacaoDidInvalidaException("A identidade não existe no ledger.");
+        var contexto = await ObterContextoElegivelAsync(command.IntervenienteId, command.AdministradorId, command.DidAdministrador, command.Auditoria, cancellationToken);
+        var documento = await didRegistry.ResolverAsync(contexto.DidAlvo, cancellationToken);
+        if (documento is null)
+        {
+            await RegistrarRejeicaoAsync(command.IntervenienteId, command.AdministradorId, MotivoRejeicaoRevogacaoDid.IdentidadeIndisponivel, command.Auditoria, cancellationToken);
+            throw new RevogacaoDidInvalidaException("A identidade não existe no ledger.");
+        }
         var governanca = await ObterGovernancaAsync(cancellationToken);
         if (!documento.Ativo || !governanca.AdministradoresAtivos.Contains(command.DidAdministrador, StringComparer.Ordinal))
+        {
+            await RegistrarRejeicaoAsync(command.IntervenienteId, command.AdministradorId, MotivoRejeicaoRevogacaoDid.IdentidadeIndisponivel, command.Auditoria, cancellationToken);
             throw new RevogacaoDidInvalidaException("A identidade ou a governança no ledger não permite esta revogação.");
+        }
 
         var agora = DateTime.SpecifyKind(clock.UtcNow, DateTimeKind.Utc);
         return new PreparacaoRevogacaoDid(JsonSerializer.SerializeToElement(new
@@ -57,7 +64,10 @@ public sealed class RevogarDidUseCase(
         if (existente is not null)
         {
             if (!string.Equals(existente.CommandJson, commandCanonico, StringComparison.Ordinal))
+            {
+                await RegistrarComandoInvalidoAsync(command, cancellationToken);
                 throw new RevogacaoDidInvalidaException("commandId já foi usado com conteúdo diferente.");
+            }
             if (existente.Estado is EstadoRevogacaoDid.ConfirmadaNoLedger or EstadoRevogacaoDid.FalhaPermanente)
                 return new ResultadoRevogacaoDid(existente.NomeAlvo, existente.Estado);
             var assumidaExistente = await store.TentarAssumirAsync(commandId, DateTime.SpecifyKind(clock.UtcNow, DateTimeKind.Utc), Lease, cancellationToken);
@@ -66,7 +76,7 @@ public sealed class RevogarDidUseCase(
                 : await EnviarAoLedgerAsync(assumidaExistente, DateTime.SpecifyKind(clock.UtcNow, DateTimeKind.Utc), reconciliada: false, cancellationToken);
         }
 
-        var contexto = await ObterContextoElegivelAsync(command.IntervenienteId, command.AdministradorId, command.DidAdministrador, cancellationToken);
+        var contexto = await ObterContextoElegivelAsync(command.IntervenienteId, command.AdministradorId, command.DidAdministrador, command.Auditoria, cancellationToken);
         try { ValidarComando(command.Command, contexto.DidAlvo, command.DidAdministrador); }
         catch (RevogacaoDidInvalidaException)
         {
@@ -114,14 +124,13 @@ public sealed class RevogarDidUseCase(
         }
     }
 
-    private async Task<ContextoRevogacaoDid> ObterContextoElegivelAsync(long intervenienteId, long administradorId, string didAdministrador, CancellationToken cancellationToken)
+    private async Task<ContextoRevogacaoDid> ObterContextoElegivelAsync(long intervenienteId, long administradorId, string didAdministrador, ContextoAuditoriaRevogacaoDid auditoria, CancellationToken cancellationToken)
     {
         var contexto = await store.ObterContextoAsync(intervenienteId, cancellationToken)
             ?? new ContextoRevogacaoDid(intervenienteId, administradorId, string.Empty, string.Empty, false, false);
         var motivo = PoliticaRevogacaoDid.Avaliar(contexto.Ativo, didAdministrador, contexto.DidAlvo, contexto.PossuiResponsabilidadesPendentes, true);
         if (motivo == MotivoRejeicaoRevogacaoDid.Nenhum) return contexto;
-        await store.RegistrarRejeicaoAsync(new RejeicaoRevogacaoDid(intervenienteId, administradorId, motivo,
-            new ContextoAuditoriaRevogacaoDid(null, null), DateTime.SpecifyKind(clock.UtcNow, DateTimeKind.Utc)), cancellationToken);
+        await RegistrarRejeicaoAsync(intervenienteId, administradorId, motivo, auditoria, cancellationToken);
         throw new RevogacaoDidInvalidaException("Interveniente não está disponível para revogação.");
     }
 
@@ -152,8 +161,11 @@ public sealed class RevogarDidUseCase(
     }
 
     private Task RegistrarComandoInvalidoAsync(ExecutarRevogacaoDidCommand command, CancellationToken cancellationToken) =>
-        store.RegistrarRejeicaoAsync(new RejeicaoRevogacaoDid(command.IntervenienteId, command.AdministradorId,
-            MotivoRejeicaoRevogacaoDid.ComandoInvalido, command.Auditoria,
+        RegistrarRejeicaoAsync(command.IntervenienteId, command.AdministradorId, MotivoRejeicaoRevogacaoDid.ComandoInvalido, command.Auditoria, cancellationToken);
+
+    private Task RegistrarRejeicaoAsync(long intervenienteId, long administradorId, MotivoRejeicaoRevogacaoDid motivo,
+        ContextoAuditoriaRevogacaoDid auditoria, CancellationToken cancellationToken) =>
+        store.RegistrarRejeicaoAsync(new RejeicaoRevogacaoDid(intervenienteId, administradorId, motivo, auditoria,
             DateTime.SpecifyKind(clock.UtcNow, DateTimeKind.Utc)), cancellationToken);
 
     private static string Base64Url(byte[] bytes) => Convert.ToBase64String(bytes).TrimEnd('=').Replace('+', '-').Replace('/', '_');

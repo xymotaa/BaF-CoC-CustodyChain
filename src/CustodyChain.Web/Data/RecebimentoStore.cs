@@ -53,6 +53,7 @@ public sealed class RecebimentoStore(CustodyChainDbContext db) : IRecebimentoSto
 
     public async Task ConfirmarAsync(RecebimentoConfirmado recebimento, CancellationToken cancellationToken)
     {
+        await using var bloqueioAuditoria = await AuditoriaEncadeada.AdquirirAsync(db, cancellationToken);
         await using var transacao = await db.Database.BeginTransactionAsync(cancellationToken);
         try
         {
@@ -75,7 +76,7 @@ public sealed class RecebimentoStore(CustodyChainDbContext db) : IRecebimentoSto
 
             db.RegistrosLedger.Add(CriarRegistroLedger(movimentacao.Id, movimentacao.VestigioId, "REMESSA_RECEBER", recebimento.RecebidoEm,
                 recebimento.OperacaoAssinadaJson, recebimento.OperacaoAssinadaId, recebimento.OperacaoAssinadaHashSha256, recebimento.DidResponsavel));
-            db.LogsAuditoria.Add(CriarLog(movimentacao.Id, "REMESSA_RECEBER", recebimento.DestinoId, recebimento.RecebidoEm));
+            await AuditoriaEncadeada.AdicionarAsync(db, hashAnterior => CriarLog(movimentacao.Id, "REMESSA_RECEBER", recebimento.DestinoId, recebimento.RecebidoEm, hashAnterior), cancellationToken);
             await db.SaveChangesAsync(cancellationToken);
             await transacao.CommitAsync(cancellationToken);
         }
@@ -88,6 +89,7 @@ public sealed class RecebimentoStore(CustodyChainDbContext db) : IRecebimentoSto
 
     public async Task RecusarAsync(RecebimentoRecusado recebimento, CancellationToken cancellationToken)
     {
+        await using var bloqueioAuditoria = await AuditoriaEncadeada.AdquirirAsync(db, cancellationToken);
         await using var transacao = await db.Database.BeginTransactionAsync(cancellationToken);
         try
         {
@@ -109,7 +111,7 @@ public sealed class RecebimentoStore(CustodyChainDbContext db) : IRecebimentoSto
 
             db.RegistrosLedger.Add(CriarRegistroLedger(movimentacao.Id, movimentacao.VestigioId, "REMESSA_RECUSAR", recebimento.RecusadoEm,
                 recebimento.OperacaoAssinadaJson, recebimento.OperacaoAssinadaId, recebimento.OperacaoAssinadaHashSha256, recebimento.DidResponsavel));
-            db.LogsAuditoria.Add(CriarLog(movimentacao.Id, "REMESSA_RECUSAR", recebimento.DestinoId, recebimento.RecusadoEm));
+            await AuditoriaEncadeada.AdicionarAsync(db, hashAnterior => CriarLog(movimentacao.Id, "REMESSA_RECUSAR", recebimento.DestinoId, recebimento.RecusadoEm, hashAnterior), cancellationToken);
             await db.SaveChangesAsync(cancellationToken);
             await transacao.CommitAsync(cancellationToken);
         }
@@ -148,9 +150,8 @@ public sealed class RecebimentoStore(CustodyChainDbContext db) : IRecebimentoSto
         Estado = EstadoRegistroLedger.ANCORADO, Tentativas = 1, CriadoEm = ocorridoEm, AncoradoEm = ocorridoEm
     };
 
-    private LogAuditoria CriarLog(long movimentacaoId, string acao, long responsavelId, DateTime ocorridoEm)
+    private static LogAuditoria CriarLog(long movimentacaoId, string acao, long responsavelId, DateTime ocorridoEm, string hashAnterior)
     {
-        var hashAnterior = db.LogsAuditoria.OrderByDescending(log => log.Id).Select(log => log.HashRegistro).FirstOrDefault() ?? new string('0', 64);
         var conteudo = string.Join('|', hashAnterior, acao, "MOVIMENTACAO", movimentacaoId, responsavelId, ocorridoEm.Ticks);
         return new LogAuditoria
         {

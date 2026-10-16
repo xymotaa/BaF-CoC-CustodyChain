@@ -1,6 +1,3 @@
-using System.Security.Cryptography;
-using System.Text;
-using System.Data;
 using CustodyChain.Web.Application.RevogacaoDid;
 using CustodyChain.Web.Models.Entities;
 using Microsoft.EntityFrameworkCore;
@@ -26,7 +23,7 @@ public sealed class RevogacaoDidStore(CustodyChainDbContext db) : IRevogacaoDidS
 
     public async Task RegistrarRejeicaoAsync(RejeicaoRevogacaoDid rejeicao, CancellationToken cancellationToken = default)
     {
-        await using var bloqueio = await AdquirirBloqueioAuditoriaAsync(cancellationToken);
+        await using var bloqueio = await AuditoriaEncadeada.AdquirirAsync(db, cancellationToken);
         await AdicionarAuditoriaAsync(AcaoRejeicao(rejeicao.Motivo), rejeicao.IntervenienteId, rejeicao.AdministradorId,
             rejeicao.Auditoria, rejeicao.OcorridaEm, cancellationToken);
         await db.SaveChangesAsync(cancellationToken);
@@ -34,7 +31,7 @@ public sealed class RevogacaoDidStore(CustodyChainDbContext db) : IRevogacaoDidS
 
     public async Task<SagaRevogacaoDidDto> CriarOuObterAsync(NovaSagaRevogacaoDid nova, CancellationToken cancellationToken = default)
     {
-        await using var bloqueio = await AdquirirBloqueioAuditoriaAsync(cancellationToken);
+        await using var bloqueio = await AuditoriaEncadeada.AdquirirAsync(db, cancellationToken);
         await using var transacao = await db.Database.BeginTransactionAsync(cancellationToken);
         var existente = await db.SagasRevogacaoDid.Include(s => s.Interveniente)
             .SingleOrDefaultAsync(s => s.CommandId == nova.CommandId, cancellationToken);
@@ -100,7 +97,7 @@ public sealed class RevogacaoDidStore(CustodyChainDbContext db) : IRevogacaoDidS
 
     public async Task ConfirmarAsync(string commandId, DateTime confirmadoEm, bool reconciliada, CancellationToken cancellationToken = default)
     {
-        await using var bloqueio = await AdquirirBloqueioAuditoriaAsync(cancellationToken);
+        await using var bloqueio = await AuditoriaEncadeada.AdquirirAsync(db, cancellationToken);
         var saga = await ObterSagaParaAtualizacaoAsync(commandId, cancellationToken);
         if (saga.Estado == EstadoSagaRevogacaoDid.CONFIRMADA_NO_LEDGER) return;
         saga.Estado = EstadoSagaRevogacaoDid.CONFIRMADA_NO_LEDGER;
@@ -114,7 +111,7 @@ public sealed class RevogacaoDidStore(CustodyChainDbContext db) : IRevogacaoDidS
 
     public async Task RegistrarFalhaTransitoriaAsync(string commandId, string erro, DateTime agora, DateTime proximaTentativaEm, CancellationToken cancellationToken = default)
     {
-        await using var bloqueio = await AdquirirBloqueioAuditoriaAsync(cancellationToken);
+        await using var bloqueio = await AuditoriaEncadeada.AdquirirAsync(db, cancellationToken);
         var saga = await ObterSagaParaAtualizacaoAsync(commandId, cancellationToken);
         saga.Estado = EstadoSagaRevogacaoDid.FALHA_RECONCILIACAO; saga.Erro = erro; saga.UltimaTentativaEm = agora; saga.ProximaTentativaEm = proximaTentativaEm;
         if (saga.Tentativas < byte.MaxValue) saga.Tentativas++;
@@ -125,7 +122,7 @@ public sealed class RevogacaoDidStore(CustodyChainDbContext db) : IRevogacaoDidS
 
     public async Task RegistrarFalhaDefinitivaAsync(string commandId, string erro, DateTime agora, CancellationToken cancellationToken = default)
     {
-        await using var bloqueio = await AdquirirBloqueioAuditoriaAsync(cancellationToken);
+        await using var bloqueio = await AuditoriaEncadeada.AdquirirAsync(db, cancellationToken);
         var saga = await ObterSagaParaAtualizacaoAsync(commandId, cancellationToken);
         saga.Estado = EstadoSagaRevogacaoDid.FALHA_PERMANENTE; saga.Erro = erro; saga.UltimaTentativaEm = agora; saga.ProximaTentativaEm = null;
         if (saga.Tentativas < byte.MaxValue) saga.Tentativas++;
@@ -160,41 +157,13 @@ public sealed class RevogacaoDidStore(CustodyChainDbContext db) : IRevogacaoDidS
 
     private async Task AdicionarAuditoriaAsync(string acao, long alvoId, long administradorId, ContextoAuditoriaRevogacaoDid contexto, DateTime agora, CancellationToken cancellationToken)
     {
-        var anterior = await db.LogsAuditoria.OrderByDescending(log => log.Id).Select(log => log.HashRegistro).FirstOrDefaultAsync(cancellationToken) ?? new string('0', 64);
-        var conteudo = string.Join('|', anterior, acao, "INTERVENIENTE", alvoId, administradorId, agora.Ticks);
-        db.LogsAuditoria.Add(new LogAuditoria { IntervenienteId = administradorId, Acao = acao, Entidade = "INTERVENIENTE", RegistroId = alvoId,
-            DataHora = agora, Ip = contexto.Ip, UserAgent = contexto.UserAgent, HashAnterior = anterior,
-            HashRegistro = Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(conteudo))) });
-    }
-
-    private async Task<BloqueioAuditoria> AdquirirBloqueioAuditoriaAsync(CancellationToken cancellationToken)
-    {
-        var conexao = db.Database.GetDbConnection();
-        var deveFechar = conexao.State != ConnectionState.Open;
-        if (deveFechar) await db.Database.OpenConnectionAsync(cancellationToken);
-        await using var comando = conexao.CreateCommand();
-        comando.CommandText = "SELECT GET_LOCK('custodychain:log-auditoria', 10)";
-        var adquirido = Convert.ToInt32(await comando.ExecuteScalarAsync(cancellationToken));
-        if (adquirido == 1) return new BloqueioAuditoria(db, deveFechar);
-        if (deveFechar) await db.Database.CloseConnectionAsync();
-        throw new InvalidOperationException("Não foi possível adquirir o bloqueio da auditoria encadeada.");
-    }
-
-    private sealed class BloqueioAuditoria(CustodyChainDbContext db, bool deveFechar) : IAsyncDisposable
-    {
-        public async ValueTask DisposeAsync()
+        await AuditoriaEncadeada.AdicionarAsync(db, anterior =>
         {
-            try
-            {
-                await using var comando = db.Database.GetDbConnection().CreateCommand();
-                comando.CommandText = "SELECT RELEASE_LOCK('custodychain:log-auditoria')";
-                await comando.ExecuteScalarAsync();
-            }
-            finally
-            {
-                if (deveFechar) await db.Database.CloseConnectionAsync();
-            }
-        }
+            var conteudo = string.Join('|', anterior, acao, "INTERVENIENTE", alvoId, administradorId, agora.Ticks);
+            return new LogAuditoria { IntervenienteId = administradorId, Acao = acao, Entidade = "INTERVENIENTE", RegistroId = alvoId,
+                DataHora = agora, Ip = contexto.Ip, UserAgent = contexto.UserAgent, HashAnterior = anterior,
+                HashRegistro = Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(conteudo))) };
+        }, cancellationToken);
     }
 
     private static string AcaoRejeicao(MotivoRejeicaoRevogacaoDid motivo) => motivo switch

@@ -85,6 +85,54 @@ public sealed class RevogacaoDidUseCasesTests
         Assert.Null(store.Saga);
     }
 
+    [Fact]
+    public async Task PrepararAsync_AuditaDidInexistenteAntesDaSaga()
+    {
+        var store = new StoreFake();
+        var useCase = new RevogarDidUseCase(store, new LedgerFake(), new DidRegistryFake { Documento = null }, new ClockFake(), new NonceFake());
+
+        await Assert.ThrowsAsync<RevogacaoDidInvalidaException>(() => useCase.PrepararAsync(Preparar()));
+
+        Assert.Contains("REJEICAO", store.Acoes);
+        Assert.Null(store.Saga);
+    }
+
+    [Fact]
+    public async Task PrepararAsync_AuditaDidInativoOuGovernancaInvalidaAntesDaSaga()
+    {
+        var store = new StoreFake();
+        var documentoInativo = new DocumentoDidAutenticacao("did:legal:expert:b", 2, "inactive", false, [], [], 2);
+        var useCase = new RevogarDidUseCase(store, new LedgerFake(), new DidRegistryFake { Documento = documentoInativo }, new ClockFake(), new NonceFake());
+
+        await Assert.ThrowsAsync<RevogacaoDidInvalidaException>(() => useCase.PrepararAsync(Preparar()));
+
+        Assert.Contains("REJEICAO", store.Acoes);
+        Assert.Null(store.Saga);
+    }
+
+    [Fact]
+    public async Task PrepararAsync_AuditaGovernancaInvalidaAntesDaSaga()
+    {
+        var store = new StoreFake();
+        var useCase = new RevogarDidUseCase(store, new LedgerFake { Governanca = new GovernancaRevogacaoDid(1, []) }, new DidRegistryFake(), new ClockFake(), new NonceFake());
+
+        await Assert.ThrowsAsync<RevogacaoDidInvalidaException>(() => useCase.PrepararAsync(Preparar()));
+
+        Assert.Contains("REJEICAO", store.Acoes);
+        Assert.Null(store.Saga);
+    }
+
+    [Fact]
+    public async Task ExecutarAsync_AuditaConflitoDeCommandIdAntesDaSaga()
+    {
+        var store = new StoreFake { Saga = Saga(EstadoRevogacaoDid.PendenteLedger) with { CommandJson = "{}" } };
+        var useCase = CriarRevogar(store, new LedgerFake());
+
+        await Assert.ThrowsAsync<RevogacaoDidInvalidaException>(() => useCase.ExecutarAsync(Comando()));
+
+        Assert.Contains("REJEICAO", store.Acoes);
+    }
+
     private static RevogarDidUseCase CriarRevogar(StoreFake store, LedgerFake ledger) =>
         new(store, ledger, new DidRegistryFake(), new ClockFake(), new NonceFake());
 
@@ -92,6 +140,8 @@ public sealed class RevogacaoDidUseCasesTests
         JsonSerializer.SerializeToElement(new { type = "CustodyChainDidRevocation", commandId = "urn:uuid:11111111-1111-1111-1111-111111111111",
             actorDid = "did:legal:admin:a", subjectDid = "did:legal:expert:b", expectedDocumentVersion = 2, expectedGovernanceRevision = 1 }),
         "did:legal:admin:a#key-1", "assinatura", new ContextoAuditoriaRevogacaoDid("127.0.0.1", "test"));
+
+    private static PrepararRevogacaoDidCommand Preparar() => new(11, 1, "did:legal:admin:a", new ContextoAuditoriaRevogacaoDid("127.0.0.1", "test"));
 
     private static SagaRevogacaoDidDto Saga(EstadoRevogacaoDid estado) => new("urn:uuid:11111111-1111-1111-1111-111111111111",
         "did:legal:expert:b", CustodyChain.Web.Application.SignedOperations.CanonicalizadorJsonCustodyChain.Canonicalizar(Comando().Command),
@@ -125,14 +175,16 @@ public sealed class RevogacaoDidUseCasesTests
     private sealed class LedgerFake : IRevogacaoDidLedger
     {
         public Exception? Falha { get; init; }
+        public GovernancaRevogacaoDid Governanca { get; init; } = new(1, ["did:legal:admin:a"]);
         public int Revogacoes { get; private set; }
-        public Task<GovernancaRevogacaoDid> ObterGovernancaAsync(CancellationToken ct = default) => Task.FromResult(new GovernancaRevogacaoDid(1, ["did:legal:admin:a"]));
+        public Task<GovernancaRevogacaoDid> ObterGovernancaAsync(CancellationToken ct = default) => Task.FromResult(Governanca);
         public Task RevogarAsync(string did, ProvaRevogacaoDid prova, CancellationToken ct = default) { Revogacoes++; if (Falha is not null) throw Falha; return Task.CompletedTask; }
     }
 
     private sealed class DidRegistryFake : IDidRegistry
     {
-        public Task<DocumentoDidAutenticacao?> ResolverAsync(string did, CancellationToken ct = default) => Task.FromResult<DocumentoDidAutenticacao?>(new(did, 2, "active", true, [], [], 2));
+        public DocumentoDidAutenticacao? Documento { get; init; } = new("did:legal:expert:b", 2, "active", true, [], [], 2);
+        public Task<DocumentoDidAutenticacao?> ResolverAsync(string did, CancellationToken ct = default) => Task.FromResult(Documento);
     }
     private sealed class ClockFake : IClock { public DateTime UtcNow => new(2026, 10, 16, 12, 0, 0, DateTimeKind.Utc); }
     private sealed class NonceFake : IGeradorNonce { public byte[] Gerar(int quantidadeBytes) => new byte[quantidadeBytes]; }

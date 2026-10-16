@@ -37,6 +37,7 @@ public sealed class FracionamentoAmostraStore(CustodyChainDbContext db) : IFraci
 
     public async Task PersistirAsync(FracionamentoAmostraPendente fracionamento, CancellationToken cancellationToken)
     {
+        await using var bloqueioAuditoria = await AuditoriaEncadeada.AdquirirAsync(db, cancellationToken);
         await using var transacao = await db.Database.BeginTransactionAsync(cancellationToken);
         try
         {
@@ -106,7 +107,7 @@ public sealed class FracionamentoAmostraStore(CustodyChainDbContext db) : IFraci
                 CriadoEm = fracionamento.ExecutadoEm,
                 AncoradoEm = fracionamento.ConfirmadoEm,
             });
-            db.LogsAuditoria.Add(CriarLogFracionamento(operacao.Id, fracionamento));
+            await AuditoriaEncadeada.AdicionarAsync(db, hashAnterior => CriarLogFracionamento(operacao.Id, fracionamento, hashAnterior), cancellationToken);
 
             await db.SaveChangesAsync(cancellationToken);
             await transacao.CommitAsync(cancellationToken);
@@ -125,10 +126,8 @@ public sealed class FracionamentoAmostraStore(CustodyChainDbContext db) : IFraci
         && pericia.Credencial.VestigioId == pericia.VestigioId
         && (pericia.Credencial.ValidaAte is null || pericia.Credencial.ValidaAte > agora);
 
-    private LogAuditoria CriarLogFracionamento(long operacaoId, FracionamentoAmostraPendente fracionamento)
+    private static LogAuditoria CriarLogFracionamento(long operacaoId, FracionamentoAmostraPendente fracionamento, string hashAnterior)
     {
-        var hashAnterior = db.LogsAuditoria.OrderByDescending(log => log.Id)
-            .Select(log => log.HashRegistro).FirstOrDefault() ?? new string('0', 64);
         var conteudo = string.Join('|', hashAnterior, "FRACIONAMENTO", "OPERACAO_AMOSTRA", operacaoId,
             fracionamento.PeritoId, fracionamento.ExecutadoEm.Ticks);
 

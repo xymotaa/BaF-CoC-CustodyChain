@@ -45,6 +45,7 @@ public sealed class CadastroVestigioStore(CustodyChainDbContext db) : ICadastroV
 
     public async Task<long> PersistirAsync(CadastroVestigioPendente cadastro, CancellationToken cancellationToken)
     {
+        await using var bloqueioAuditoria = await AuditoriaEncadeada.AdquirirAsync(db, cancellationToken);
         await using var transacao = await db.Database.BeginTransactionAsync(cancellationToken);
 
         try
@@ -120,7 +121,7 @@ public sealed class CadastroVestigioStore(CustodyChainDbContext db) : ICadastroV
                 AncoradoEm = cadastro.ConfirmadoEm,
             });
 
-            db.LogsAuditoria.Add(CriarLogCadastro(vestigio.Id, cadastro));
+            await AuditoriaEncadeada.AdicionarAsync(db, hashAnterior => CriarLogCadastro(vestigio.Id, cadastro, hashAnterior), cancellationToken);
 
             await db.SaveChangesAsync(cancellationToken);
             await transacao.CommitAsync(cancellationToken);
@@ -136,12 +137,8 @@ public sealed class CadastroVestigioStore(CustodyChainDbContext db) : ICadastroV
         }
     }
 
-    private LogAuditoria CriarLogCadastro(long vestigioId, CadastroVestigioPendente cadastro)
+    private static LogAuditoria CriarLogCadastro(long vestigioId, CadastroVestigioPendente cadastro, string hashAnterior)
     {
-        var hashAnterior = db.LogsAuditoria
-            .OrderByDescending(log => log.Id)
-            .Select(log => log.HashRegistro)
-            .FirstOrDefault() ?? new string('0', 64);
         var conteudo = string.Join('|', hashAnterior, "CADASTRO", "VESTIGIO", vestigioId, cadastro.CriadorId, cadastro.CriadoEm.Ticks);
         var hashRegistro = Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(conteudo)));
 

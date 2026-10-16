@@ -34,7 +34,7 @@ public interface IRevogacaoDidLedger
     Task RevogarAsync(string did, ProvaRevogacaoDid prova, CancellationToken cancellationToken = default);
 }
 
-public sealed record PrepararRevogacaoDidCommand(long IntervenienteId, long AdministradorId, string DidAdministrador);
+public sealed record PrepararRevogacaoDidCommand(long IntervenienteId, long AdministradorId, string DidAdministrador, ContextoAuditoriaRevogacaoDid Auditoria);
 public sealed record PreparacaoRevogacaoDid(JsonElement Command);
 public sealed record ExecutarRevogacaoDidCommand(
     long IntervenienteId,

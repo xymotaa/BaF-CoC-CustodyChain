@@ -56,6 +56,7 @@ public sealed class UnificacaoAmostrasStore(CustodyChainDbContext db) : IUnifica
 
     public async Task PersistirAsync(UnificacaoAmostrasPendente unificacao, CancellationToken cancellationToken)
     {
+        await using var bloqueioAuditoria = await AuditoriaEncadeada.AdquirirAsync(db, cancellationToken);
         await using var transacao = await db.Database.BeginTransactionAsync(cancellationToken);
         try
         {
@@ -126,7 +127,7 @@ public sealed class UnificacaoAmostrasStore(CustodyChainDbContext db) : IUnifica
                 CriadoEm = unificacao.ExecutadoEm,
                 AncoradoEm = unificacao.ConfirmadoEm,
             });
-            db.LogsAuditoria.Add(CriarLog(operacoes[0].Id, unificacao));
+            await AuditoriaEncadeada.AdicionarAsync(db, hashAnterior => CriarLog(operacoes[0].Id, unificacao, hashAnterior), cancellationToken);
 
             await db.SaveChangesAsync(cancellationToken);
             await transacao.CommitAsync(cancellationToken);
@@ -158,10 +159,8 @@ public sealed class UnificacaoAmostrasStore(CustodyChainDbContext db) : IUnifica
         && origens.Select(origem => origem.RotuloConjunto).Distinct(StringComparer.Ordinal).Count() == 1
         && origens.Select(origem => origem.ProcessoId).Distinct().Count() == 1;
 
-    private LogAuditoria CriarLog(long operacaoId, UnificacaoAmostrasPendente unificacao)
+    private static LogAuditoria CriarLog(long operacaoId, UnificacaoAmostrasPendente unificacao, string anterior)
     {
-        var anterior = db.LogsAuditoria.OrderByDescending(log => log.Id)
-            .Select(log => log.HashRegistro).FirstOrDefault() ?? new string('0', 64);
         var conteudo = string.Join('|', anterior, "UNIFICACAO", "OPERACAO_AMOSTRA", operacaoId,
             unificacao.PeritoId, unificacao.ExecutadoEm.Ticks);
 

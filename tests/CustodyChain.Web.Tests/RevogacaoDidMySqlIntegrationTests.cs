@@ -2,6 +2,8 @@ using CustodyChain.Web.Application.RevogacaoDid;
 using CustodyChain.Web.Data;
 using CustodyChain.Web.Models.Entities;
 using Microsoft.EntityFrameworkCore;
+using System.Security.Cryptography;
+using System.Text;
 using Xunit.Sdk;
 
 namespace CustodyChain.Web.Tests;
@@ -51,6 +53,40 @@ public sealed class RevogacaoDidMySqlIntegrationTests
         }
     }
 
+    [Fact]
+    public async Task AuditoriaEncadeada_serializa_append_concorrente()
+    {
+        var connectionString = ObterConnectionStringDeTeste();
+        var id = Guid.NewGuid().ToString("N");
+        var perfilId = (byte)239;
+        var administradorId = 8_000_000_000L + Random.Shared.Next(1_000_000);
+        var alvoId = administradorId + 1;
+
+        try
+        {
+            await using (var contexto = CriarContexto(connectionString))
+            {
+                contexto.Perfis.Add(new Perfil { Id = perfilId, Codigo = $"TEST_{id[..8]}", Nome = "Teste", MetodoDid = "did:legal:admin" });
+                contexto.Intervenientes.Add(new Interveniente { Id = administradorId, PerfilId = perfilId, Did = $"did:legal:admin:{id}", Nome = "Administrador", Situacao = SituacaoInterveniente.ATIVO, CriadoEm = DateTime.UtcNow });
+                await contexto.SaveChangesAsync();
+            }
+
+            await Task.WhenAll(
+                AcrescentarAuditoriaAsync(connectionString, alvoId, administradorId, $"TEST_AUDITORIA_{id}_A"),
+                AcrescentarAuditoriaAsync(connectionString, alvoId, administradorId, $"TEST_AUDITORIA_{id}_B"));
+
+            await using var verificacao = CriarContexto(connectionString);
+            var logs = await verificacao.LogsAuditoria.Where(log => log.Acao.StartsWith($"TEST_AUDITORIA_{id}"))
+                .OrderBy(log => log.Id).ToListAsync();
+            Assert.Equal(2, logs.Count);
+            Assert.Equal(logs[0].HashRegistro, logs[1].HashAnterior);
+        }
+        finally
+        {
+            await LimparAsync(connectionString, null, alvoId, administradorId, perfilId);
+        }
+    }
+
     private static async Task<SagaRevogacaoDidDto> CriarSagaAsync(string connectionString, NovaSagaRevogacaoDid nova)
     {
         await using var contexto = CriarContexto(connectionString);
@@ -70,6 +106,26 @@ public sealed class RevogacaoDidMySqlIntegrationTests
             MotivoRejeicaoRevogacaoDid.ComandoInvalido, new ContextoAuditoriaRevogacaoDid(null, null), DateTime.UtcNow));
     }
 
+    private static async Task AcrescentarAuditoriaAsync(string connectionString, long registroId, long administradorId, string acao)
+    {
+        await using var contexto = CriarContexto(connectionString);
+        await using var bloqueio = await AuditoriaEncadeada.AdquirirAsync(contexto, CancellationToken.None);
+        await using var transacao = await contexto.Database.BeginTransactionAsync();
+        var agora = DateTime.UtcNow;
+        await AuditoriaEncadeada.AdicionarAsync(contexto, hashAnterior =>
+        {
+            var conteudo = string.Join('|', hashAnterior, acao, "INTERVENIENTE", registroId, administradorId, agora.Ticks);
+            return new LogAuditoria
+            {
+                IntervenienteId = administradorId, Acao = acao, Entidade = "INTERVENIENTE", RegistroId = registroId,
+                DataHora = agora, HashAnterior = hashAnterior,
+                HashRegistro = Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(conteudo)))
+            };
+        }, CancellationToken.None);
+        await contexto.SaveChangesAsync();
+        await transacao.CommitAsync();
+    }
+
     private static CustodyChainDbContext CriarContexto(string connectionString) => new(new DbContextOptionsBuilder<CustodyChainDbContext>()
         .UseMySql(connectionString, ServerVersion.AutoDetect(connectionString)).Options);
 
@@ -84,11 +140,12 @@ public sealed class RevogacaoDidMySqlIntegrationTests
         return connectionString;
     }
 
-    private static async Task LimparAsync(string connectionString, string commandId, long alvoId, long administradorId, byte perfilId)
+    private static async Task LimparAsync(string connectionString, string? commandId, long alvoId, long administradorId, byte perfilId)
     {
         await using var contexto = CriarContexto(connectionString);
         await contexto.LogsAuditoria.Where(log => log.RegistroId == alvoId).ExecuteDeleteAsync();
-        await contexto.SagasRevogacaoDid.Where(saga => saga.CommandId == commandId).ExecuteDeleteAsync();
+        if (commandId is not null)
+            await contexto.SagasRevogacaoDid.Where(saga => saga.CommandId == commandId).ExecuteDeleteAsync();
         await contexto.Intervenientes.Where(i => i.Id == alvoId || i.Id == administradorId).ExecuteDeleteAsync();
         await contexto.Perfis.Where(perfil => perfil.Id == perfilId).ExecuteDeleteAsync();
     }

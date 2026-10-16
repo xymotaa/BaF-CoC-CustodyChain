@@ -388,7 +388,8 @@ public class GestaoPerfisController(
         var administradorId = long.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);
         try
         {
-            var preparacao = await revogarDid.PrepararAsync(new PrepararRevogacaoDidCommand(intervenienteId, administradorId, administradorDid), cancellationToken);
+            var preparacao = await revogarDid.PrepararAsync(new PrepararRevogacaoDidCommand(intervenienteId, administradorId, administradorDid,
+                new ContextoAuditoriaRevogacaoDid(HttpContext.Connection.RemoteIpAddress?.ToString(), Request.Headers.UserAgent.ToString())), cancellationToken);
             return Ok(preparacao.Command);
         }
         catch (LedgerRevogacaoDidIndisponivelException exception)
@@ -732,31 +733,6 @@ public class GestaoPerfisController(
             && p.Situacao != SituacaoPericia.CONCLUIDA && p.Situacao != SituacaoPericia.RECUSADA, cancellationToken)
         || await db.Descartes.AnyAsync(d => d.ExecutadoEm == null
             && (d.SolicitadoPorId == intervenienteId || d.AprovadoPorId == intervenienteId), cancellationToken);
-
-    private async Task RegistrarAuditoriaRevogacaoAsync(string acao, long intervenienteId, long administradorId,
-        CancellationToken cancellationToken)
-    {
-        var agora = DateTime.UtcNow;
-        var hashAnterior = await db.LogsAuditoria.OrderByDescending(log => log.Id)
-            .Select(log => log.HashRegistro).FirstOrDefaultAsync(cancellationToken) ?? new string('0', 64);
-        var conteudo = string.Join('|', hashAnterior, acao, "INTERVENIENTE", intervenienteId, administradorId, agora.Ticks);
-        db.LogsAuditoria.Add(new LogAuditoria
-        {
-            IntervenienteId = administradorId, Acao = acao, Entidade = "INTERVENIENTE", RegistroId = intervenienteId,
-            DataHora = agora, Ip = HttpContext.Connection.RemoteIpAddress?.ToString(), UserAgent = Request.Headers.UserAgent.ToString(),
-            HashAnterior = hashAnterior, HashRegistro = Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(conteudo)))
-        });
-    }
-
-    private Task RegistrarAuditoriaRejeicaoRevogacaoAsync(MotivoRejeicaoRevogacaoDid motivo, long intervenienteId,
-        long administradorId, CancellationToken cancellationToken) =>
-        RegistrarAuditoriaRevogacaoAsync(motivo switch
-        {
-            MotivoRejeicaoRevogacaoDid.AutoRevogacao => "DID_REVOGACAO_REJ_AUTO",
-            MotivoRejeicaoRevogacaoDid.ResponsabilidadesPendentes => "DID_REVOGACAO_REJ_PEND",
-            MotivoRejeicaoRevogacaoDid.ComandoInvalido => "DID_REVOGACAO_REJ_COMANDO",
-            _ => "DID_REVOGACAO_REJ_INDISP"
-        }, intervenienteId, administradorId, cancellationToken);
 
     private static bool PodeAtivarIdentidade(Interveniente interveniente) =>
         interveniente.Situacao == SituacaoInterveniente.GERADO

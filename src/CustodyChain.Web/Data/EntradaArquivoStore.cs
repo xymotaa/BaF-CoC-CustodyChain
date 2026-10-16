@@ -31,6 +31,7 @@ public sealed class EntradaArquivoStore(CustodyChainDbContext db) : IEntradaArqu
 
     public async Task PersistirAsync(EntradaArquivoConfirmada entrada, CancellationToken cancellationToken)
     {
+        await using var bloqueioAuditoria = await AuditoriaEncadeada.AdquirirAsync(db, cancellationToken);
         await using var transacao = await db.Database.BeginTransactionAsync(cancellationToken);
         try
         {
@@ -49,7 +50,7 @@ public sealed class EntradaArquivoStore(CustodyChainDbContext db) : IEntradaArqu
             vestigio.EtapaAtual = 9;
             vestigio.AtualizadoEm = entrada.EntradaEm;
             db.RegistrosLedger.Add(CriarRegistroLedger(vestigio.Id, entrada));
-            db.LogsAuditoria.Add(CriarLogGuarda(vestigio.Id, entrada));
+            await AuditoriaEncadeada.AdicionarAsync(db, hashAnterior => CriarLogGuarda(vestigio.Id, entrada, hashAnterior), cancellationToken);
             await db.SaveChangesAsync(cancellationToken);
             await transacao.CommitAsync(cancellationToken);
         }
@@ -90,9 +91,8 @@ public sealed class EntradaArquivoStore(CustodyChainDbContext db) : IEntradaArqu
         Estado = EstadoRegistroLedger.ANCORADO, Tentativas = 1, CriadoEm = entrada.EntradaEm, AncoradoEm = entrada.EntradaEm
     };
 
-    private LogAuditoria CriarLogGuarda(long vestigioId, EntradaArquivoConfirmada entrada)
+    private static LogAuditoria CriarLogGuarda(long vestigioId, EntradaArquivoConfirmada entrada, string hashAnterior)
     {
-        var hashAnterior = db.LogsAuditoria.OrderByDescending(log => log.Id).Select(log => log.HashRegistro).FirstOrDefault() ?? new string('0', 64);
         var conteudo = string.Join('|', hashAnterior, "GUARDA_REGISTRAR", "VESTIGIO", vestigioId, entrada.RecebedorId, entrada.EntradaEm.Ticks);
         return new LogAuditoria
         {

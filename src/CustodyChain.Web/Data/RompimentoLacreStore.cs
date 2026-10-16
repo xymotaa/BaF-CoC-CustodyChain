@@ -56,6 +56,7 @@ public sealed class RompimentoLacreStore(CustodyChainDbContext db) : IRompimento
 
     public async Task PersistirAsync(RompimentoLacrePendente rompimento, CancellationToken cancellationToken)
     {
+        await using var bloqueioAuditoria = await AuditoriaEncadeada.AdquirirAsync(db, cancellationToken);
         await using var transacao = await db.Database.BeginTransactionAsync(cancellationToken);
         try
         {
@@ -107,7 +108,7 @@ public sealed class RompimentoLacreStore(CustodyChainDbContext db) : IRompimento
                 CriadoEm = rompimento.RompidoEm,
                 AncoradoEm = rompimento.ConfirmadoEm,
             });
-            db.LogsAuditoria.Add(CriarLogRompimento(lacre.Id, rompimento));
+            await AuditoriaEncadeada.AdicionarAsync(db, hashAnterior => CriarLogRompimento(lacre.Id, rompimento, hashAnterior), cancellationToken);
 
             await db.SaveChangesAsync(cancellationToken);
             await transacao.CommitAsync(cancellationToken);
@@ -126,10 +127,8 @@ public sealed class RompimentoLacreStore(CustodyChainDbContext db) : IRompimento
         && pericia.Credencial.VestigioId == pericia.VestigioId
         && (pericia.Credencial.ValidaAte is null || pericia.Credencial.ValidaAte > agora);
 
-    private LogAuditoria CriarLogRompimento(long lacreId, RompimentoLacrePendente rompimento)
+    private static LogAuditoria CriarLogRompimento(long lacreId, RompimentoLacrePendente rompimento, string hashAnterior)
     {
-        var hashAnterior = db.LogsAuditoria.OrderByDescending(log => log.Id)
-            .Select(log => log.HashRegistro).FirstOrDefault() ?? new string('0', 64);
         var conteudo = string.Join('|', hashAnterior, "ROMPIMENTO", "LACRE", lacreId,
             rompimento.PeritoId, rompimento.RompidoEm.Ticks);
 
