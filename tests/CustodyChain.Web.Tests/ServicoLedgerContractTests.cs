@@ -1,6 +1,7 @@
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
+using CustodyChain.Web.Application.RevogacaoDid;
 using CustodyChain.Web.Services.Ledger;
 
 namespace CustodyChain.Web.Tests;
@@ -111,6 +112,38 @@ public sealed class ServicoLedgerContractTests
         Assert.Equal("COLETA_REGISTRAR", resultado.SignedOperation.GetProperty("operation").GetString());
     }
 
+    [Theory]
+    [InlineData(408)]
+    [InlineData(425)]
+    [InlineData(429)]
+    [InlineData(500)]
+    public async Task ServicoLedgerFabric_MantemFalhasTemporariasDeRevogacaoRecuperaveis(int status)
+    {
+        using var httpClient = new HttpClient(new HandlerRespostaRevogacao((HttpStatusCode)status, new { error = "gateway temporariamente indisponível" }))
+        {
+            BaseAddress = new Uri("http://ledger.local")
+        };
+        var ledger = new ServicoLedgerFabric(httpClient);
+
+        await Assert.ThrowsAsync<HttpRequestException>(() => ledger.RevogarDidV2Async("did:legal:expert:teste", new RevogacaoDidV2Dto(new { }, "key-1", "signature")));
+    }
+
+    [Fact]
+    public async Task ServicoLedgerFabric_PreservaCodigoTipadoDeRejeicaoDefinitiva()
+    {
+        using var httpClient = new HttpClient(new HandlerRespostaRevogacao(HttpStatusCode.Conflict, new
+        {
+            code = CodigosRevogacaoDid.ConflitoVersaoTitular,
+            error = "versão do DID mudou"
+        })) { BaseAddress = new Uri("http://ledger.local") };
+        var ledger = new ServicoLedgerFabric(httpClient);
+
+        var exception = await Assert.ThrowsAsync<LedgerRejeicaoDefinitivaException>(() =>
+            ledger.RevogarDidV2Async("did:legal:expert:teste", new RevogacaoDidV2Dto(new { }, "key-1", "signature")));
+
+        Assert.Equal(CodigosRevogacaoDid.ConflitoVersaoTitular, exception.Codigo);
+    }
+
     private sealed class HandlerCapturandoRequisicao : HttpMessageHandler
     {
         public HttpMethod? Method { get; private set; }
@@ -145,5 +178,11 @@ public sealed class ServicoLedgerContractTests
                 Content = content
             };
         }
+    }
+
+    private sealed class HandlerRespostaRevogacao(HttpStatusCode status, object body) : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken) =>
+            Task.FromResult(new HttpResponseMessage(status) { Content = JsonContent.Create(body) });
     }
 }

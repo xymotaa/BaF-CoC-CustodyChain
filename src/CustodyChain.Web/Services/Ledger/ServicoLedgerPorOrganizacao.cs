@@ -38,7 +38,7 @@ public sealed class ServicoLedgerPorOrganizacao(
         }
         catch (LedgerRejeicaoDefinitivaException exception)
         {
-            throw new RevogacaoDidRejeitadaException(exception.Message, exception);
+            throw new RevogacaoDidRejeitadaException(exception.Codigo, exception.Message, exception);
         }
         catch (Exception exception) when (exception is not OperationCanceledException)
         {

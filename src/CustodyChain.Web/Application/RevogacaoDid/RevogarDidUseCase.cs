@@ -18,7 +18,7 @@ public sealed class RevogarDidUseCase(
     public async Task<PreparacaoRevogacaoDid> PrepararAsync(PrepararRevogacaoDidCommand command, CancellationToken cancellationToken = default)
     {
         var contexto = await ObterContextoElegivelAsync(command.IntervenienteId, command.AdministradorId, command.DidAdministrador, command.Auditoria, cancellationToken);
-        var documento = await didRegistry.ResolverAsync(contexto.DidAlvo, cancellationToken);
+        var documento = await ResolverDidAsync(contexto.DidAlvo, cancellationToken);
         if (documento is null)
         {
             await RegistrarRejeicaoAsync(command.IntervenienteId, command.AdministradorId, MotivoRejeicaoRevogacaoDid.IdentidadeIndisponivel, command.Auditoria, cancellationToken);
@@ -114,8 +114,7 @@ public sealed class RevogarDidUseCase(
         }
         catch (RevogacaoDidRejeitadaException exception)
         {
-            await store.RegistrarFalhaDefinitivaAsync(saga.CommandId, exception.Message, agora, cancellationToken);
-            return new ResultadoRevogacaoDid(saga.NomeAlvo, EstadoRevogacaoDid.FalhaPermanente);
+            return await TratarRejeicaoDoLedgerAsync(saga, exception, agora, cancellationToken);
         }
         catch (Exception exception) when (exception is not OperationCanceledException)
         {
@@ -139,6 +138,44 @@ public sealed class RevogarDidUseCase(
         try { return await ledger.ObterGovernancaAsync(cancellationToken); }
         catch (Exception exception) when (exception is not OperationCanceledException)
         { throw new LedgerRevogacaoDidIndisponivelException("Não foi possível consultar a governança no ledger.", exception); }
+    }
+
+    private async Task<DocumentoDidAutenticacao?> ResolverDidAsync(string did, CancellationToken cancellationToken)
+    {
+        try { return await didRegistry.ResolverAsync(did, cancellationToken); }
+        catch (Exception exception) when (exception is not OperationCanceledException)
+        { throw new LedgerRevogacaoDidIndisponivelException("Não foi possível consultar a identidade no ledger.", exception); }
+    }
+
+    private async Task<ResultadoRevogacaoDid> TratarRejeicaoDoLedgerAsync(
+        SagaRevogacaoDidDto saga, RevogacaoDidRejeitadaException exception, DateTime agora, CancellationToken cancellationToken)
+    {
+        if (exception.Codigo != CodigosRevogacaoDid.ConflitoVersaoTitular)
+        {
+            await store.RegistrarFalhaDefinitivaAsync(saga.CommandId, exception.Message, agora, cancellationToken);
+            return new ResultadoRevogacaoDid(saga.NomeAlvo, EstadoRevogacaoDid.FalhaPermanente);
+        }
+
+        DocumentoDidAutenticacao? documento;
+        try { documento = await ResolverDidAsync(saga.DidAlvo, cancellationToken); }
+        catch (LedgerRevogacaoDidIndisponivelException)
+        {
+            await store.RegistrarFalhaTransitoriaAsync(saga.CommandId, exception.Message, agora, agora.Add(AtrasoTentativa), cancellationToken);
+            return new ResultadoRevogacaoDid(saga.NomeAlvo, EstadoRevogacaoDid.FalhaReconciliacao);
+        }
+
+        switch (PoliticaConflitoVersaoRevogacaoDid.Avaliar(documento))
+        {
+            case ResolucaoConflitoVersaoRevogacaoDid.ConfirmarRevogacao:
+                await store.ConfirmarAsync(saga.CommandId, agora, reconciliada: true, cancellationToken);
+                return new ResultadoRevogacaoDid(saga.NomeAlvo, EstadoRevogacaoDid.ConfirmadaNoLedger);
+            case ResolucaoConflitoVersaoRevogacaoDid.RejeitarComando:
+                await store.RegistrarFalhaDefinitivaAsync(saga.CommandId, exception.Message, agora, cancellationToken);
+                return new ResultadoRevogacaoDid(saga.NomeAlvo, EstadoRevogacaoDid.FalhaPermanente);
+            default:
+                await store.RegistrarFalhaTransitoriaAsync(saga.CommandId, exception.Message, agora, agora.Add(AtrasoTentativa), cancellationToken);
+                return new ResultadoRevogacaoDid(saga.NomeAlvo, EstadoRevogacaoDid.FalhaReconciliacao);
+        }
     }
 
     private static void ValidarComando(JsonElement command, string didAlvo, string didAdministrador)

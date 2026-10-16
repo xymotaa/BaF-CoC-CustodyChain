@@ -60,5 +60,33 @@ public sealed record RejeicaoRevogacaoDid(long IntervenienteId, long Administrad
 public enum EstadoRevogacaoDid { PendenteLedger, ProcessandoLedger, ConfirmadaNoLedger, FalhaReconciliacao, FalhaPermanente }
 
 public sealed class RevogacaoDidInvalidaException(string message) : InvalidOperationException(message);
-public sealed class RevogacaoDidRejeitadaException(string message, Exception? innerException = null) : InvalidOperationException(message, innerException);
+
+public static class CodigosRevogacaoDid
+{
+    public const string ConflitoVersaoTitular = "DID_REVOCATION_SUBJECT_VERSION_CONFLICT";
+
+    private static readonly HashSet<string> RejeicoesDefinitivas =
+    [
+        "DID_REVOCATION_COMMAND_EXPIRED", "DID_REVOCATION_SELF_REVOKE",
+        "DID_REVOCATION_GOVERNANCE_CHANGED", "DID_REVOCATION_ACTOR_INACTIVE",
+        "DID_REVOCATION_KEY_NOT_AUTHORIZED", "DID_REVOCATION_SIGNATURE_INVALID",
+        "DID_REVOCATION_SUBJECT_NOT_FOUND", ConflitoVersaoTitular,
+        "DID_REVOCATION_LAST_ADMIN", "DID_REVOCATION_IDEMPOTENCY_CONFLICT"
+    ];
+
+    public static bool EhRejeicaoDefinitiva(string? codigo) =>
+        codigo is not null && RejeicoesDefinitivas.Contains(codigo);
+}
+
+public sealed class RevogacaoDidRejeitadaException : InvalidOperationException
+{
+    public RevogacaoDidRejeitadaException(string message, Exception? innerException = null)
+        : this(null, message, innerException) { }
+
+    public RevogacaoDidRejeitadaException(string? codigo, string message, Exception? innerException = null)
+        : base(message, innerException) => Codigo = codigo;
+
+    public string? Codigo { get; }
+}
+
 public sealed class LedgerRevogacaoDidIndisponivelException(string message, Exception? innerException = null) : InvalidOperationException(message, innerException);

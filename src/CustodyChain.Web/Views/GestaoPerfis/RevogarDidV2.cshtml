@@ -41,8 +41,8 @@
     const post = async (url, body) => {
         const response = await fetch(url, { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json', 'RequestVerificationToken': antiForgery }, body: JSON.stringify(body) });
         const payload = await response.json().catch(() => ({}));
-        if (!response.ok) throw new Error(payload.message || 'Não foi possível revogar a identidade.');
-        return payload;
+            if (!response.ok) throw new Error(payload.message || 'Não foi possível revogar a identidade.');
+            return payload;
     };
     button.addEventListener('click', async () => {
         error.hidden = true;
@@ -60,10 +60,15 @@
             if (!response.ok) throw new Error(proof.message || 'A wallet recusou a assinatura.');
             password.value = '';
             const result = await post(`${base}/prova`, { command, keyId: proof.keyId, signature: proof.signature });
+            if (!result.redirectUrl) {
+                status.textContent = result.message || 'A revogação está em processamento.';
+                button.dataset.processing = 'true';
+                return;
+            }
             window.location.assign(result.redirectUrl);
         } catch (exception) {
             password.value = ''; error.textContent = exception.message; error.hidden = false; error.focus();
-        } finally { button.disabled = false; }
+        } finally { button.disabled = button.dataset.processing === 'true'; }
     });
 })();
 </script>

@@ -8,7 +8,7 @@ const crypto = require('node:crypto');
 const {
     autenticarServico, tratarErro, validarComandoDid, verificarProvaDid,
     validarVcPermissao, verificarVcPermissao, validarOperacaoAssinada, validarMspDoDid,
-    extrairCodigoErro, statusParaCodigoDid
+    extrairCodigoErro, statusParaCodigoDid, DID_REVOCATION_REJECTION_CODES
 } = require('../src/app');
 
 test('middleware aceita bearer token configurado', () => {
@@ -57,6 +57,15 @@ test('classifica rejeição DID tipada sem depender da mensagem humana', () => {
     assert.equal(response.body.code, 'DID_REVOCATION_GOVERNANCE_CHANGED');
     assert.equal(extrairCodigoErro(response.body.error), response.body.code);
     assert.equal(statusParaCodigoDid('DID_REVOCATION_SELF_REVOKE'), 400);
+});
+
+test('não expõe código de revogação desconhecido como rejeição funcional', () => {
+    const response = responseFake();
+    tratarErro(response, { message: 'DID_REVOCATION_NOVO_CODIGO: contrato futuro' });
+
+    assert.equal(DID_REVOCATION_REJECTION_CODES.has('DID_REVOCATION_NOVO_CODIGO'), false);
+    assert.equal(response.statusCode, 500);
+    assert.deepEqual(response.body, { error: 'DID_REVOCATION_NOVO_CODIGO: contrato futuro' });
 });
 
 test('valida a assinatura da VC de permissão sobre o envelope sem proof', () => {

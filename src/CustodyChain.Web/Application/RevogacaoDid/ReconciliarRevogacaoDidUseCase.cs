@@ -1,6 +1,12 @@
+using CustodyChain.Web.Application.Autenticacao;
+
 namespace CustodyChain.Web.Application.RevogacaoDid;
 
-public sealed class ReconciliarRevogacaoDidUseCase(IRevogacaoDidStore store, IRevogacaoDidLedger ledger, CustodyChain.Web.Application.Common.IClock clock) : IReconciliarRevogacaoDid
+public sealed class ReconciliarRevogacaoDidUseCase(
+    IRevogacaoDidStore store,
+    IRevogacaoDidLedger ledger,
+    IDidRegistry didRegistry,
+    CustodyChain.Web.Application.Common.IClock clock) : IReconciliarRevogacaoDid
 {
     private static readonly TimeSpan Lease = TimeSpan.FromMinutes(2);
     private static readonly TimeSpan AtrasoTentativa = TimeSpan.FromMinutes(2);
@@ -19,7 +25,7 @@ public sealed class ReconciliarRevogacaoDidUseCase(IRevogacaoDidStore store, IRe
             }
             catch (RevogacaoDidRejeitadaException exception)
             {
-                await store.RegistrarFalhaDefinitivaAsync(saga.CommandId, exception.Message, agora, cancellationToken);
+                await TratarRejeicaoDoLedgerAsync(saga, exception, agora, cancellationToken);
             }
             catch (Exception exception) when (exception is not OperationCanceledException)
             {
@@ -28,4 +34,38 @@ public sealed class ReconciliarRevogacaoDidUseCase(IRevogacaoDidStore store, IRe
         }
         return pendencias.Count;
     }
+
+    private async Task TratarRejeicaoDoLedgerAsync(
+        SagaRevogacaoDidDto saga, RevogacaoDidRejeitadaException exception, DateTime agora, CancellationToken cancellationToken)
+    {
+        if (exception.Codigo != CodigosRevogacaoDid.ConflitoVersaoTitular)
+        {
+            await store.RegistrarFalhaDefinitivaAsync(saga.CommandId, exception.Message, agora, cancellationToken);
+            return;
+        }
+
+        DocumentoDidAutenticacao? documento;
+        try { documento = await didRegistry.ResolverAsync(saga.DidAlvo, cancellationToken); }
+        catch (Exception erro) when (erro is not OperationCanceledException)
+        {
+            await RegistrarFalhaTransitoriaAsync(saga, exception.Message, agora, cancellationToken);
+            return;
+        }
+
+        switch (PoliticaConflitoVersaoRevogacaoDid.Avaliar(documento))
+        {
+            case ResolucaoConflitoVersaoRevogacaoDid.ConfirmarRevogacao:
+                await store.ConfirmarAsync(saga.CommandId, agora, reconciliada: true, cancellationToken);
+                return;
+            case ResolucaoConflitoVersaoRevogacaoDid.RejeitarComando:
+                await store.RegistrarFalhaDefinitivaAsync(saga.CommandId, exception.Message, agora, cancellationToken);
+                return;
+            default:
+                await RegistrarFalhaTransitoriaAsync(saga, exception.Message, agora, cancellationToken);
+                return;
+        }
+    }
+
+    private Task RegistrarFalhaTransitoriaAsync(SagaRevogacaoDidDto saga, string erro, DateTime agora, CancellationToken cancellationToken) =>
+        store.RegistrarFalhaTransitoriaAsync(saga.CommandId, erro, agora, agora.Add(AtrasoTentativa), cancellationToken);
 }

@@ -1,6 +1,7 @@
 using System.Net.Http.Json;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using CustodyChain.Web.Application.RevogacaoDid;
 
 namespace CustodyChain.Web.Services.Ledger;
 
@@ -245,8 +246,8 @@ public class ServicoLedgerFabric(HttpClient httpClient) : IServicoLedger
         if (resposta.IsSuccessStatusCode) return;
         var corpo = await resposta.Content.ReadAsStringAsync();
         var codigo = ExtrairCodigoRevogacaoDid(corpo);
-        if (codigo is not null || (int)resposta.StatusCode is >= 400 and < 500)
-            throw new LedgerRejeicaoDefinitivaException($"Revogação rejeitada pelo gateway ({(int)resposta.StatusCode}): {corpo}");
+        if (CodigosRevogacaoDid.EhRejeicaoDefinitiva(codigo))
+            throw new LedgerRejeicaoDefinitivaException(codigo!, $"Revogação rejeitada pelo gateway ({(int)resposta.StatusCode}): {corpo}");
         throw new HttpRequestException($"Falha transitória ao chamar o gateway ({(int)resposta.StatusCode}): {corpo}");
     }
 

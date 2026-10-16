@@ -30,6 +30,13 @@ const SUPPORTED_SIGNED_OPERATIONS = new Set([
     'DESTINACAO_SOLICITAR', 'DESTINACAO_APROVAR', 'PERICIA_RECEBER', 'LACRE_ROMPER', 'LAUDO_EMITIR',
     'AMOSTRA_CONSUMIR', 'AMOSTRA_EXAURIR', 'AMOSTRA_FRACIONAR', 'AMOSTRA_UNIFICAR'
 ]);
+const DID_REVOCATION_REJECTION_CODES = new Set([
+    'DID_REVOCATION_COMMAND_EXPIRED', 'DID_REVOCATION_SELF_REVOKE',
+    'DID_REVOCATION_GOVERNANCE_CHANGED', 'DID_REVOCATION_ACTOR_INACTIVE',
+    'DID_REVOCATION_KEY_NOT_AUTHORIZED', 'DID_REVOCATION_SIGNATURE_INVALID',
+    'DID_REVOCATION_SUBJECT_NOT_FOUND', 'DID_REVOCATION_SUBJECT_VERSION_CONFLICT',
+    'DID_REVOCATION_LAST_ADMIN', 'DID_REVOCATION_IDEMPOTENCY_CONFLICT'
+]);
 const ALLOWED_ORIGINS = (process.env.ALLOWED_ORIGINS || 'http://localhost:5143')
     .split(',')
     .map((origin) => origin.trim())
@@ -96,14 +103,15 @@ function tratarErro(res, erro) {
         ? detalhes.map((detalhe) => detalhe.message || String(detalhe)).join(' ')
         : detalhes || (erro && erro.message) || 'Erro desconhecido no gateway.';
     const codigo = extrairCodigoErro(mensagem);
-    const status = codigo ? statusParaCodigoDid(codigo)
+    const codigoReconhecido = codigo && DID_REVOCATION_REJECTION_CODES.has(codigo);
+    const status = codigoReconhecido ? statusParaCodigoDid(codigo)
         : mensagem.includes('não encontrado') ? 404
         : mensagem.includes('já existe') || mensagem.includes('já foi concluído')
             || mensagem.includes('já foi concluída') || mensagem.includes('Conflito de idempotência')
             || mensagem.includes('versão do documento DID mudou') ? 409
             : mensagem.includes('inválid') || mensagem.includes('não autorizado') ? 400
                 : 500;
-    res.status(status).json(codigo ? { error: mensagem, code: codigo } : { error: mensagem });
+    res.status(status).json(codigoReconhecido ? { error: mensagem, code: codigo } : { error: mensagem });
 }
 
 function extrairCodigoErro(mensagem) {
@@ -316,6 +324,18 @@ app.post('/v2/bootstrap/admin/legacy-migration', async (req, res) => {
         res.status(201).json(JSON.parse(decodificar(resultado)));
     } catch (erro) {
         tratarErro(res, erro);
+    }
+});
+
+app.post('/v2/governanca/identidades/inicializar', async (_req, res) => {
+    if (MSP_ID !== 'Org1MSP') {
+        return res.status(403).json({ error: 'Somente o gateway da Org1 pode inicializar a governança de identidades.' });
+    }
+    try {
+        const resultado = await obterContrato().submitTransaction('InicializarGovernancaIdentidadesV1');
+        return res.json(JSON.parse(decodificar(resultado)));
+    } catch (erro) {
+        return tratarErro(res, erro);
     }
 });
 
@@ -655,5 +675,6 @@ process.on('SIGINT', () => {
 module.exports = {
     app, autenticarServico, decodificar, tratarErro, validarComandoDid,
     verificarProvaDid, validarVcPermissao, verificarVcPermissao,
-    validarOperacaoAssinada, validarMspDoDid, extrairCodigoErro, statusParaCodigoDid
+    validarOperacaoAssinada, validarMspDoDid, extrairCodigoErro, statusParaCodigoDid,
+    DID_REVOCATION_REJECTION_CODES
 };

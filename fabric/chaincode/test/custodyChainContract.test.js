@@ -57,6 +57,40 @@ test('migra uma única vez o DID administrativo legado ativo para v2', async () 
     );
 });
 
+test('inicializa a governança para ledger v2 existente sem repetir o bootstrap', async () => {
+    const contract = new CustodyChainContract();
+    const ctx = contexto('Org1MSP');
+    const adminPrincipal = gerarIdentidade(did, keyId);
+    const adminSecundarioDid = 'did:legal:admin:teste-secundario';
+    const adminSecundario = gerarIdentidade(adminSecundarioDid, `${adminSecundarioDid}#auth-1`);
+
+    await registrarIdentidadeAtiva(ctx, did, 'did:legal:admin', adminPrincipal);
+    await registrarIdentidadeAtiva(ctx, adminSecundarioDid, 'did:legal:admin', adminSecundario);
+    await ctx.stub.putState(ctx.stub.createCompositeKey('GOV', ['admin-bootstrap']), Buffer.from(JSON.stringify({ did })));
+
+    const inicializada = JSON.parse(await contract.InicializarGovernancaIdentidadesV1(ctx));
+    const repetida = JSON.parse(await contract.InicializarGovernancaIdentidadesV1(ctx));
+
+    assert.deepEqual(inicializada.activeAdminDids, [did, adminSecundarioDid].sort());
+    assert.equal(inicializada.origem, 'COMPATIBILIDADE_LEDGER_V2');
+    assert.deepEqual(repetida, inicializada);
+});
+
+test('recusa inicialização de governança sem bootstrap administrativo ativo', async () => {
+    const contract = new CustodyChainContract();
+    const ctx = contexto('Org1MSP');
+    const admin = gerarIdentidade(did, keyId);
+    await registrarIdentidadeAtiva(ctx, did, 'did:legal:admin', admin);
+
+    await assert.rejects(contract.InicializarGovernancaIdentidadesV1(ctx), /bootstrap administrativo existente/);
+});
+
+test('restringe a inicialização de governança à Org1', async () => {
+    const contract = new CustodyChainContract();
+
+    await assert.rejects(contract.InicializarGovernancaIdentidadesV1(contexto('Org2MSP')), /MSP não autorizado/);
+});
+
 test('recusa migração de DID legado não administrativo ou inativo', async () => {
     const contract = new CustodyChainContract();
     const ctx = contexto('Org1MSP');
@@ -1019,6 +1053,20 @@ function contexto(mspId) {
             createCompositeKey: (prefix, values) => `${prefix}:${values.join(':')}`,
             getState: async (key) => state.get(key) || Buffer.alloc(0),
             putState: async (key, value) => state.set(key, value),
+            getStateByPartialCompositeKey: async (prefix, values) => {
+                const inicio = `${prefix}:${values.join(':')}`;
+                const entradas = [...state.entries()]
+                    .filter(([key]) => key.startsWith(inicio))
+                    .sort(([esquerda], [direita]) => esquerda.localeCompare(direita))
+                    .map(([key, value]) => ({ key, value }));
+                let indice = 0;
+                return {
+                    next: async () => indice < entradas.length
+                        ? { value: entradas[indice++], done: false }
+                        : { value: undefined, done: true },
+                    close: async () => undefined
+                };
+            },
             getTxTimestamp: () => ({
                 seconds: { low: Math.floor(horarioAtual.getTime() / 1000) },
                 nanos: (horarioAtual.getTime() % 1000) * 1_000_000

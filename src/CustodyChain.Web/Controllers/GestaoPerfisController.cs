@@ -415,9 +415,23 @@ public class GestaoPerfisController(
                 administradorDid, request is null ? default : JsonSerializer.SerializeToElement(request.Command),
                 request?.KeyId ?? string.Empty, request?.Signature ?? string.Empty,
                 new ContextoAuditoriaRevogacaoDid(HttpContext.Connection.RemoteIpAddress?.ToString(), Request.Headers.UserAgent.ToString())), cancellationToken);
-            return resultado.Estado == EstadoRevogacaoDid.FalhaPermanente
-                ? BadRequest(new { message = "A revogação foi rejeitada definitivamente pelo ledger." })
-                : Ok(new { redirectUrl = Url.Action(nameof(Index)), message = $"{resultado.NomeAlvo} revogado." });
+            return resultado.Estado switch
+            {
+                EstadoRevogacaoDid.ConfirmadaNoLedger => Ok(new
+                {
+                    redirectUrl = Url.Action(nameof(Index)),
+                    message = $"{resultado.NomeAlvo} revogado."
+                }),
+                EstadoRevogacaoDid.FalhaPermanente => BadRequest(new
+                {
+                    message = "A revogação foi rejeitada definitivamente pelo ledger."
+                }),
+                _ => Accepted(new
+                {
+                    message = $"A revogação de {resultado.NomeAlvo} está em processamento e será confirmada pelo reconciliador.",
+                    estado = resultado.Estado.ToString()
+                })
+            };
         }
         catch (LedgerRevogacaoDidIndisponivelException exception)
         {

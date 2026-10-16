@@ -185,6 +185,41 @@ class CustodyChainContract extends Contract {
         return JSON.stringify(documento);
     }
 
+    async InicializarGovernancaIdentidadesV1(ctx) {
+        this._garantirOrganizacaoAdministradora(ctx);
+
+        const chaveGovernanca = ctx.stub.createCompositeKey(PREFIXO_GOVERNANCA, ['identity-governance']);
+        const governancaExistente = await ctx.stub.getState(chaveGovernanca);
+        if (governancaExistente && governancaExistente.length > 0) {
+            return JSON.stringify(await this._obterGovernancaIdentidades(ctx));
+        }
+
+        const chaveBootstrap = ctx.stub.createCompositeKey(PREFIXO_GOVERNANCA, ['admin-bootstrap']);
+        const bootstrap = await ctx.stub.getState(chaveBootstrap);
+        if (!bootstrap || bootstrap.length === 0) {
+            throw new Error('Não é possível inicializar a governança sem o bootstrap administrativo existente.');
+        }
+
+        const didBootstrap = JSON.parse(bootstrap.toString()).did;
+        const administradoresAtivos = await this._listarAdministradoresV2Ativos(ctx);
+        if (!administradoresAtivos.includes(didBootstrap)) {
+            throw new Error('O DID administrativo do bootstrap deve permanecer ativo para inicializar a governança.');
+        }
+
+        const agora = this._agora(ctx);
+        const governanca = {
+            type: 'CustodyChainIdentityGovernance',
+            version: 1,
+            revision: 1,
+            activeAdminDids: administradoresAtivos,
+            initializedAt: agora,
+            updatedAt: agora,
+            origem: 'COMPATIBILIDADE_LEDGER_V2'
+        };
+        await this._salvarGovernancaIdentidades(ctx, governanca);
+        return JSON.stringify(governanca);
+    }
+
     async AtualizarCapacidadeAdminDidV2(ctx) {
         this._garantirOrganizacaoAdministradora(ctx);
         const chaveBootstrap = ctx.stub.createCompositeKey(PREFIXO_GOVERNANCA, ['admin-bootstrap']);
@@ -1624,6 +1659,26 @@ class CustodyChainContract extends Contract {
             throw new Error('O registro de governança de identidades está inválido.');
         }
         return governanca;
+    }
+
+    async _listarAdministradoresV2Ativos(ctx) {
+        const iterator = await ctx.stub.getStateByPartialCompositeKey(PREFIXO_DID, []);
+        const administradores = [];
+        try {
+            for (;;) {
+                const proximo = await iterator.next();
+                if (proximo.done) break;
+                const documento = JSON.parse(proximo.value.value.toString());
+                if (documento.version === 2 && documento.metodoDid === 'did:legal:admin'
+                    && documento.status === 'ATIVO' && documento.ativo === true
+                    && /^did:legal:admin:[a-zA-Z0-9._-]{3,128}$/.test(documento.did)) {
+                    administradores.push(documento.did);
+                }
+            }
+        } finally {
+            await iterator.close();
+        }
+        return [...new Set(administradores)].sort();
     }
 
     async _salvarGovernancaIdentidades(ctx, governanca) {

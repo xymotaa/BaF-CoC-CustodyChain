@@ -74,12 +74,20 @@ reconfirme o estado, sem pressupor que esses valores permaneceram inalterados.
 5. Inicie os gateways do laboratório com `CHANNEL_NAME=custodylab2`, portas
    `3100`/`3101` e MSPs Org1MSP/Org2MSP correspondentes. Consulte a saúde e o
    canal efetivo; interrompa se algum apontar para `mychannel` ou `custodylab`.
-6. Só então publique a aplicação 5243 configurada para esses dois gateways.
+6. Pelo gateway Org1, consulte `GET /v2/governanca/identidades`. Se a resposta
+   indicar `GOVERNANCE_NOT_INITIALIZED`, execute **uma vez** o endpoint protegido
+   `POST /v2/governanca/identidades/inicializar`. Ele apenas cria a governança a
+   partir dos DIDs administrativos v2 ativos já existentes; não execute
+   `BootstrapAdminDid` nem a migração legada. Uma nova chamada deve apenas retornar
+   o mesmo registro de governança.
+7. Só então publique a aplicação 5243 configurada para esses dois gateways.
 
 ## Verificações de aceitação
 
 1. Consulte a governança de identidades pelo gateway Org1 e confirme a revisão
-   e a lista de administradores ativos antes de qualquer revogação.
+   e a lista de administradores ativos antes de qualquer revogação. Para o
+   `did:legal:admin:teste-002`, confirme também a presença e a chave pública já
+   registrada; não recrie o DID.
 2. Tente auto-revogação: ela deve ser rejeitada e auditada, sem criar saga.
 3. Tente revogar um administrador quando restar apenas um: o Fabric deve
    rejeitar a transação.
@@ -89,6 +97,10 @@ reconfirme o estado, sem pressupor que esses valores permaneceram inalterados.
    ficar pendente, o interveniente não pode operar e o reconciliador deve
    concluir usando o mesmo `commandId` quando o gateway retornar.
 6. Confirme logs encadeados para preparação, confirmação, falha e rejeição.
+7. Induza somente em ambiente de teste uma resposta temporária `408`, `425`,
+   `429` ou `5xx`: a resposta administrativa deve informar processamento, a
+   identidade deve continuar bloqueada e o reconciliador deve reutilizar o mesmo
+   `commandId`.
 
 ## Rollback seguro
 
