@@ -10,6 +10,7 @@ using CustodyChain.Web.Application.ProcessamentoPericial;
 using CustodyChain.Web.Application.DestinacaoFinal;
 using CustodyChain.Web.Application.Pericias;
 using CustodyChain.Web.Application.VerifiableCredentials;
+using CustodyChain.Web.Application.RevogacaoDid;
 using CustodyChain.Web.Data;
 using CustodyChain.Web.Security;
 using CustodyChain.Web.Services.Armazenamento;
@@ -88,6 +89,9 @@ builder.Services.AddScoped<CriarVcPermissao>();
 builder.Services.AddSingleton<IVerificadorAssinaturaDid, VerificadorAssinaturaEd25519>();
 builder.Services.AddSingleton<IGeradorNonce, GeradorNonceCriptografico>();
 builder.Services.AddScoped<IIdentidadeAutenticacaoStore, IdentidadeAutenticacaoStore>();
+builder.Services.AddScoped<IRevogarDid, RevogarDidUseCase>();
+builder.Services.AddScoped<IReconciliarRevogacaoDid, ReconciliarRevogacaoDidUseCase>();
+builder.Services.AddScoped<IRevogacaoDidStore, RevogacaoDidStore>();
 builder.Services.AddScoped<RevalidacaoCookieEvents>();
 builder.Services.AddSingleton(new ConfiguracaoAutenticacaoDid(
     builder.Configuration["AuthenticationDid:Audience"] ?? "custodychain-web",
@@ -106,7 +110,9 @@ var ledgerOrg2Token = builder.Configuration["Ledger:Organizations:Org2MSP:Servic
 
 ConfigurarGatewayFabric(OrganizacaoFabricDid.Org1Msp, ledgerOrg1Url, ledgerOrg1Token);
 ConfigurarGatewayFabric(OrganizacaoFabricDid.Org2Msp, ledgerOrg2Url, ledgerOrg2Token);
-builder.Services.AddScoped<IServicoLedger, ServicoLedgerPorOrganizacao>();
+builder.Services.AddScoped<ServicoLedgerPorOrganizacao>();
+builder.Services.AddScoped<IServicoLedger>(services => services.GetRequiredService<ServicoLedgerPorOrganizacao>());
+builder.Services.AddScoped<IRevogacaoDidLedger>(services => services.GetRequiredService<ServicoLedgerPorOrganizacao>());
 builder.Services.AddHostedService<ReconciliadorRevogacaoDid>();
 builder.Services.AddHttpClient<DidRegistryFabric>(client =>
 {

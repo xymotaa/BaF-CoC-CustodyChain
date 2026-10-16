@@ -56,7 +56,7 @@ public class ServicoLedgerFabric(HttpClient httpClient) : IServicoLedger
                 keyId = dto.KeyId,
                 signature = dto.Signature
             }, OpcoesJson, cancellationToken);
-        await LancarSeFalhaAsync(resposta);
+        await LancarFalhaRevogacaoSeNecessarioAsync(resposta);
     }
 
     public async Task<GovernancaIdentidadesDto> ObterGovernancaIdentidadesAsync(
@@ -238,6 +238,15 @@ public class ServicoLedgerFabric(HttpClient httpClient) : IServicoLedger
 
         var corpo = await resposta.Content.ReadAsStringAsync();
         throw new InvalidOperationException($"Falha ao chamar o gateway do ledger ({(int)resposta.StatusCode}): {corpo}");
+    }
+
+    private static async Task LancarFalhaRevogacaoSeNecessarioAsync(HttpResponseMessage resposta)
+    {
+        if (resposta.IsSuccessStatusCode) return;
+        var corpo = await resposta.Content.ReadAsStringAsync();
+        if ((int)resposta.StatusCode is >= 400 and < 500)
+            throw new LedgerRejeicaoDefinitivaException($"Revogação rejeitada pelo gateway ({(int)resposta.StatusCode}): {corpo}");
+        throw new HttpRequestException($"Falha transitória ao chamar o gateway ({(int)resposta.StatusCode}): {corpo}");
     }
 
     private record DidDocumentoGatewayDto(

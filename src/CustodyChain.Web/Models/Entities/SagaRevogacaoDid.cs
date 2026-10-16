@@ -3,8 +3,10 @@ namespace CustodyChain.Web.Models.Entities;
 public enum EstadoSagaRevogacaoDid
 {
     PENDENTE_LEDGER,
+    PROCESSANDO_LEDGER,
     CONFIRMADA_NO_LEDGER,
-    FALHA_RECONCILIACAO
+    FALHA_RECONCILIACAO,
+    FALHA_PERMANENTE
 }
 
 /// <summary>Registro durável para retomar a mesma revogação assinada no Fabric.</summary>
