@@ -2,7 +2,7 @@
 
 ## Escopo
 
-Este procedimento aplica a versão v0.62.0 da aplicação, gateway e chaincode
+Este procedimento aplica a versão v0.62.1 da aplicação, gateway e chaincode
 somente no laboratório `custodylab2`. Não use comandos destinados a
 `mychannel` ou `custodylab`; não reinicialize wallets, volumes ou bancos.
 

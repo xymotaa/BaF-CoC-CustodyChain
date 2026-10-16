@@ -40,7 +40,10 @@ public sealed class ReconciliarRevogacaoDidUseCase(
     {
         if (exception.Codigo != CodigosRevogacaoDid.ConflitoVersaoTitular)
         {
-            await store.RegistrarFalhaDefinitivaAsync(saga.CommandId, exception.Message, agora, cancellationToken);
+            if (CodigosRevogacaoDid.EhRejeicaoDefinitiva(exception.Codigo))
+                await store.RegistrarFalhaDefinitivaAsync(saga.CommandId, exception.Message, agora, cancellationToken);
+            else
+                await RegistrarFalhaTransitoriaAsync(saga, exception.Message, agora, cancellationToken);
             return;
         }
 

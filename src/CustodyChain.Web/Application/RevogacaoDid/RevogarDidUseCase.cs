@@ -152,8 +152,16 @@ public sealed class RevogarDidUseCase(
     {
         if (exception.Codigo != CodigosRevogacaoDid.ConflitoVersaoTitular)
         {
-            await store.RegistrarFalhaDefinitivaAsync(saga.CommandId, exception.Message, agora, cancellationToken);
-            return new ResultadoRevogacaoDid(saga.NomeAlvo, EstadoRevogacaoDid.FalhaPermanente);
+            if (CodigosRevogacaoDid.EhRejeicaoDefinitiva(exception.Codigo))
+            {
+                await store.RegistrarFalhaDefinitivaAsync(saga.CommandId, exception.Message, agora, cancellationToken);
+                return new ResultadoRevogacaoDid(saga.NomeAlvo, EstadoRevogacaoDid.FalhaPermanente);
+            }
+            else
+            {
+                await store.RegistrarFalhaTransitoriaAsync(saga.CommandId, exception.Message, agora, agora.Add(AtrasoTentativa), cancellationToken);
+                return new ResultadoRevogacaoDid(saga.NomeAlvo, EstadoRevogacaoDid.FalhaReconciliacao);
+            }
         }
 
         DocumentoDidAutenticacao? documento;

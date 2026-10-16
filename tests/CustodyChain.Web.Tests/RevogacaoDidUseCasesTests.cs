@@ -60,6 +60,48 @@ public sealed class RevogacaoDidUseCasesTests
         Assert.Contains("DID_REVOGACAO_REJEITADA", store.Acoes);
     }
 
+    [Theory]
+    [InlineData(null)]
+    [InlineData("DID_REVOCATION_CODIGO_FUTURO")]
+    public async Task ExecutarAsync_MantemBloqueioParaRejeicaoSemCodigoReconhecido(string? codigo)
+    {
+        var store = new StoreFake();
+        var ledger = new LedgerFake
+        {
+            Falha = codigo is null
+                ? new RevogacaoDidRejeitadaException("rejeição sem código")
+                : new RevogacaoDidRejeitadaException(codigo, "rejeição não reconhecida")
+        };
+        var useCase = CriarRevogar(store, ledger);
+
+        var resultado = await useCase.ExecutarAsync(Comando());
+
+        Assert.Equal(EstadoRevogacaoDid.FalhaReconciliacao, resultado.Estado);
+        Assert.DoesNotContain("DID_REVOGACAO_REJEITADA", store.Acoes);
+        Assert.Contains("DID_REVOGACAO_RECONCILIACAO_FALHOU", store.Acoes);
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("DID_REVOCATION_CODIGO_FUTURO")]
+    public async Task Reconciliar_MantemBloqueioParaRejeicaoSemCodigoReconhecido(string? codigo)
+    {
+        var store = new StoreFake { Pendencias = [Saga(EstadoRevogacaoDid.PendenteLedger)] };
+        var ledger = new LedgerFake
+        {
+            Falha = codigo is null
+                ? new RevogacaoDidRejeitadaException("rejeição sem código")
+                : new RevogacaoDidRejeitadaException(codigo, "rejeição não reconhecida")
+        };
+        var useCase = CriarReconciliador(store, ledger);
+
+        await useCase.ExecutarLoteAsync();
+
+        Assert.Equal(EstadoRevogacaoDid.FalhaReconciliacao, store.Saga!.Estado);
+        Assert.DoesNotContain("DID_REVOGACAO_REJEITADA", store.Acoes);
+        Assert.Contains("DID_REVOGACAO_RECONCILIACAO_FALHOU", store.Acoes);
+    }
+
     [Fact]
     public async Task ExecutarAsync_ConvergeQuandoConflitoDeVersaoIndicaDidJaRevogado()
     {
