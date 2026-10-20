@@ -60,7 +60,7 @@
                     wallet.exibirErro(error, 'Informe o pacote completo, a senha da wallet e o código de pareamento.');
                     return;
                 }
-                wallet.definirProcessamento({ botao: button, painel, processando: true });
+                wallet.definirProcessamento({ botao: button, painel: panel, processando: true });
                 try {
                     wallet.definirStatus(status, 'Montando a decisão administrativa.', 'processando');
                     const command = await wallet.requisicaoAplicacao({
@@ -88,7 +88,7 @@
                     wallet.definirStatus(status, 'A recuperação não foi confirmada.', 'erro');
                 } finally {
                     wallet.limparCamposSensíveis(password, pairing);
-                    wallet.definirProcessamento({ botao: button, painel, processando: false });
+                    wallet.definirProcessamento({ botao: button, painel: panel, processando: false });
                     button.disabled = button.dataset.completed === 'true';
                 }
             });

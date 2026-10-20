@@ -46,7 +46,7 @@
             wallet.exibirErro(error, 'Confirme a revogação e informe a senha e o código de pareamento da wallet.');
             return;
         }
-        wallet.definirProcessamento({ botao: button, painel, processando: true });
+        wallet.definirProcessamento({ botao: button, painel: panel, processando: true });
         try {
             wallet.definirStatus(status, 'Preparando a revogação.', 'processando');
             const command = await wallet.requisicaoAplicacao({
@@ -77,7 +77,7 @@
             wallet.definirStatus(status, 'A revogação foi rejeitada ou não pôde ser concluída.', 'erro');
         } finally {
             wallet.limparCamposSensíveis(password, pairing);
-            wallet.definirProcessamento({ botao: button, painel, processando: false });
+            wallet.definirProcessamento({ botao: button, painel: panel, processando: false });
             button.disabled = button.dataset.processing === 'true';
         }
     });
