@@ -55,6 +55,7 @@
 @section Scripts {
     <script>
         (() => {
+            const walletUi = window.CustodyChainWallet;
             const form = document.getElementById('approval-form');
             const button = document.getElementById('approve-button');
             const password = document.getElementById('wallet-password');
@@ -64,16 +65,14 @@
             const status = document.getElementById('approval-status');
             const antiForgery = form.querySelector('input[name="__RequestVerificationToken"]').value;
             let signedCredential = null;
-            const applicationPost = async (url, body) => {
-                const response = await fetch(url, {
-                    method: 'POST', credentials: 'same-origin',
-                    headers: { 'Content-Type': 'application/json', 'RequestVerificationToken': antiForgery },
-                    body: JSON.stringify(body)
-                });
-                const payload = await response.json().catch(() => ({}));
-                if (!response.ok) throw new Error(payload.message || 'Não foi possível aprovar a perícia.');
-                return payload;
-            };
+            validUntil.addEventListener('input', () => {
+                signedCredential = null;
+                password.required = true;
+                pairing.required = true;
+            });
+            const applicationPost = (url, body) => walletUi.requisicaoAplicacao({
+                url, token: antiForgery, body, mensagemErro: 'Não foi possível aprovar a perícia.'
+            });
             form.addEventListener('submit', async (event) => {
                 event.preventDefault();
                 error.hidden = true;
@@ -92,15 +91,17 @@
                             validaAte: validUntil.value || null
                         });
                         status.textContent = 'Aguardando a assinatura da wallet administrativa.';
-                        const walletResponse = await fetch(`${command.walletEndpoint}/v1/proofs/verifiable-credential`, {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json', 'X-Wallet-Pairing-Token': pairing.value },
-                            body: JSON.stringify({ did: command.issuerDid, password: password.value, credential: command.credential })
-                        });
-                        const wallet = await walletResponse.json().catch(() => ({}));
-                        if (!walletResponse.ok) throw new Error(wallet.message || 'A wallet recusou a assinatura da credencial.');
-                        signedCredential = wallet.verifiableCredential;
-                        password.value = '';
+                            const wallet = await walletUi.requisicaoWallet({
+                                endpoint: command.walletEndpoint,
+                                path: '/v1/proofs/verifiable-credential',
+                                pairingToken: pairing.value,
+                                body: { did: command.issuerDid, password: password.value, credential: command.credential },
+                                mensagemErro: 'A wallet recusou a assinatura da credencial.'
+                            });
+                            signedCredential = wallet.verifiableCredential;
+                            walletUi.limparCamposSensíveis(password, pairing);
+                            password.required = false;
+                            pairing.required = false;
                     }
                     status.textContent = 'Confirmando a credencial no ledger.';
                     const result = await applicationPost('/pericias/@Model.PericiaId/aprovar/prova', {
@@ -108,7 +109,7 @@
                     });
                     window.location.assign(result.redirectUrl);
                 } catch (exception) {
-                    password.value = '';
+                    walletUi.limparCamposSensíveis(password, pairing);
                     status.textContent = '';
                     error.textContent = exception.message;
                     error.hidden = false;

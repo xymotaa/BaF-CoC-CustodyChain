@@ -50,6 +50,33 @@ public sealed class WalletOperationViewsTests
         Assert.Contains("hidden", login, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public void ProcessamentoPericial_ReutilizaHelperDaWalletEScriptDedicado()
+    {
+        var index = File.ReadAllText(LocalizarArquivoNoRepositorio("src/CustodyChain.Web/Views/ProcessamentoPericial/Index.cshtml"));
+        var parcial = File.ReadAllText(LocalizarArquivoNoRepositorio("src/CustodyChain.Web/Views/ProcessamentoPericial/_PericiaCard.cshtml"));
+        var script = File.ReadAllText(LocalizarArquivoNoRepositorio("src/CustodyChain.Web/wwwroot/js/ui/processamento-pericial.js"));
+
+        Assert.Contains("_PericiaCard", index, StringComparison.Ordinal);
+        Assert.Contains("processamento-pericial.js", index, StringComparison.Ordinal);
+        Assert.Contains("data-operacao-assinada-form", parcial, StringComparison.Ordinal);
+        Assert.Contains("data-laudo-form", parcial, StringComparison.Ordinal);
+        Assert.Contains("window.CustodyChainWallet", script, StringComparison.Ordinal);
+        Assert.Contains("walletUi.limparCamposSensíveis(ui.senha, ui.pareamento)", script, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void AprovacaoPericia_ReutilizaWalletELimpaCredenciais()
+    {
+        var conteudo = File.ReadAllText(LocalizarArquivoNoRepositorio("src/CustodyChain.Web/Views/Pericias/Aprovar.cshtml"));
+
+        Assert.Contains("window.CustodyChainWallet", conteudo, StringComparison.Ordinal);
+        Assert.Contains("walletUi.requisicaoAplicacao", conteudo, StringComparison.Ordinal);
+        Assert.Contains("walletUi.requisicaoWallet", conteudo, StringComparison.Ordinal);
+        Assert.Contains("walletUi.limparCamposSensíveis(password, pairing)", conteudo, StringComparison.Ordinal);
+        Assert.Contains("password.required = false", conteudo, StringComparison.Ordinal);
+    }
+
     private static string LocalizarArquivoNoRepositorio(string caminhoRelativo)
     {
         for (var diretorio = new DirectoryInfo(AppContext.BaseDirectory); diretorio is not null; diretorio = diretorio.Parent)
