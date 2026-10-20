@@ -3,9 +3,14 @@
     ViewData["Title"] = "Movimentações";
 }
 
-<div class="pagina-cabecalho">
-    <h1>Movimentações</h1>
-    <p class="campo-ajuda">Remessa de um vestígio sob sua custódia para outro interveniente.</p>
+<div class="pagina-cabecalho pagina-cabecalho-acao">
+    <div>
+        <h1>Movimentações</h1>
+        <p class="campo-ajuda">Remessa de um vestígio sob sua custódia para outro interveniente.</p>
+    </div>
+    <nav class="navegacao-operacional" aria-label="Navegação da cadeia de custódia">
+        <a class="botao botao-secundario" href="/auditoria">Consultar histórico</a>
+    </nav>
 </div>
 
 @if (TempData["MensagemSucesso"] is string mensagem)
@@ -34,10 +39,10 @@
 }
 else
 {
-    <form id="criar-remessa-form" novalidate class="formulario-vestigio">
+    <form id="criar-remessa-form" novalidate class="formulario-vestigio formulario-operacional">
         @Html.AntiForgeryToken()
 
-        <section class="cartao secao-formulario">
+        <section class="cartao secao-formulario secao-operacional">
             <div class="grade-campos grade-2col">
                 <div class="campo">
                     <label asp-for="VestigioId" class="campo-rotulo"></label>
@@ -77,7 +82,7 @@ else
             </div>
         </section>
 
-        <section class="cartao secao-formulario" aria-labelledby="assinatura-remessa-title">
+        <section class="cartao secao-formulario secao-operacional operacao-assinada" aria-labelledby="assinatura-remessa-title">
             <h2 id="assinatura-remessa-title">Assinatura da remessa</h2>
             <p class="campo-ajuda">A wallet do custodiante ou coletor autorizado assina a remessa antes da confirmação no ledger.</p>
             <div class="grade-campos grade-2col">
@@ -90,11 +95,11 @@ else
                     <input id="codigo-pareamento" name="CodigoPareamento" type="password" autocomplete="one-time-code" class="campo-entrada" required />
                 </div>
             </div>
-            <p class="campo-ajuda" data-operacao-status role="status" aria-live="polite"></p>
+            <p class="campo-ajuda estado-operacao" data-operacao-status role="status" aria-live="polite"></p>
             <p class="campo-erro" data-operacao-error role="alert" tabindex="-1" hidden></p>
         </section>
 
-        <div class="formulario-acoes">
+        <div class="formulario-acoes acoes-formulario">
             <button type="submit" class="botao botao-primario">Assinar e registrar remessa</button>
         </div>
     </form>
@@ -146,6 +151,8 @@ else
         (function () {
             var form = document.getElementById('criar-remessa-form');
             if (!form) return;
+            var walletUi = window.CustodyChainWallet;
+            if (!walletUi) return;
             var button = form.querySelector('button[type="submit"]');
             var password = document.getElementById('senha-wallet');
             var pairing = document.getElementById('codigo-pareamento');
@@ -163,48 +170,38 @@ else
                 };
             }
 
-            async function post(url, body) {
-                var response = await fetch(url, {
-                    method: 'POST', credentials: 'same-origin',
-                    headers: { 'Content-Type': 'application/json', 'RequestVerificationToken': antiForgery },
-                    body: JSON.stringify(body)
-                });
-                var responseBody = await response.json().catch(function () { return {}; });
-                if (!response.ok) throw new Error(responseBody.message || 'Não foi possível registrar a remessa.');
-                return responseBody;
-            }
-
             form.addEventListener('submit', async function (event) {
                 event.preventDefault();
-                error.hidden = true;
+                walletUi.limparErro(error);
                 if (!form.checkValidity()) { form.reportValidity(); return; }
 
-                button.disabled = true;
-                form.setAttribute('aria-busy', 'true');
+                walletUi.definirProcessamento({ botao: button, painel: form, processando: true });
                 try {
-                    status.textContent = 'Preparando a remessa.';
-                    var command = await post('/movimentacoes/criar/comando', payload());
-                    status.textContent = 'Aguardando assinatura na wallet.';
-                    var walletResponse = await fetch(command.walletEndpoint + '/v1/proofs/signed-operation', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json', 'X-Wallet-Pairing-Token': pairing.value },
-                        body: JSON.stringify({ did: command.signerDid, password: password.value, operation: command.operation })
+                    walletUi.definirStatus(status, 'Preparando a remessa.', 'processando');
+                    var command = await walletUi.requisicaoAplicacao({
+                        url: '/movimentacoes/criar/comando', token: antiForgery, body: payload(),
+                        mensagemErro: 'Não foi possível preparar a remessa.'
                     });
-                    var wallet = await walletResponse.json().catch(function () { return {}; });
-                    if (!walletResponse.ok) throw new Error(wallet.message || 'A wallet recusou a assinatura da remessa.');
-                    password.value = '';
-                    status.textContent = 'Confirmando a remessa no ledger.';
-                    var result = await post('/movimentacoes/criar/prova', { remessa: payload(), operation: wallet.operation });
+                    walletUi.definirStatus(status, 'Aguardando assinatura na wallet.', 'aguardando');
+                    var assinatura = await walletUi.requisicaoWallet({
+                        endpoint: command.walletEndpoint, path: '/v1/proofs/signed-operation', pairingToken: pairing.value,
+                        body: { did: command.signerDid, password: password.value, operation: command.operation },
+                        mensagemErro: 'A wallet recusou a assinatura da remessa.'
+                    });
+                    walletUi.limparCamposSensíveis(password, pairing);
+                    walletUi.definirStatus(status, 'Confirmando a remessa no ledger.', 'processando');
+                    var result = await walletUi.requisicaoAplicacao({
+                        url: '/movimentacoes/criar/prova', token: antiForgery,
+                        body: { remessa: payload(), operation: assinatura.operation },
+                        mensagemErro: 'Não foi possível registrar a remessa.'
+                    });
                     window.location.assign(result.redirectUrl);
                 } catch (exception) {
-                    password.value = '';
-                    status.textContent = '';
-                    error.textContent = exception.message;
-                    error.hidden = false;
-                    error.focus();
+                    walletUi.limparCamposSensíveis(password, pairing);
+                    walletUi.definirStatus(status, '', 'erro');
+                    walletUi.exibirErro(error, exception.message);
                 } finally {
-                    button.disabled = false;
-                    form.removeAttribute('aria-busy');
+                    walletUi.definirProcessamento({ botao: button, painel: form, processando: false });
                 }
             });
         })();

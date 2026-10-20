@@ -3,8 +3,12 @@
     ViewData["Title"] = "Destinação final";
 }
 
-<div class="pagina-cabecalho">
-    <h1>Destinação final</h1>
+<div class="pagina-cabecalho pagina-cabecalho-acao">
+    <div><h1>Destinação final</h1></div>
+    <nav class="navegacao-operacional" aria-label="Navegação da cadeia de custódia">
+        <a href="/arquivo" class="botao botao-secundario">Consultar arquivo</a>
+        <a href="/auditoria" class="botao botao-secundario">Consultar histórico</a>
+    </nav>
 </div>
 
 @if (TempData["MensagemSucesso"] is string mensagem)
@@ -32,10 +36,10 @@
 }
 else
 {
-    <form asp-controller="DestinacaoFinal" asp-action="Solicitar" method="post" enctype="multipart/form-data" novalidate class="formulario-vestigio">
+    <form asp-controller="DestinacaoFinal" asp-action="Solicitar" method="post" enctype="multipart/form-data" novalidate class="formulario-vestigio formulario-operacional">
         @Html.AntiForgeryToken()
 
-        <section class="cartao secao-formulario">
+        <section class="cartao secao-formulario secao-operacional">
             <div class="grade-campos grade-2col">
                 <div class="campo">
                     <label asp-for="VestigioId" class="campo-rotulo"></label>
@@ -93,11 +97,11 @@ else
                 </div>
             </div>
             <p class="campo-ajuda">A solicitação só será registrada após sua assinatura na wallet e confirmação no ledger.</p>
-            <p class="campo-erro" data-erro-assinatura role="alert"></p>
-            <p class="campo-ajuda" data-status-assinatura role="status"></p>
+            <p class="campo-erro" data-erro-assinatura role="alert" tabindex="-1" hidden></p>
+            <p class="campo-ajuda estado-operacao" data-status-assinatura role="status" aria-live="polite"></p>
         </section>
 
-        <div class="formulario-acoes">
+        <div class="formulario-acoes acoes-formulario">
             <button type="submit" class="botao botao-primario">Solicitar destinação final</button>
         </div>
     </form>
@@ -202,53 +206,47 @@ else
             var status = document.querySelector('[data-status-assinatura]');
             var pairing = document.getElementById('wallet-pairing');
             var password = document.getElementById('wallet-password');
-            if (!entrada || !nome || !formulario || !erro || !status || !pairing || !password) return;
+            var button = formulario?.querySelector('button[type="submit"]');
+            var walletUi = window.CustodyChainWallet;
+            if (!entrada || !nome || !formulario || !erro || !status || !pairing || !password || !button || !walletUi) return;
 
             entrada.addEventListener('change', function () {
                 nome.textContent = entrada.files.length > 0 ? entrada.files[0].name : nome.dataset.placeholder;
             });
 
-            async function responseJson(response) {
-                var body = await response.json().catch(function () { return {}; });
-                if (!response.ok) throw new Error(body.message || 'Não foi possível concluir a solicitação.');
-                return body;
-            }
-
-            async function postProof(url, body) {
-                var token = formulario.querySelector('input[name="__RequestVerificationToken"]');
-                return responseJson(await fetch(url, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json', 'RequestVerificationToken': token.value },
-                    body: JSON.stringify(body)
-                }));
-            }
-
             formulario.addEventListener('submit', async function (event) {
                 event.preventDefault();
-                erro.textContent = '';
-                status.textContent = '';
+                walletUi.limparErro(erro);
+                if (!formulario.checkValidity()) { formulario.reportValidity(); return; }
+
+                walletUi.definirProcessamento({ botao: button, painel: formulario, processando: true });
                 try {
-                    status.textContent = 'Enviando autorização e preparando a solicitação.';
-                    var command = await responseJson(await fetch('/destinacao-final/solicitar/comando', {
-                        method: 'POST', body: new FormData(formulario)
-                    }));
-                    status.textContent = 'Aguardando assinatura na wallet.';
-                    var walletResponse = await fetch(command.walletEndpoint + '/v1/proofs/signed-operation', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json', 'X-Wallet-Pairing-Token': pairing.value },
-                        body: JSON.stringify({ did: command.signerDid, password: password.value, operation: command.operation })
+                    var antiForgery = walletUi.obterTokenAntiforgery(formulario);
+                    walletUi.definirStatus(status, 'Enviando autorização e preparando a solicitação.', 'processando');
+                    var command = await walletUi.requisicaoFormulario({
+                        url: '/destinacao-final/solicitar/comando', token: antiForgery, body: new FormData(formulario),
+                        mensagemErro: 'Não foi possível preparar a solicitação.'
                     });
-                    var wallet = await responseJson(walletResponse);
-                    password.value = '';
-                    status.textContent = 'Confirmando a solicitação no ledger.';
-                    var result = await postProof('/destinacao-final/solicitar/prova', {
-                        vestigioId: Number(document.getElementById('VestigioId').value), operation: wallet.operation
+                    walletUi.definirStatus(status, 'Aguardando assinatura na wallet.', 'aguardando');
+                    var assinatura = await walletUi.requisicaoWallet({
+                        endpoint: command.walletEndpoint, path: '/v1/proofs/signed-operation', pairingToken: pairing.value,
+                        body: { did: command.signerDid, password: password.value, operation: command.operation },
+                        mensagemErro: 'A wallet recusou a assinatura.'
+                    });
+                    walletUi.limparCamposSensíveis(password, pairing);
+                    walletUi.definirStatus(status, 'Confirmando a solicitação no ledger.', 'processando');
+                    var result = await walletUi.requisicaoAplicacao({
+                        url: '/destinacao-final/solicitar/prova', token: antiForgery,
+                        body: { vestigioId: Number(document.getElementById('VestigioId').value), operation: assinatura.operation },
+                        mensagemErro: 'Não foi possível concluir a solicitação.'
                     });
                     window.location.assign(result.redirectUrl);
                 } catch (exception) {
-                    password.value = '';
-                    status.textContent = '';
-                    erro.textContent = exception.message;
+                    walletUi.limparCamposSensíveis(password, pairing);
+                    walletUi.definirStatus(status, '', 'erro');
+                    walletUi.exibirErro(erro, exception.message);
+                } finally {
+                    walletUi.definirProcessamento({ botao: button, painel: formulario, processando: false });
                 }
             });
         })();

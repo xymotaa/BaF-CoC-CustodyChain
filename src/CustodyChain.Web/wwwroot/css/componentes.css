@@ -241,3 +241,230 @@ textarea.campo-entrada {
     background: var(--cor-acento-suave);
     color: var(--cor-acento);
 }
+
+/* Operações da cadeia de custódia */
+
+.pagina-operacional {
+    max-width: 960px;
+}
+
+.pagina-cabecalho-acao {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: var(--espaco-4);
+    flex-wrap: wrap;
+    margin-bottom: var(--espaco-5);
+}
+
+.navegacao-operacional {
+    display: flex;
+    gap: var(--espaco-2);
+    flex-wrap: wrap;
+}
+
+.formulario-operacional {
+    display: flex;
+    flex-direction: column;
+    gap: var(--espaco-5);
+    max-width: 760px;
+}
+
+.secao-operacional {
+    padding: var(--espaco-5);
+}
+
+.secao-operacional h2 {
+    font-size: 1.125rem;
+}
+
+.grade-operacional {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0 var(--espaco-4);
+}
+
+.acoes-formulario {
+    display: flex;
+    justify-content: flex-end;
+    gap: var(--espaco-3);
+    flex-wrap: wrap;
+}
+
+.painel-vazio {
+    border: 1px dashed var(--cor-borda-forte);
+    border-radius: var(--raio);
+    padding: var(--espaco-6) var(--espaco-5);
+    text-align: center;
+    color: var(--cor-texto-suave);
+}
+
+.painel-vazio-icone {
+    display: inline-flex;
+    color: var(--cor-texto-fraco);
+    margin-bottom: var(--espaco-2);
+}
+
+.painel-vazio p {
+    margin: 0 auto var(--espaco-1);
+}
+
+.lista-operacional {
+    display: flex;
+    flex-direction: column;
+    gap: var(--espaco-4);
+    max-width: 900px;
+}
+
+.item-operacional {
+    padding: var(--espaco-5);
+}
+
+.item-operacional-cabecalho {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: var(--espaco-4);
+    margin-bottom: var(--espaco-3);
+}
+
+.item-operacional-rotulo {
+    font-size: 1rem;
+    font-weight: 600;
+    overflow-wrap: anywhere;
+}
+
+.item-operacional-descricao {
+    margin: var(--espaco-1) 0 0;
+    color: var(--cor-texto-suave);
+    font-size: 0.875rem;
+}
+
+.detalhes-operacionais {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: var(--espaco-3);
+    margin: 0 0 var(--espaco-4);
+    padding: var(--espaco-3) 0;
+    border-block: 1px solid var(--cor-borda);
+}
+
+.detalhes-operacionais dt {
+    margin-bottom: var(--espaco-1);
+    color: var(--cor-texto-fraco);
+    font-size: 0.75rem;
+}
+
+.detalhes-operacionais dd {
+    margin: 0;
+    font-size: 0.875rem;
+    overflow-wrap: anywhere;
+}
+
+.codigo-forense {
+    overflow-wrap: anywhere;
+    word-break: break-word;
+}
+
+.operacao-assinada {
+    border-top: 1px solid var(--cor-borda);
+    padding-top: var(--espaco-4);
+}
+
+.tabela-operacional-wrapper {
+    overflow-x: auto;
+    border: 1px solid var(--cor-borda);
+    border-radius: var(--raio);
+    background: var(--cor-superficie);
+}
+
+.tabela-operacional {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.875rem;
+}
+
+.tabela-operacional th,
+.tabela-operacional td {
+    padding: var(--espaco-3) var(--espaco-4);
+    text-align: left;
+    vertical-align: top;
+    border-bottom: 1px solid var(--cor-borda);
+}
+
+.tabela-operacional th {
+    color: var(--cor-texto-fraco);
+    font-size: 0.75rem;
+    white-space: nowrap;
+}
+
+.tabela-operacional tbody tr:last-child td {
+    border-bottom: 0;
+}
+
+@media (max-width: 640px) {
+    .pagina-cabecalho-acao {
+        align-items: stretch;
+    }
+
+    .navegacao-operacional .botao {
+        flex: 1 1 auto;
+    }
+
+    .grade-operacional,
+    .detalhes-operacionais {
+        grid-template-columns: 1fr;
+    }
+
+    .acoes-formulario .botao {
+        width: 100%;
+    }
+
+    .item-operacional {
+        padding: var(--espaco-4);
+    }
+
+    .tabela-operacional-wrapper {
+        overflow: visible;
+        border: 0;
+        background: transparent;
+    }
+
+    .tabela-operacional,
+    .tabela-operacional tbody,
+    .tabela-operacional tr,
+    .tabela-operacional td {
+        display: block;
+        width: 100%;
+    }
+
+    .tabela-operacional thead {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        overflow: hidden;
+        clip: rect(0, 0, 0, 0);
+    }
+
+    .tabela-operacional tr {
+        margin-bottom: var(--espaco-3);
+        border: 1px solid var(--cor-borda);
+        border-radius: var(--raio);
+        background: var(--cor-superficie);
+    }
+
+    .tabela-operacional td {
+        display: grid;
+        grid-template-columns: minmax(7rem, 40%) 1fr;
+        gap: var(--espaco-2);
+        padding: var(--espaco-2) var(--espaco-3);
+        white-space: normal;
+    }
+
+    .tabela-operacional td::before {
+        content: attr(data-rotulo);
+        color: var(--cor-texto-fraco);
+        font-size: 0.75rem;
+        font-weight: 600;
+    }
+}

@@ -49,6 +49,10 @@ button, input, select, textarea {
     color: inherit;
 }
 
+[hidden] {
+    display: none !important;
+}
+
 :focus-visible {
     outline: 3px solid var(--cor-acento);
     outline-offset: 2px;

@@ -3,8 +3,11 @@
     ViewData["Title"] = "Arquivo";
 }
 
-<div class="pagina-cabecalho">
-    <h1>Arquivo</h1>
+<div class="pagina-cabecalho pagina-cabecalho-acao">
+    <div><h1>Arquivo</h1></div>
+    <nav class="navegacao-operacional" aria-label="Navegação da cadeia de custódia">
+        <a href="/auditoria" class="botao botao-secundario">Consultar histórico</a>
+    </nav>
 </div>
 
 <div class="cartao painel-arquivo">
@@ -36,8 +39,8 @@
     }
     else
     {
-        <div class="tabela-wrapper">
-            <table class="tabela-arquivo">
+        <div class="tabela-wrapper tabela-operacional-wrapper">
+            <table class="tabela-arquivo tabela-operacional">
                 <thead>
                     <tr>
                         <th>Rótulo</th>
@@ -53,15 +56,15 @@
                     @foreach (var item in Model.Itens)
                     {
                         <tr>
-                            <td>
+                            <td data-rotulo="Vestígio">
                                 <span class="mono">@item.RotuloEvidencia</span>
                                 <div class="tabela-descricao">@item.Descricao</div>
                             </td>
-                            <td>@item.TipoVestigio</td>
-                            <td class="mono">@item.ProcessoNumero</td>
-                            <td><span class="selo">@item.Estado</span></td>
-                            <td>@(item.CustodianteNome ?? "—")</td>
-                            <td>
+                            <td data-rotulo="Tipo">@item.TipoVestigio</td>
+                            <td data-rotulo="Processo" class="mono">@item.ProcessoNumero</td>
+                            <td data-rotulo="Situação"><span class="selo">@item.Estado</span></td>
+                            <td data-rotulo="Custódia atual">@(item.CustodianteNome ?? "—")</td>
+                            <td data-rotulo="Hash SHA-256">
                                 @if (!string.IsNullOrEmpty(item.HashSha256))
                                 {
                                     <span class="mono tabela-hash">@item.HashSha256</span>
@@ -71,7 +74,7 @@
                                     <span>—</span>
                                 }
                             </td>
-                            <td>
+                            <td data-rotulo="Prazo de guarda">
                                 @if (item.PrazoGuardaAte is not null)
                                 {
                                     <span class="@(item.PrazoVencido ? "tabela-prazo-vencido" : "")">
@@ -203,6 +206,20 @@
         .selo-alerta {
             background: var(--cor-erro-fundo);
             color: var(--cor-erro);
+        }
+
+        @@media (max-width: 640px) {
+            .tabela-wrapper.tabela-operacional-wrapper {
+                overflow: visible;
+                border: 0;
+                background: transparent;
+                margin: 1.25rem 0 0;
+            }
+
+            .tabela-arquivo.tabela-operacional td {
+                white-space: normal;
+                padding: var(--espaco-2) var(--espaco-3);
+            }
         }
     </style>
 }

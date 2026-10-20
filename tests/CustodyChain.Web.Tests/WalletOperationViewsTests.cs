@@ -22,6 +22,34 @@ public sealed class WalletOperationViewsTests
         Assert.DoesNotContain("painel,", conteudo, StringComparison.Ordinal);
     }
 
+    [Theory]
+    [InlineData("src/CustodyChain.Web/Views/Vestigios/Cadastrar.cshtml")]
+    [InlineData("src/CustodyChain.Web/Views/Movimentacoes/Criar.cshtml")]
+    [InlineData("src/CustodyChain.Web/Views/Recebimento/Index.cshtml")]
+    [InlineData("src/CustodyChain.Web/Views/Arquivo/Entrada.cshtml")]
+    [InlineData("src/CustodyChain.Web/Views/DestinacaoFinal/Index.cshtml")]
+    [InlineData("src/CustodyChain.Web/Views/DestinacaoFinal/Solicitar.cshtml")]
+    public void OperacoesDeCustodia_UsamHelperDaWalletELimpamCredenciais(string caminhoRelativo)
+    {
+        var conteudo = File.ReadAllText(LocalizarArquivoNoRepositorio(caminhoRelativo));
+
+        Assert.Contains("window.CustodyChainWallet", conteudo, StringComparison.Ordinal);
+        Assert.Contains("walletUi.requisicaoWallet", conteudo, StringComparison.Ordinal);
+        Assert.Contains("walletUi.limparCamposSensíveis(password, pairing)", conteudo, StringComparison.Ordinal);
+        Assert.Contains("walletUi.definirProcessamento", conteudo, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void ElementosHidden_PermanecemOcultosMesmoComClassesDeLayout()
+    {
+        var cssBase = File.ReadAllText(LocalizarArquivoNoRepositorio("src/CustodyChain.Web/wwwroot/css/base.css"));
+        var login = File.ReadAllText(LocalizarArquivoNoRepositorio("src/CustodyChain.Web/Views/Autenticacao/Entrar.cshtml"));
+
+        Assert.Matches(@"\[hidden\]\s*\{\s*display:\s*none\s*!important;", cssBase);
+        Assert.Contains("id=\"login-erro\" class=\"alerta alerta-erro\"", login, StringComparison.Ordinal);
+        Assert.Contains("hidden", login, StringComparison.Ordinal);
+    }
+
     private static string LocalizarArquivoNoRepositorio(string caminhoRelativo)
     {
         for (var diretorio = new DirectoryInfo(AppContext.BaseDirectory); diretorio is not null; diretorio = diretorio.Parent)

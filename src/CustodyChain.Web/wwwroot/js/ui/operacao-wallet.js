@@ -40,6 +40,28 @@
         }
     }
 
+    async function requisicaoFormulario({ url, token, body, mensagemErro }) {
+        const headers = {};
+        if (token) {
+            headers.RequestVerificationToken = token;
+        }
+
+        try {
+            const response = await fetch(url, {
+                method: "POST",
+                credentials: "same-origin",
+                headers,
+                body
+            });
+            return await lerResposta(response, mensagemErro);
+        } catch (error) {
+            if (error instanceof TypeError) {
+                throw criarErro("Não foi possível comunicar-se com o CustodyChain. Tente novamente.");
+            }
+            throw error;
+        }
+    }
+
     async function requisicaoWallet({ endpoint, path, pairingToken, body, mensagemErro }) {
         try {
             const response = await fetch(`${endpoint}${path}`, {
@@ -100,6 +122,7 @@
 
     window.CustodyChainWallet = Object.freeze({
         requisicaoAplicacao,
+        requisicaoFormulario,
         requisicaoWallet,
         obterTokenAntiforgery,
         definirStatus,
