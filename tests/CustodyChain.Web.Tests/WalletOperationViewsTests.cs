@@ -77,6 +77,55 @@ public sealed class WalletOperationViewsTests
         Assert.Contains("password.required = false", conteudo, StringComparison.Ordinal);
     }
 
+    [Theory]
+    [InlineData("src/CustodyChain.Web/Views/GestaoPerfis/EmitirCredencial.cshtml")]
+    [InlineData("src/CustodyChain.Web/Views/GestaoPerfis/RevogarCredencial.cshtml")]
+    public void OperacoesAdministrativas_ReutilizamWalletELimpamCredenciais(string caminhoRelativo)
+    {
+        var conteudo = File.ReadAllText(LocalizarArquivoNoRepositorio(caminhoRelativo));
+
+        Assert.Contains("window.CustodyChainWallet", conteudo, StringComparison.Ordinal);
+        Assert.Contains("wallet.requisicaoAplicacao", conteudo, StringComparison.Ordinal);
+        Assert.Contains("wallet.requisicaoWallet", conteudo, StringComparison.Ordinal);
+        Assert.Contains("wallet.limparCamposSensíveis(password, pairing)", conteudo, StringComparison.Ordinal);
+        Assert.Contains("wallet.definirProcessamento", conteudo, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void GestaoPerfis_UsaTabelaResponsivaComEstadosSemanticos()
+    {
+        var index = File.ReadAllText(LocalizarArquivoNoRepositorio("src/CustodyChain.Web/Views/GestaoPerfis/Index.cshtml"));
+        var credenciais = File.ReadAllText(LocalizarArquivoNoRepositorio("src/CustodyChain.Web/Views/GestaoPerfis/Credenciais.cshtml"));
+
+        Assert.Contains("tabela-operacional", index, StringComparison.Ordinal);
+        Assert.Contains("data-rotulo=\"DID\"", index, StringComparison.Ordinal);
+        Assert.Contains("selo--ativo", index, StringComparison.Ordinal);
+        Assert.Contains("selo--pendente", credenciais, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void EmissaoCredencial_NaoInicializaWalletSemFormulario()
+    {
+        var conteudo = File.ReadAllText(LocalizarArquivoNoRepositorio("src/CustodyChain.Web/Views/GestaoPerfis/EmitirCredencial.cshtml"));
+        var indiceFormulario = conteudo.IndexOf("const form = document.getElementById('credential-form');", StringComparison.Ordinal);
+        var indiceGuarda = conteudo.IndexOf("if (!form) return;", StringComparison.Ordinal);
+        var indiceWallet = conteudo.IndexOf("wallet.obterTokenAntiforgery(form)", StringComparison.Ordinal);
+
+        Assert.True(indiceFormulario >= 0 && indiceGuarda > indiceFormulario && indiceWallet > indiceGuarda);
+    }
+
+    [Fact]
+    public void EstadosAdministrativos_UsamSelosSemanticosCorretos()
+    {
+        var index = File.ReadAllText(LocalizarArquivoNoRepositorio("src/CustodyChain.Web/Views/GestaoPerfis/Index.cshtml"));
+        var credenciais = File.ReadAllText(LocalizarArquivoNoRepositorio("src/CustodyChain.Web/Views/GestaoPerfis/Credenciais.cshtml"));
+        var estilos = File.ReadAllText(LocalizarArquivoNoRepositorio("src/CustodyChain.Web/wwwroot/css/componentes.css"));
+
+        Assert.Contains("\"REVOGACAO_PENDENTE\" => \"selo--pendente\"", index, StringComparison.Ordinal);
+        Assert.Contains("\"EXPIRADA\" => \"selo--expirado\"", credenciais, StringComparison.Ordinal);
+        Assert.Contains(".selo--expirado", estilos, StringComparison.Ordinal);
+    }
+
     private static string LocalizarArquivoNoRepositorio(string caminhoRelativo)
     {
         for (var diretorio = new DirectoryInfo(AppContext.BaseDirectory); diretorio is not null; diretorio = diretorio.Parent)

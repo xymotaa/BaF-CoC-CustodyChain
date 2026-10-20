@@ -1,6 +1,46 @@
 @model CustodyChain.Web.Models.ViewModels.RevogarCredencialViewModel
 @{ ViewData["Title"] = "Revogar VC"; }
-<div class="pagina-cabecalho"><h1>Revogar VC de permissão</h1><p class="campo-ajuda">A revogação será assinada pela wallet emissora e registrada no Fabric.</p></div>
-<section class="cartao painel-revogacao">@Html.AntiForgeryToken()<dl><dt>Titular</dt><dd>@Model.TitularNome</dd><dt>Credencial</dt><dd class="mono">@Model.Identificador</dd><dt>Emissor</dt><dd class="mono">@Model.EmissorDid</dd></dl><div id="revocation-error" class="alerta alerta-erro" role="alert" tabindex="-1" hidden></div><div class="campo"><label class="campo-rotulo" for="wallet-password">Senha da wallet emissora</label><input id="wallet-password" class="campo-entrada" type="password" autocomplete="current-password" required /></div><div class="campo"><label class="campo-rotulo" for="pairing-token">Código de pareamento da wallet</label><input id="pairing-token" class="campo-entrada" type="password" autocomplete="off" required /></div><button id="revoke" class="botao botao-primario" type="button">Assinar e revogar VC</button><p id="revocation-status" role="status" aria-live="polite" class="campo-ajuda"></p></section>
-@section Scripts { <script>(()=>{const button=document.getElementById('revoke'),error=document.getElementById('revocation-error'),status=document.getElementById('revocation-status'),password=document.getElementById('wallet-password'),pairing=document.getElementById('pairing-token'),token=document.querySelector('input[name="__RequestVerificationToken"]').value,base='/gestao-perfis/credenciais/@Model.Id/revogar';const post=async(url,body)=>{const response=await fetch(url,{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json','RequestVerificationToken':token},body:JSON.stringify(body)}),payload=await response.json().catch(()=>({}));if(!response.ok)throw new Error(payload.message||'Não foi possível revogar a VC.');return payload;};button.addEventListener('click',async()=>{error.hidden=true;if(!password.value||!pairing.value){error.textContent='Informe a senha e o código de pareamento da wallet.';error.hidden=false;error.focus();return;}button.disabled=true;try{status.textContent='Preparando a revogação.';const command=await post(`${base}/comando`,{});status.textContent='Aguardando assinatura da wallet emissora.';const response=await fetch('@Model.WalletEndpoint/v1/proofs/credential-revocation',{method:'POST',headers:{'Content-Type':'application/json','X-Wallet-Pairing-Token':pairing.value},body:JSON.stringify({did:'@Model.EmissorDid',password:password.value,command})}),proof=await response.json().catch(()=>({}));if(!response.ok)throw new Error(proof.message||'A wallet recusou a revogação.');password.value='';status.textContent='Registrando revogação no ledger.';const result=await post(`${base}/prova`,{command,keyId:proof.keyId,signature:proof.signature});window.location.assign(result.redirectUrl);}catch(exception){password.value='';error.textContent=exception.message;error.hidden=false;error.focus();}finally{button.disabled=false;}});})();</script> }
-@section Styles { <style>.pagina-cabecalho{margin-bottom:1.5rem}.painel-revogacao{max-width:640px;padding:1.5rem}.painel-revogacao dl{display:grid;grid-template-columns:max-content minmax(0,1fr);gap:.65rem 1rem;margin:0 0 1.5rem}.painel-revogacao dd{margin:0;overflow-wrap:anywhere}.painel-revogacao .campo{margin-bottom:1rem}.painel-revogacao .botao{min-height:44px}</style> }
+<div class="pagina-cabecalho-acao"><div><h1>Revogar VC de permissão</h1><p class="campo-ajuda">A revogação será assinada pela wallet emissora e registrada no Fabric.</p></div></div>
+<section id="credential-revocation-panel" class="cartao painel-operacao-wallet" data-wallet-endpoint="@Model.WalletEndpoint">
+    @Html.AntiForgeryToken()
+    <dl class="resumo-identidade"><dt>Titular</dt><dd>@Model.TitularNome</dd><dt>Credencial</dt><dd class="mono codigo-forense">@Model.Identificador</dd><dt>Emissor</dt><dd class="mono codigo-forense">@Model.EmissorDid</dd></dl>
+    <div id="revocation-error" class="alerta alerta-erro" role="alert" tabindex="-1" hidden></div>
+    <div class="campo"><label class="campo-rotulo" for="wallet-password">Senha da wallet emissora</label><input id="wallet-password" class="campo-entrada" type="password" autocomplete="current-password" required /></div>
+    <div class="campo"><label class="campo-rotulo" for="pairing-token">Código de pareamento da wallet</label><input id="pairing-token" class="campo-entrada" type="password" autocomplete="off" required /></div>
+    <button id="revoke" class="botao botao-primario" type="button">Assinar e revogar VC</button>
+    <p id="revocation-status" role="status" aria-live="polite" class="campo-ajuda estado-operacao"></p>
+</section>
+@section Scripts { <script>
+(() => {
+    const wallet = window.CustodyChainWallet;
+    const panel = document.getElementById('credential-revocation-panel');
+    const button = document.getElementById('revoke');
+    const error = document.getElementById('revocation-error');
+    const status = document.getElementById('revocation-status');
+    const password = document.getElementById('wallet-password');
+    const pairing = document.getElementById('pairing-token');
+    const token = wallet.obterTokenAntiforgery(panel);
+    const base = '/gestao-perfis/credenciais/@Model.Id/revogar';
+    const post = (url, body) => wallet.requisicaoAplicacao({ url, token, body, mensagemErro: 'Não foi possível revogar a VC.' });
+    button.addEventListener('click', async () => {
+        wallet.limparErro(error);
+        if (!wallet.camposPreenchidos(password, pairing)) { wallet.exibirErro(error, 'Informe a senha e o código de pareamento da wallet.'); return; }
+        wallet.definirProcessamento({ botao: button, painel: panel, processando: true });
+        try {
+            wallet.definirStatus(status, 'Preparando a revogação.', 'processando');
+            const command = await post(`${base}/comando`, {});
+            wallet.definirStatus(status, 'Aguardando assinatura da wallet emissora.', 'aguardando');
+            const proof = await wallet.requisicaoWallet({ endpoint: panel.dataset.walletEndpoint, path: '/v1/proofs/credential-revocation', pairingToken: pairing.value, body: { did: '@Model.EmissorDid', password: password.value, command }, mensagemErro: 'A wallet recusou a revogação.' });
+            wallet.limparCamposSensíveis(password, pairing);
+            wallet.definirStatus(status, 'Registrando revogação no ledger.', 'processando');
+            const result = await post(`${base}/prova`, { command, keyId: proof.keyId, signature: proof.signature });
+            wallet.definirStatus(status, 'Revogação confirmada. Redirecionando…', 'sucesso');
+            window.location.assign(result.redirectUrl);
+        } catch (exception) {
+            wallet.limparCamposSensíveis(password, pairing);
+            wallet.definirStatus(status, '', 'erro');
+            wallet.exibirErro(error, exception.message);
+        } finally { wallet.definirProcessamento({ botao: button, painel: panel, processando: false }); }
+    });
+})();
+</script> }

@@ -3,10 +3,7 @@
     ViewData["Title"] = "Emitir credencial de permissão";
 }
 
-<div class="pagina-cabecalho">
-    <h1>Emitir credencial de permissão</h1>
-    <p class="campo-ajuda">Coletor recebe autorização por processo; Custódia recebe autorização por processo e vestígio. As operações são definidas pelo perfil.</p>
-</div>
+<div class="pagina-cabecalho-acao"><div><h1>Emitir credencial de permissão</h1><p class="campo-ajuda">Coletor recebe autorização por processo; Custódia recebe autorização por processo e vestígio. As operações são definidas pelo perfil.</p></div></div>
 
 @if (TempData["MensagemSucesso"] is string mensagem)
 {
@@ -33,11 +30,11 @@
 }
 else
 {
-    <form id="credential-form" novalidate class="formulario-vestigio">
+    <form id="credential-form" novalidate class="formulario-operacional">
         @Html.AntiForgeryToken()
 
-        <section class="cartao secao-formulario">
-            <div class="grade-campos grade-2col">
+        <section class="cartao secao-operacional">
+            <div class="grade-operacional">
                 <div class="campo">
                     <label asp-for="TitularId" class="campo-rotulo"></label>
                     <select asp-for="TitularId" class="campo-entrada @(ViewData.ModelState["TitularId"]?.Errors.Count > 0 ? "campo-invalido" : "")">
@@ -94,7 +91,7 @@ else
         </section>
 
         <div id="credential-error" class="alerta alerta-erro" role="alert" tabindex="-1" hidden></div>
-        <p id="credential-status" role="status" aria-live="polite" class="campo-ajuda"></p>
+        <p id="credential-status" role="status" aria-live="polite" class="campo-ajuda estado-operacao"></p>
 
         <div class="formulario-acoes">
             <button id="issue-credential" type="submit" class="botao botao-primario">Assinar e emitir VC</button>
@@ -106,6 +103,9 @@ else
     <script>
         (() => {
             const form = document.getElementById('credential-form');
+            if (!form) return;
+
+            const wallet = window.CustodyChainWallet;
             const button = document.getElementById('issue-credential');
             const password = document.getElementById('wallet-password');
             const pairing = document.getElementById('pairing-token');
@@ -113,17 +113,10 @@ else
             const vestigio = document.getElementById('VestigioId');
             const error = document.getElementById('credential-error');
             const status = document.getElementById('credential-status');
-            const antiForgery = form.querySelector('input[name="__RequestVerificationToken"]').value;
-            const postApplication = async (url, body) => {
-                const response = await fetch(url, {
-                    method: 'POST', credentials: 'same-origin',
-                    headers: { 'Content-Type': 'application/json', 'RequestVerificationToken': antiForgery },
-                    body: JSON.stringify(body)
-                });
-                const payload = await response.json().catch(() => ({}));
-                if (!response.ok) throw new Error(payload.message || 'Não foi possível emitir a VC.');
-                return payload;
-            };
+            const antiForgery = wallet.obterTokenAntiforgery(form);
+            const postApplication = (url, body) => wallet.requisicaoAplicacao({
+                url, token: antiForgery, body, mensagemErro: 'Não foi possível emitir a VC.'
+            });
             const atualizarVestigios = () => {
                 const processoId = processo.value;
                 [...vestigio.options].forEach((option) => {
@@ -136,16 +129,14 @@ else
             atualizarVestigios();
             form.addEventListener('submit', async (event) => {
                 event.preventDefault();
-                error.hidden = true;
-                if (!password.value || !pairing.value) {
-                    error.textContent = 'Informe a senha e o código de pareamento da wallet.';
-                    error.hidden = false;
-                    error.focus();
+                wallet.limparErro(error);
+                if (!wallet.camposPreenchidos(password, pairing)) {
+                    wallet.exibirErro(error, 'Informe a senha e o código de pareamento da wallet.');
                     return;
                 }
-                button.disabled = true;
+                wallet.definirProcessamento({ botao: button, painel: form, processando: true });
                 try {
-                    status.textContent = 'Preparando a VC de permissão.';
+                    wallet.definirStatus(status, 'Preparando a VC de permissão.', 'processando');
                     const fields = new FormData(form);
                     const command = await postApplication('/gestao-perfis/emitir-credencial/comando', {
                         titularId: Number(fields.get('TitularId')) || null,
@@ -153,69 +144,23 @@ else
                         vestigioId: Number(fields.get('VestigioId')) || null,
                         validaAte: fields.get('ValidaAte') || null
                     });
-                    status.textContent = 'Aguardando assinatura da wallet emissora.';
-                    const walletResponse = await fetch(`${command.walletEndpoint}/v1/proofs/verifiable-credential`, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json', 'X-Wallet-Pairing-Token': pairing.value },
-                        body: JSON.stringify({ did: command.issuerDid, password: password.value, credential: command.credential })
-                    });
-                    const wallet = await walletResponse.json().catch(() => ({}));
-                    if (!walletResponse.ok) throw new Error(wallet.message || 'A wallet recusou a assinatura da VC.');
-                    password.value = '';
-                    status.textContent = 'Registrando a VC assinada no ledger.';
+                    wallet.definirStatus(status, 'Aguardando assinatura da wallet emissora.', 'aguardando');
+                    const prova = await wallet.requisicaoWallet({ endpoint: command.walletEndpoint, path: '/v1/proofs/verifiable-credential', pairingToken: pairing.value, body: { did: command.issuerDid, password: password.value, credential: command.credential }, mensagemErro: 'A wallet recusou a assinatura da VC.' });
+                    wallet.limparCamposSensíveis(password, pairing);
+                    wallet.definirStatus(status, 'Registrando a VC assinada no ledger.', 'processando');
                     const result = await postApplication('/gestao-perfis/emitir-credencial/prova', {
                         emissaoId: command.emissaoId,
-                        credential: wallet.verifiableCredential
+                        credential: prova.verifiableCredential
                     });
                     window.location.assign(result.redirectUrl);
                 } catch (exception) {
-                    password.value = '';
-                    error.textContent = exception.message;
-                    error.hidden = false;
-                    error.focus();
+                    wallet.limparCamposSensíveis(password, pairing);
+                    wallet.definirStatus(status, '', 'erro');
+                    wallet.exibirErro(error, exception.message);
                 } finally {
-                    button.disabled = false;
+                    wallet.definirProcessamento({ botao: button, painel: form, processando: false });
                 }
             });
         })();
     </script>
-}
-
-@section Styles {
-    <style>
-        .pagina-cabecalho { margin-bottom: 1.5rem; }
-        .pagina-cabecalho h1 { margin-bottom: 0.25rem; }
-
-        .formulario-vestigio {
-            display: flex;
-            flex-direction: column;
-            gap: 1.25rem;
-            max-width: 760px;
-        }
-
-        .secao-formulario { padding: 1.5rem; }
-        .grade-campos { display: grid; gap: 0 1rem; }
-        .grade-2col { grid-template-columns: 1fr 1fr; }
-
-        @@media (max-width: 640px) {
-            .grade-2col { grid-template-columns: 1fr; }
-        }
-
-        .formulario-acoes { display: flex; justify-content: flex-end; }
-        .formulario-acoes .botao { min-height: 44px; }
-
-        .painel-vazio {
-            border: 1px dashed var(--cor-borda-forte);
-            border-radius: var(--raio);
-            padding: 2rem 1.5rem;
-            text-align: center;
-            color: var(--cor-texto-suave);
-        }
-
-        .painel-vazio-icone {
-            display: inline-flex;
-            color: var(--cor-texto-fraco);
-            margin-bottom: 0.5rem;
-        }
-    </style>
 }

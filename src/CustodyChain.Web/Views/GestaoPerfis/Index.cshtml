@@ -3,12 +3,12 @@
     ViewData["Title"] = "Gestão de perfis";
 }
 
-<div class="pagina-cabecalho pagina-cabecalho-acao">
+<div class="pagina-cabecalho-acao">
     <div>
         <h1>Gestão de perfis</h1>
         <p class="campo-ajuda">A identidade no ledger é verificada separadamente da situação cadastral.</p>
     </div>
-    <div class="relatorio-acoes">
+    <div class="navegacao-operacional">
         <a href="/gestao-perfis/cadastrar" class="botao botao-secundario">Cadastrar interveniente</a>
         <a href="/gestao-perfis/emitir-credencial" class="botao botao-secundario">Emitir credencial de permissão</a>
         <a href="/gestao-perfis/credenciais" class="botao botao-secundario">Gerenciar credenciais</a>
@@ -41,8 +41,8 @@
 }
 else
 {
-    <div class="tabela-wrapper">
-        <table class="tabela-arquivo">
+    <div class="tabela-operacional-wrapper">
+        <table class="tabela-operacional">
             <thead>
                 <tr>
                     <th>Nome</th>
@@ -57,14 +57,29 @@ else
             <tbody>
                 @foreach (var item in Model.Intervenientes)
                 {
+                    var classeSituacao = item.Situacao switch
+                    {
+                        "ATIVO" => "selo--ativo",
+                        "GERADO" => "selo--pendente",
+                        "REVOGACAO_PENDENTE" => "selo--pendente",
+                        "REVOGADO" => "selo--revogado",
+                        _ => ""
+                    };
+                    var classeLedger = item.SituacaoIdentidadeLedger switch
+                    {
+                        "ATIVA" => "selo--ativo",
+                        "PENDENTE_ATIVACAO" => "selo--pendente",
+                        "INATIVA" or "AUSENTE_NO_LEDGER" => "selo--ausente",
+                        _ => ""
+                    };
                     <tr>
-                        <td>@item.Nome</td>
-                        <td>@item.PerfilNome</td>
-                        <td><span class="mono">@item.Did</span></td>
-                        <td><span class="selo">@item.Situacao</span></td>
-                        <td><span class="selo">@item.SituacaoIdentidadeLedger</span></td>
-                        <td>@(item.AtivadoEm?.ToString("dd/MM/yyyy HH:mm") ?? "—")</td>
-                        <td>
+                        <td data-rotulo="Nome">@item.Nome</td>
+                        <td data-rotulo="Perfil">@item.PerfilNome</td>
+                        <td data-rotulo="DID"><span class="mono codigo-forense">@item.Did</span></td>
+                        <td data-rotulo="Situação"><span class="selo @classeSituacao">@item.Situacao</span></td>
+                        <td data-rotulo="Identidade no ledger"><span class="selo @classeLedger">@item.SituacaoIdentidadeLedger</span></td>
+                        <td data-rotulo="Ativado em">@(item.AtivadoEm?.ToString("dd/MM/yyyy HH:mm") ?? "—")</td>
+                        <td data-rotulo="Ações"><div class="acoes-administrativas">
                             @if (item.Situacao == "GERADO")
                             {
                                 <a class="botao botao-primario" href="/gestao-perfis/@item.Id/ativar">Ativar com prova</a>
@@ -82,76 +97,12 @@ else
                                         <button type="submit" class="botao botao-primario">Reinscrever DID</button>
                                     </form>
                                 }
-                                <a class="botao botao-secundario" href="/gestao-perfis/@item.Id/revogar">Revogar com prova</a>
+                            <a class="botao botao-secundario" href="/gestao-perfis/@item.Id/revogar">Revogar com prova</a>
                             }
-                        </td>
+                        </div></td>
                     </tr>
                 }
             </tbody>
         </table>
     </div>
-}
-
-@section Styles {
-    <style>
-        .pagina-cabecalho { margin-bottom: 1.5rem; }
-        .pagina-cabecalho h1 { margin-bottom: 0.25rem; }
-
-        .pagina-cabecalho-acao {
-            display: flex;
-            justify-content: space-between;
-            align-items: flex-start;
-            gap: 1rem;
-            flex-wrap: wrap;
-        }
-
-        .relatorio-acoes { display: flex; gap: 0.75rem; flex-wrap: wrap; }
-
-        .painel-vazio {
-            border: 1px dashed var(--cor-borda-forte);
-            border-radius: var(--raio);
-            padding: 2rem 1.5rem;
-            text-align: center;
-            color: var(--cor-texto-suave);
-        }
-
-        .painel-vazio-icone {
-            display: inline-flex;
-            color: var(--cor-texto-fraco);
-            margin-bottom: 0.5rem;
-        }
-
-        .tabela-wrapper {
-            overflow-x: auto;
-            border: 1px solid var(--cor-borda);
-            border-radius: var(--raio);
-            background: var(--cor-superficie);
-        }
-
-        .tabela-arquivo {
-            width: 100%;
-            border-collapse: collapse;
-            font-size: 0.875rem;
-        }
-
-        .tabela-arquivo th {
-            text-align: left;
-            padding: 0.75rem 1rem;
-            font-size: 0.75rem;
-            color: var(--cor-texto-fraco);
-            font-weight: 600;
-            border-bottom: 1px solid var(--cor-borda);
-            white-space: nowrap;
-        }
-
-        .tabela-arquivo td {
-            padding: 0.75rem 1rem;
-            border-bottom: 1px solid var(--cor-borda);
-            vertical-align: middle;
-        }
-
-        .tabela-arquivo tbody tr:last-child td { border-bottom: none; }
-
-        .formulario-acao-tabela { margin: 0; }
-    </style>
 }

@@ -242,6 +242,31 @@ textarea.campo-entrada {
     color: var(--cor-acento);
 }
 
+.selo--ativo,
+.selo--vigente,
+.selo--confirmado {
+    background: var(--cor-sucesso-fundo);
+    color: var(--cor-sucesso);
+}
+
+.selo--pendente,
+.selo--processando {
+    background: var(--cor-alerta-fundo);
+    color: var(--cor-alerta);
+}
+
+.selo--expirado {
+    background: var(--cor-fundo);
+    color: var(--cor-texto-suave);
+}
+
+.selo--inativo,
+.selo--revogado,
+.selo--ausente {
+    background: var(--cor-erro-fundo);
+    color: var(--cor-erro);
+}
+
 /* Operações da cadeia de custódia */
 
 .pagina-operacional {
@@ -400,6 +425,16 @@ textarea.campo-entrada {
 
 .tabela-operacional tbody tr:last-child td {
     border-bottom: 0;
+}
+
+.acoes-administrativas {
+    display: flex;
+    gap: var(--espaco-2);
+    flex-wrap: wrap;
+}
+
+.formulario-acao-tabela {
+    margin: 0;
 }
 
 /* Processamento pericial */
