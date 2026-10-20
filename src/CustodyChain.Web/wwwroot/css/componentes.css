@@ -12,7 +12,7 @@
     font-weight: 600;
     font-size: 0.875rem;
     cursor: pointer;
-    transition: transform 0.1s ease, background 0.15s ease, border-color 0.15s ease;
+    transition: transform 100ms ease, background var(--duracao-interacao) ease, border-color var(--duracao-interacao) ease;
     max-inline-size: 100%;
     text-align: center;
 }
@@ -21,29 +21,64 @@
     transform: scale(0.98);
 }
 
-.botao-primario {
+.botao-primario,
+.botao--primario {
     background: var(--cor-acento);
     color: var(--cor-acento-texto);
 }
 
 @media (hover: hover) {
-    .botao-primario:not(:disabled):hover {
+    .botao-primario:not(:disabled):hover,
+    .botao--primario:not(:disabled):hover {
         background: var(--cor-acento-hover);
     }
 
-    .botao-secundario:not(:disabled):hover {
+    .botao-secundario:not(:disabled):hover,
+    .botao--secundario:not(:disabled):hover {
         background: var(--cor-fundo);
+    }
+
+    .botao-terciario:not(:disabled):hover,
+    .botao--terciario:not(:disabled):hover {
+        background: var(--cor-acento-suave);
+    }
+
+    .botao-destrutivo:not(:disabled):hover,
+    .botao--destrutivo:not(:disabled):hover {
+        filter: brightness(0.92);
     }
 }
 
-.botao-secundario {
+.botao-secundario,
+.botao--secundario {
     background: var(--cor-superficie);
     color: var(--cor-texto);
     border-color: var(--cor-borda-forte);
 }
 
-.botao-largura-total {
-    width: 100%;
+.botao-terciario,
+.botao--terciario {
+    background: transparent;
+    color: var(--cor-acento);
+    border-color: transparent;
+}
+
+.botao-destrutivo,
+.botao--destrutivo {
+    background: var(--cor-erro);
+    color: var(--cor-erro-contraste);
+}
+
+.botao-compacto,
+.botao--compacto {
+    min-height: var(--altura-controle-compacto);
+    padding: var(--espaco-1) var(--espaco-3);
+}
+
+.botao-largura-total,
+.botao-bloco,
+.botao--bloco {
+    inline-size: 100%;
 }
 
 .botao:disabled {
@@ -63,6 +98,13 @@
     border-radius: var(--raio);
     box-shadow: var(--sombra-elevacao);
     min-inline-size: 0;
+}
+
+.item-operacional,
+.painel-operacao-wallet {
+    background: var(--cor-superficie);
+    border: 1px solid var(--cor-borda);
+    border-radius: var(--raio);
 }
 
 /* Formulários */
@@ -87,6 +129,8 @@
 }
 
 .campo-entrada {
+    inline-size: 100%;
+    max-inline-size: 100%;
     min-height: var(--altura-controle);
     padding: var(--espaco-2) var(--espaco-3);
     border: 1px solid var(--cor-borda-forte);
@@ -121,7 +165,8 @@ textarea.campo-entrada {
 /* Operações assinadas pela wallet */
 
 .painel-operacao-wallet {
-    max-width: 720px;
+    max-inline-size: var(--largura-painel-wallet);
+    inline-size: 100%;
     padding: var(--espaco-5);
 }
 
@@ -155,8 +200,17 @@ textarea.campo-entrada {
     color: var(--cor-sucesso);
 }
 
+.estado-operacao[data-estado="confirmado"] {
+    color: var(--cor-sucesso);
+}
+
 .estado-operacao[data-estado="pendente"] {
     color: var(--cor-alerta);
+}
+
+.estado-operacao[data-estado="erro"],
+.estado-operacao[data-estado="rejeitado"] {
+    color: var(--cor-erro);
 }
 
 @media (max-width: 40rem) {
@@ -181,6 +235,7 @@ textarea.campo-entrada {
     font-size: 0.875rem;
     border: 1px solid transparent;
     margin-bottom: 1.125rem;
+    min-inline-size: 0;
 }
 
 .alerta-erro {
@@ -199,6 +254,12 @@ textarea.campo-entrada {
     background: var(--cor-alerta-fundo);
     color: var(--cor-alerta);
     border-color: color-mix(in srgb, var(--cor-alerta) 30%, transparent);
+}
+
+.alerta-info {
+    background: var(--cor-acento-suave);
+    color: var(--cor-acento);
+    border-color: color-mix(in srgb, var(--cor-acento) 30%, transparent);
 }
 
 .alerta-icone {
@@ -274,7 +335,26 @@ textarea.campo-entrada {
 /* Operações da cadeia de custódia */
 
 .pagina-operacional {
-    max-width: 960px;
+    max-inline-size: 60rem;
+}
+
+.pagina-cabecalho,
+.pagina-cabecalho-acao,
+.pagina-cabecalho-acoes {
+    margin-block-end: var(--espaco-5);
+    min-inline-size: 0;
+}
+
+.pagina-cabecalho h1,
+.pagina-cabecalho-acao h1,
+.pagina-cabecalho-acoes h1 {
+    margin-block-end: var(--espaco-1);
+}
+
+.pagina-cabecalho > :last-child,
+.pagina-cabecalho-acao > :last-child,
+.pagina-cabecalho-acoes > :last-child {
+    margin-block-end: 0;
 }
 
 .pagina-cabecalho-acao {
@@ -286,7 +366,16 @@ textarea.campo-entrada {
     margin-bottom: var(--espaco-5);
 }
 
+.pagina-cabecalho-acoes {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: var(--espaco-4);
+    flex-wrap: wrap;
+}
+
 .pagina-cabecalho-acao > *,
+.pagina-cabecalho-acoes > *,
 .navegacao-operacional,
 .acoes-formulario,
 .acoes-administrativas,
@@ -304,24 +393,31 @@ textarea.campo-entrada {
     display: flex;
     flex-direction: column;
     gap: var(--espaco-5);
-    max-width: 760px;
+    max-inline-size: var(--largura-formulario);
+    min-inline-size: 0;
 }
 
-.secao-operacional {
+.secao-operacional,
+.secao-formulario {
     padding: var(--espaco-5);
+    min-inline-size: 0;
 }
 
-.secao-operacional h2 {
+.secao-operacional h2,
+.secao-formulario h2 {
     font-size: 1.125rem;
 }
 
-.grade-operacional {
+.grade-operacional,
+.grade-campos.grade-2col {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 0 var(--espaco-4);
+    min-inline-size: 0;
 }
 
-.acoes-formulario {
+.acoes-formulario,
+.formulario-acoes {
     display: flex;
     justify-content: flex-end;
     gap: var(--espaco-3);
@@ -334,6 +430,7 @@ textarea.campo-entrada {
     padding: var(--espaco-6) var(--espaco-5);
     text-align: center;
     color: var(--cor-texto-suave);
+    min-inline-size: 0;
 }
 
 .painel-vazio-icone {
@@ -355,6 +452,7 @@ textarea.campo-entrada {
 
 .item-operacional {
     padding: var(--espaco-5);
+    min-inline-size: 0;
 }
 
 .item-operacional-cabecalho {
@@ -399,6 +497,7 @@ textarea.campo-entrada {
 }
 
 .codigo-forense {
+    min-inline-size: 0;
     overflow-wrap: anywhere;
     word-break: break-word;
 }
@@ -470,7 +569,8 @@ textarea.campo-entrada {
 .solicitacao-dados dd { margin: 0; overflow-wrap: anywhere; }
 
 @media (max-width: 40rem) {
-    .pagina-cabecalho-acao {
+    .pagina-cabecalho-acao,
+    .pagina-cabecalho-acoes {
         align-items: stretch;
     }
 
@@ -483,7 +583,8 @@ textarea.campo-entrada {
         grid-template-columns: 1fr;
     }
 
-    .acoes-formulario .botao {
+    .acoes-formulario .botao,
+    .formulario-acoes .botao {
         width: 100%;
     }
 

@@ -55,6 +55,36 @@ public sealed class FrontendShellBaselineTests
         Assert.Contains("data-operacao-*", baseline, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public void ComponentesGlobais_OferecemContratosCanonicosECompatibilidadeExistente()
+    {
+        var css = Ler("src/CustodyChain.Web/wwwroot/css/componentes.css");
+        var tokens = Ler("src/CustodyChain.Web/wwwroot/css/tokens.css");
+
+        Assert.Contains(".pagina-cabecalho-acoes", css, StringComparison.Ordinal);
+        Assert.Contains(".botao--primario", css, StringComparison.Ordinal);
+        Assert.Contains(".botao--secundario", css, StringComparison.Ordinal);
+        Assert.Contains(".botao--terciario", css, StringComparison.Ordinal);
+        Assert.Contains(".botao--destrutivo", css, StringComparison.Ordinal);
+        Assert.Contains(".botao--compacto", css, StringComparison.Ordinal);
+        Assert.Contains(".botao--bloco", css, StringComparison.Ordinal);
+        Assert.Contains(".formulario-acoes", css, StringComparison.Ordinal);
+        Assert.Contains(".grade-campos.grade-2col", css, StringComparison.Ordinal);
+        Assert.Contains("--largura-conteudo", tokens, StringComparison.Ordinal);
+        Assert.Contains("--duracao-interacao", tokens, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void ComponentesGlobais_PreservamReflowDeCamposEAcoes()
+    {
+        var css = Ler("src/CustodyChain.Web/wwwroot/css/componentes.css");
+
+        Assert.Contains("inline-size: 100%", css, StringComparison.Ordinal);
+        Assert.Contains("max-inline-size: 100%", css, StringComparison.Ordinal);
+        Assert.Contains("grid-template-columns: repeat(2, minmax(0, 1fr))", css, StringComparison.Ordinal);
+        Assert.Contains("overflow-wrap: anywhere", css, StringComparison.Ordinal);
+    }
+
     private static string Ler(string caminhoRelativo)
     {
         for (var diretorio = new DirectoryInfo(AppContext.BaseDirectory); diretorio is not null; diretorio = diretorio.Parent)

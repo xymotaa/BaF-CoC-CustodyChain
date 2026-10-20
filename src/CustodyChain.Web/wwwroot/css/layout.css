@@ -182,7 +182,7 @@
     grid-area: main;
     min-inline-size: 0;
     padding: clamp(1rem, 2vw, 1.5rem);
-    max-inline-size: 75rem;
+    max-inline-size: var(--largura-conteudo);
     inline-size: 100%;
 }
 
