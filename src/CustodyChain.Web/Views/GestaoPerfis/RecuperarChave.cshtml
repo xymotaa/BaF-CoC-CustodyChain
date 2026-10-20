@@ -8,7 +8,7 @@
     <p class="campo-ajuda">Importe o pacote assinado pelo titular, revise a solicitação e assine a decisão administrativa.</p>
 </div>
 
-<section id="admin-recovery" class="cartao painel-recuperacao" data-wallet-endpoint="@Model.WalletEndpoint">
+<section id="admin-recovery" class="cartao painel-operacao-wallet painel-recuperacao" data-wallet-endpoint="@Model.WalletEndpoint">
     @Html.AntiForgeryToken()
     <div id="recovery-error" class="alerta alerta-erro" role="alert" tabindex="-1" hidden></div>
     <div class="campo">
@@ -32,12 +32,13 @@
         <input id="pairing-token" class="campo-entrada" type="password" autocomplete="off" required />
     </div>
     <button id="approve-recovery" class="botao botao-primario" type="button">Assinar e confirmar recuperação</button>
-    <p id="recovery-status" role="status" aria-live="polite" class="campo-ajuda"></p>
+    <p id="recovery-status" role="status" aria-live="polite" class="campo-ajuda estado-operacao"></p>
 </section>
 
 @section Scripts {
     <script>
         (() => {
+            const wallet = window.CustodyChainWallet;
             const panel = document.getElementById('admin-recovery');
             const button = document.getElementById('approve-recovery');
             const error = document.getElementById('recovery-error');
@@ -45,48 +46,50 @@
             const packageField = document.getElementById('package');
             const password = document.getElementById('wallet-password');
             const pairing = document.getElementById('pairing-token');
-            const token = document.querySelector('input[name="__RequestVerificationToken"]').value;
+            const token = wallet.obterTokenAntiforgery(panel);
             const walletEndpoint = panel.dataset.walletEndpoint;
-            const post = async (url, body) => {
-                const response = await fetch(url, { method: 'POST', credentials: 'same-origin',
-                    headers: { 'Content-Type': 'application/json', 'RequestVerificationToken': token }, body: JSON.stringify(body) });
-                const payload = await response.json().catch(() => ({}));
-                if (!response.ok) throw new Error(payload.message || 'Não foi possível confirmar a recuperação.');
-                return payload;
-            };
-            const walletPost = async (path, body) => {
-                const response = await fetch(`${walletEndpoint}${path}`, { method: 'POST',
-                    headers: { 'Content-Type': 'application/json', 'X-Wallet-Pairing-Token': pairing.value }, body: JSON.stringify(body) });
-                const payload = await response.json().catch(() => ({}));
-                if (!response.ok) throw new Error(payload.message || 'A wallet administrativa recusou a assinatura.');
-                return payload;
-            };
             button.addEventListener('click', async () => {
-                error.hidden = true;
+                wallet.limparErro(error);
                 let recoveryPackage;
                 try { recoveryPackage = JSON.parse(packageField.value); }
-                catch { error.textContent = 'O pacote de recuperação não contém JSON válido.'; error.hidden = false; error.focus(); return; }
-                if (!recoveryPackage.request || !recoveryPackage.candidateSignature || !password.value || !pairing.value) {
-                    error.textContent = 'Informe o pacote completo, a senha da wallet e o código de pareamento.';
-                    error.hidden = false; error.focus(); return;
+                catch {
+                    wallet.exibirErro(error, 'O pacote de recuperação não contém JSON válido.');
+                    return;
                 }
-                button.disabled = true;
+                if (!recoveryPackage.request || !recoveryPackage.candidateSignature || !password.value || !pairing.value) {
+                    wallet.exibirErro(error, 'Informe o pacote completo, a senha da wallet e o código de pareamento.');
+                    return;
+                }
+                wallet.definirProcessamento({ botao: button, painel, processando: true });
                 try {
-                    status.textContent = 'Montando a decisão administrativa.';
-                    const command = await post('/gestao-perfis/recuperar-chave/comando', { recoveryRequest: recoveryPackage.request, reason: document.getElementById('reason').value });
-                    status.textContent = 'Assinando a decisão na wallet administrativa.';
-                    const proof = await walletPost('/v1/proofs/did-key-recovery', { did: command.actorDid, password: password.value, command });
-                    password.value = '';
-                    status.textContent = 'Confirmando as duas provas no ledger.';
-                    const result = await post('/identidade/chave/recuperacao/prova', {
-                        command, adminKeyId: proof.keyId, adminSignature: proof.signature, candidateSignature: recoveryPackage.candidateSignature
+                    wallet.definirStatus(status, 'Montando a decisão administrativa.', 'processando');
+                    const command = await wallet.requisicaoAplicacao({
+                        url: '/gestao-perfis/recuperar-chave/comando', token,
+                        body: { recoveryRequest: recoveryPackage.request, reason: document.getElementById('reason').value },
+                        mensagemErro: 'Não foi possível confirmar a recuperação.'
                     });
-                    status.textContent = `Recuperação confirmada no ledger. Nova chave: ${result.keyId}.`;
-                    button.disabled = true;
-                } catch (exception) {
+                    wallet.definirStatus(status, 'Aguardando assinatura da decisão administrativa.', 'aguardando');
+                    const proof = await wallet.requisicaoWallet({
+                        endpoint: walletEndpoint, path: '/v1/proofs/did-key-recovery', pairingToken: pairing.value,
+                        body: { did: command.actorDid, password: password.value, command },
+                        mensagemErro: 'A wallet administrativa recusou a assinatura.'
+                    });
                     password.value = '';
-                    error.textContent = exception.message; error.hidden = false; error.focus();
-                    button.disabled = false;
+                    wallet.definirStatus(status, 'Confirmando as duas provas no ledger.', 'processando');
+                    const result = await wallet.requisicaoAplicacao({
+                        url: '/identidade/chave/recuperacao/prova', token,
+                        body: { command, adminKeyId: proof.keyId, adminSignature: proof.signature, candidateSignature: recoveryPackage.candidateSignature },
+                        mensagemErro: 'Não foi possível confirmar a recuperação.'
+                    });
+                    button.dataset.completed = 'true';
+                    wallet.definirStatus(status, `Recuperação confirmada no ledger. Nova chave: ${result.keyId}.`, 'sucesso');
+                } catch (exception) {
+                    wallet.exibirErro(error, exception.message);
+                    wallet.definirStatus(status, 'A recuperação não foi confirmada.', 'erro');
+                } finally {
+                    wallet.limparCamposSensíveis(password, pairing);
+                    wallet.definirProcessamento({ botao: button, painel, processando: false });
+                    button.disabled = button.dataset.completed === 'true';
                 }
             });
         })();
@@ -96,9 +99,9 @@
 @section Styles {
     <style>
         .pagina-cabecalho { margin-bottom: 1.5rem; }
-        .painel-recuperacao { max-width: 720px; padding: 1.5rem; }
+        .painel-recuperacao { max-width: 720px; }
         .painel-recuperacao .campo { margin-top: 1rem; }
-        .painel-recuperacao .botao { min-height: 44px; margin-top: 1rem; }
+        .painel-recuperacao .botao { margin-top: 1rem; }
         .painel-recuperacao textarea { width: 100%; resize: vertical; }
     </style>
 }

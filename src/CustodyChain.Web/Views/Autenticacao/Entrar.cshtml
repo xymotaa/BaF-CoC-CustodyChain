@@ -47,7 +47,7 @@
             <button id="login-submit" type="submit" class="botao botao-primario botao-largura-total">
                 <span id="login-submit-texto">Assinar desafio e entrar</span>
             </button>
-            <p id="login-status" class="tela-login-status" role="status" aria-live="polite"></p>
+            <p id="login-status" class="tela-login-status estado-operacao" role="status" aria-live="polite"></p>
         </form>
 
         <p class="tela-login-rodape">
@@ -146,76 +146,18 @@
 @section Scripts {
     <script>
         (() => {
+            const wallet = window.CustodyChainWallet;
             const form = document.getElementById('login-form');
             const submit = document.getElementById('login-submit');
             const submitTexto = document.getElementById('login-submit-texto');
             const status = document.getElementById('login-status');
             const alerta = document.getElementById('login-erro');
             const alertaTexto = document.getElementById('login-erro-texto');
-            const antiforgery = form.querySelector('input[name="__RequestVerificationToken"]').value;
-
-            const postAplicacao = async (url, body) => {
-                const response = await fetch(url, {
-                    method: 'POST',
-                    credentials: 'same-origin',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'RequestVerificationToken': antiforgery
-                    },
-                    body: JSON.stringify(body)
-                });
-                const payload = await response.json().catch(() => ({}));
-                if (!response.ok) {
-                    throw new Error(payload.message || 'Não foi possível concluir a autenticação.');
-                }
-                return payload;
-            };
-
-            const assinarNaWallet = async (desafio, did, password, pairingToken) => {
-                let response;
-                try {
-                    response = await fetch(`${form.dataset.walletEndpoint}/v1/signatures`, {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                            'X-Wallet-Pairing-Token': pairingToken
-                        },
-                        body: JSON.stringify({
-                            did,
-                            password,
-                            signingInput: desafio.signingInput,
-                            keyId: desafio.keyId,
-                            purpose: 'authentication'
-                        })
-                    });
-                } catch {
-                    throw new Error('A wallet local não respondeu. Inicie-a e tente novamente.');
-                }
-
-                const payload = await response.json().catch(() => ({}));
-                if (!response.ok) {
-                    throw new Error(payload.message || 'A wallet recusou a assinatura. Confira a senha e o pareamento.');
-                }
-                return payload;
-            };
-
-            const reconciliarChaveNaWallet = async (did, keyId, pairingToken) => {
-                const response = await fetch(`${form.dataset.walletEndpoint}/v1/key-rotations/confirm`, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'X-Wallet-Pairing-Token': pairingToken
-                    },
-                    body: JSON.stringify({ did, keyId })
-                });
-                if (!response.ok) {
-                    throw new Error('A autenticação foi aceita, mas a wallet não reconciliou a chave ativa.');
-                }
-            };
+            const antiforgery = wallet.obterTokenAntiforgery(form);
 
             form.addEventListener('submit', async (event) => {
                 event.preventDefault();
-                alerta.hidden = true;
+                wallet.limparErro(alerta, alertaTexto);
 
                 if (!form.reportValidity()) {
                     return;
@@ -225,40 +167,57 @@
                 const passwordInput = document.getElementById('wallet-password');
                 const pairingInput = document.getElementById('pairing-token');
 
-                submit.disabled = true;
-                form.setAttribute('aria-busy', 'true');
+                wallet.definirProcessamento({ botao: submit, painel: form, processando: true });
                 submitTexto.textContent = 'Validando identidade…';
-                status.textContent = 'Solicitando um desafio único ao CustodyChain.';
+                wallet.definirStatus(status, 'Solicitando um desafio único ao CustodyChain.', 'processando');
 
                 try {
-                    const desafio = await postAplicacao('/autenticacao/desafios', { did });
-                    status.textContent = 'Aguardando assinatura segura da wallet local.';
-                    const assinatura = await assinarNaWallet(
-                        desafio,
-                        did,
-                        passwordInput.value,
-                        pairingInput.value);
+                    const desafio = await wallet.requisicaoAplicacao({
+                        url: '/autenticacao/desafios', token: antiforgery, body: { did },
+                        mensagemErro: 'Não foi possível concluir a autenticação.'
+                    });
+                    wallet.definirStatus(status, 'Aguardando assinatura segura da wallet local.', 'aguardando');
+                    const assinatura = await wallet.requisicaoWallet({
+                        endpoint: form.dataset.walletEndpoint,
+                        path: '/v1/signatures',
+                        pairingToken: pairingInput.value,
+                        body: {
+                            did,
+                            password: passwordInput.value,
+                            signingInput: desafio.signingInput,
+                            keyId: desafio.keyId,
+                            purpose: 'authentication'
+                        },
+                        mensagemErro: 'A wallet recusou a assinatura. Confira a senha e o pareamento.'
+                    });
 
                     passwordInput.value = '';
-                    const resultado = await postAplicacao('/autenticacao/provas', {
+                    wallet.definirStatus(status, 'Validando a prova de posse no CustodyChain.', 'processando');
+                    const resultado = await wallet.requisicaoAplicacao({
+                        url: '/autenticacao/provas', token: antiforgery, body: {
                         challengeId: desafio.challengeId,
                         did,
                         keyId: assinatura.keyId,
                         signature: assinatura.signature
+                        },
+                        mensagemErro: 'Não foi possível concluir a autenticação.'
                     });
-                    await reconciliarChaveNaWallet(did, assinatura.keyId, pairingInput.value);
+                    await wallet.requisicaoWallet({
+                        endpoint: form.dataset.walletEndpoint,
+                        path: '/v1/key-rotations/confirm',
+                        pairingToken: pairingInput.value,
+                        body: { did, keyId: assinatura.keyId },
+                        mensagemErro: 'A autenticação foi aceita, mas a wallet não reconciliou a chave ativa.'
+                    });
 
-                    status.textContent = 'Identidade comprovada. Redirecionando…';
+                    wallet.definirStatus(status, 'Identidade comprovada. Redirecionando…', 'sucesso');
                     window.location.assign(resultado.redirectUrl);
                 } catch (error) {
-                    passwordInput.value = '';
-                    alertaTexto.textContent = error.message;
-                    alerta.hidden = false;
-                    alerta.focus();
-                    status.textContent = 'Revise os dados e solicite um novo desafio.';
+                    wallet.exibirErro(alerta, error.message, alertaTexto);
+                    wallet.definirStatus(status, 'Autenticação não concluída. Revise os dados e solicite um novo desafio.', 'erro');
                 } finally {
-                    submit.disabled = false;
-                    form.removeAttribute('aria-busy');
+                    wallet.limparCamposSensíveis(passwordInput, pairingInput);
+                    wallet.definirProcessamento({ botao: submit, painel: form, processando: false });
                     submitTexto.textContent = 'Assinar desafio e entrar';
                 }
             });

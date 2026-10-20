@@ -8,9 +8,9 @@
     <p class="campo-ajuda">A ativação é autorizada pela assinatura da wallet administrativa; a senha não é enviada ao CustodyChain.</p>
 </div>
 
-<section class="cartao painel-ativacao">
+<section id="activation-panel" class="cartao painel-operacao-wallet painel-ativacao" data-wallet-endpoint="@Model.WalletEndpoint">
     @Html.AntiForgeryToken()
-    <dl>
+    <dl class="resumo-identidade">
         <dt>DID do titular</dt><dd class="mono">@Model.Did</dd>
         <dt>Administrador</dt><dd class="mono">@Model.DidAdministrador</dd>
     </dl>
@@ -24,45 +24,55 @@
         <input id="pairing-token" class="campo-entrada" type="password" autocomplete="off" required />
     </div>
     <button id="activate" class="botao botao-primario" type="button">Assinar e ativar</button>
-    <p id="activation-status" role="status" aria-live="polite" class="campo-ajuda"></p>
+    <p id="activation-status" role="status" aria-live="polite" class="campo-ajuda estado-operacao"></p>
 </section>
 
 @section Scripts {
     <script>
         (() => {
+            const wallet = window.CustodyChainWallet;
+            const panel = document.getElementById('activation-panel');
             const button = document.getElementById('activate');
             const error = document.getElementById('activation-error');
             const status = document.getElementById('activation-status');
             const password = document.getElementById('wallet-password');
             const pairing = document.getElementById('pairing-token');
-            const antiForgery = document.querySelector('input[name="__RequestVerificationToken"]').value;
+            const antiForgery = wallet.obterTokenAntiforgery(panel);
             const base = '/gestao-perfis/@Model.IntervenienteId/ativar';
-            const applicationPost = async (url, body) => {
-                const response = await fetch(url, { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json', 'RequestVerificationToken': antiForgery }, body: JSON.stringify(body) });
-                const payload = await response.json().catch(() => ({}));
-                if (!response.ok) throw new Error(payload.message || 'Não foi possível ativar a identidade.');
-                return payload;
-            };
             button.addEventListener('click', async () => {
-                error.hidden = true;
-                if (!password.value || !pairing.value) { error.textContent = 'Informe a senha e o código de pareamento da wallet.'; error.hidden = false; return; }
-                button.disabled = true;
+                wallet.limparErro(error);
+                if (!wallet.camposPreenchidos(password, pairing)) {
+                    wallet.exibirErro(error, 'Informe a senha e o código de pareamento da wallet.');
+                    return;
+                }
+                wallet.definirProcessamento({ botao: button, painel: panel, processando: true });
                 try {
-                    status.textContent = 'Preparando autorização de ativação.';
-                    const command = await applicationPost(`${base}/comando`, {});
-                    status.textContent = 'Aguardando assinatura da wallet administrativa.';
-                    const walletResponse = await fetch('@Model.WalletEndpoint/v1/proofs/did-activation', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Wallet-Pairing-Token': pairing.value }, body: JSON.stringify({ did: '@Model.DidAdministrador', password: password.value, command }) });
-                    const proof = await walletResponse.json().catch(() => ({}));
-                    if (!walletResponse.ok) throw new Error(proof.message || 'A wallet recusou a assinatura.');
+                    wallet.definirStatus(status, 'Preparando autorização de ativação.', 'processando');
+                    const command = await wallet.requisicaoAplicacao({
+                        url: `${base}/comando`, token: antiForgery, body: {},
+                        mensagemErro: 'Não foi possível ativar a identidade.'
+                    });
+                    wallet.definirStatus(status, 'Aguardando assinatura da wallet administrativa.', 'aguardando');
+                    const proof = await wallet.requisicaoWallet({
+                        endpoint: panel.dataset.walletEndpoint, path: '/v1/proofs/did-activation', pairingToken: pairing.value,
+                        body: { did: '@Model.DidAdministrador', password: password.value, command },
+                        mensagemErro: 'A wallet recusou a assinatura.'
+                    });
                     password.value = '';
-                    const result = await applicationPost(`${base}/prova`, { command, keyId: proof.keyId, signature: proof.signature });
+                    wallet.definirStatus(status, 'Confirmando a ativação no ledger.', 'processando');
+                    const result = await wallet.requisicaoAplicacao({
+                        url: `${base}/prova`, token: antiForgery, body: { command, keyId: proof.keyId, signature: proof.signature },
+                        mensagemErro: 'Não foi possível ativar a identidade.'
+                    });
+                    wallet.definirStatus(status, 'Identidade ativada. Redirecionando…', 'sucesso');
                     window.location.assign(result.redirectUrl);
                 } catch (exception) {
-                    password.value = '';
-                    error.textContent = exception.message;
-                    error.hidden = false;
-                    error.focus();
-                } finally { button.disabled = false; }
+                    wallet.exibirErro(error, exception.message);
+                    wallet.definirStatus(status, 'A ativação foi rejeitada ou não pôde ser concluída.', 'erro');
+                } finally {
+                    wallet.limparCamposSensíveis(password, pairing);
+                    wallet.definirProcessamento({ botao: button, painel: panel, processando: false });
+                }
             });
         })();
     </script>
@@ -71,9 +81,7 @@
 @section Styles {
     <style>
         .pagina-cabecalho { margin-bottom: 1.5rem; }
-        .painel-ativacao { max-width: 640px; padding: 1.5rem; }
-        .painel-ativacao dl { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: .65rem 1rem; margin: 0 0 1.5rem; }
-        .painel-ativacao dt { color: var(--cor-texto-fraco); }.painel-ativacao dd { margin: 0; overflow-wrap: anywhere; }
-        .painel-ativacao .campo { margin-bottom: 1rem; }.painel-ativacao .botao { min-height: 44px; }
+        .painel-ativacao { max-width: 640px; }
+        .painel-ativacao .campo { margin-bottom: 1rem; }
     </style>
 }

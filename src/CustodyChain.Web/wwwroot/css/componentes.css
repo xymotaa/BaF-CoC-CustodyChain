@@ -114,6 +114,58 @@ textarea.campo-entrada {
     font-weight: 500;
 }
 
+/* Operações assinadas pela wallet */
+
+.painel-operacao-wallet {
+    max-width: 720px;
+    padding: var(--espaco-5);
+}
+
+.resumo-identidade {
+    display: grid;
+    grid-template-columns: max-content minmax(0, 1fr);
+    gap: 0.625rem var(--espaco-4);
+    margin: 0 0 var(--espaco-5);
+}
+
+.resumo-identidade dt {
+    color: var(--cor-texto-fraco);
+}
+
+.resumo-identidade dd {
+    margin: 0;
+    overflow-wrap: anywhere;
+}
+
+.estado-operacao {
+    min-height: 1.5rem;
+    margin: var(--espaco-3) 0 0;
+}
+
+.estado-operacao[data-estado="aguardando"],
+.estado-operacao[data-estado="processando"] {
+    color: var(--cor-texto-suave);
+}
+
+.estado-operacao[data-estado="sucesso"] {
+    color: var(--cor-sucesso);
+}
+
+.estado-operacao[data-estado="pendente"] {
+    color: var(--cor-alerta);
+}
+
+@media (max-width: 640px) {
+    .resumo-identidade {
+        grid-template-columns: 1fr;
+        gap: var(--espaco-1);
+    }
+
+    .resumo-identidade dd {
+        margin-bottom: var(--espaco-3);
+    }
+}
+
 /* Alertas / mensagens de estado */
 
 .alerta {

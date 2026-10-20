@@ -8,7 +8,7 @@
     <p class="campo-ajuda">A wallet cria a nova chave e prova a posse das duas chaves. Nenhuma chave privada é enviada ao CustodyChain.</p>
 </div>
 
-<section id="rotation-panel" class="cartao painel-rotacao"
+<section id="rotation-panel" class="cartao painel-operacao-wallet painel-rotacao"
          data-wallet-endpoint="@Model.WalletEndpoint" data-did="@Model.Did">
     @Html.AntiForgeryToken()
     <dl class="resumo-identidade">
@@ -38,12 +38,13 @@
     </label>
 
     <button id="rotate" class="botao botao-primario" type="button">Criar e ativar nova chave</button>
-    <p id="rotation-status" role="status" aria-live="polite" class="campo-ajuda"></p>
+    <p id="rotation-status" role="status" aria-live="polite" class="campo-ajuda estado-operacao"></p>
 </section>
 
 @section Scripts {
     <script>
         (() => {
+            const wallet = window.CustodyChainWallet;
             const panel = document.getElementById('rotation-panel');
             const button = document.getElementById('rotate');
             const error = document.getElementById('rotation-error');
@@ -52,83 +53,73 @@
             const pairing = document.getElementById('pairing-token');
             const confirmation = document.getElementById('rotation-confirmation');
             const newKey = document.getElementById('new-key');
-            const token = document.querySelector('input[name="__RequestVerificationToken"]').value;
+            const token = wallet.obterTokenAntiforgery(panel);
             const walletEndpoint = panel.dataset.walletEndpoint;
             const did = panel.dataset.did;
 
-            const applicationPost = async (url, body) => {
-                const response = await fetch(url, {
-                    method: 'POST', credentials: 'same-origin',
-                    headers: { 'Content-Type': 'application/json', 'RequestVerificationToken': token },
-                    body: JSON.stringify(body)
-                });
-                const payload = await response.json().catch(() => ({}));
-                if (!response.ok) throw new Error(payload.message || payload.error || 'Não foi possível rotacionar a chave.');
-                return payload;
-            };
-            const walletPost = async (path, body) => {
-                const response = await fetch(`${walletEndpoint}${path}`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json', 'X-Wallet-Pairing-Token': pairing.value },
-                    body: JSON.stringify(body)
-                });
-                const payload = response.status === 204 ? {} : await response.json().catch(() => ({}));
-                if (!response.ok) throw new Error(payload.message || 'A wallet recusou a rotação.');
-                return payload;
-            };
-
             button.addEventListener('click', async () => {
-                error.hidden = true;
+                wallet.limparErro(error);
                 if (!password.value || !pairing.value || !confirmation.checked) {
-                    error.textContent = 'Informe a senha, o código de pareamento e confirme a troca da chave.';
-                    error.hidden = false;
-                    error.focus();
+                    wallet.exibirErro(error, 'Informe a senha, o código de pareamento e confirme a troca da chave.');
                     return;
                 }
 
-                button.disabled = true;
+                wallet.definirProcessamento({ botao: button, painel: panel, processando: true });
                 let candidate = null;
                 let ledgerConfirmed = false;
                 try {
-                    status.textContent = 'Criando a nova chave na wallet.';
-                    candidate = await walletPost('/v1/key-rotations/candidates', { did, password: password.value });
+                    wallet.definirStatus(status, 'Criando a nova chave na wallet.', 'aguardando');
+                    candidate = await wallet.requisicaoWallet({
+                        endpoint: walletEndpoint, path: '/v1/key-rotations/candidates', pairingToken: pairing.value,
+                        body: { did, password: password.value }, mensagemErro: 'A wallet recusou a rotação.'
+                    });
                     newKey.textContent = candidate.keyId;
 
-                    status.textContent = 'Preparando o comando de rotação.';
-                    const command = await applicationPost('/identidade/chave/rotacao/comando', {
-                        keyId: candidate.keyId,
-                        publicKeyMultibase: candidate.publicKeyMultibase
+                    wallet.definirStatus(status, 'Preparando o comando de rotação.', 'processando');
+                    const command = await wallet.requisicaoAplicacao({
+                        url: '/identidade/chave/rotacao/comando', token,
+                        body: { keyId: candidate.keyId, publicKeyMultibase: candidate.publicKeyMultibase },
+                        mensagemErro: 'Não foi possível rotacionar a chave.'
                     });
 
-                    status.textContent = 'Assinando com a chave atual e a nova chave.';
-                    const proofs = await walletPost('/v1/proofs/did-key-rotation', {
-                        did, password: password.value, candidateId: candidate.candidateId, command
+                    wallet.definirStatus(status, 'Aguardando assinatura com a chave atual e a nova chave.', 'aguardando');
+                    const proofs = await wallet.requisicaoWallet({
+                        endpoint: walletEndpoint, path: '/v1/proofs/did-key-rotation', pairingToken: pairing.value,
+                        body: { did, password: password.value, candidateId: candidate.candidateId, command },
+                        mensagemErro: 'A wallet recusou a rotação.'
                     });
                     password.value = '';
 
-                    status.textContent = 'Confirmando a rotação no ledger.';
-                    const result = await applicationPost('/identidade/chave/rotacao/prova', {
-                        command,
-                        currentKeyProof: proofs.currentKeyProof,
-                        newKeyProof: proofs.newKeyProof
+                    wallet.definirStatus(status, 'Confirmando a rotação no ledger.', 'processando');
+                    const result = await wallet.requisicaoAplicacao({
+                        url: '/identidade/chave/rotacao/prova', token,
+                        body: { command, currentKeyProof: proofs.currentKeyProof, newKeyProof: proofs.newKeyProof },
+                        mensagemErro: 'Não foi possível rotacionar a chave.'
                     });
                     ledgerConfirmed = true;
 
-                    status.textContent = 'Ativando a nova chave na wallet.';
-                    await walletPost('/v1/key-rotations/confirm', {
-                        did, candidateId: candidate.candidateId, keyId: result.keyId
+                    wallet.definirStatus(status, 'Ativando a nova chave na wallet.', 'processando');
+                    await wallet.requisicaoWallet({
+                        endpoint: walletEndpoint, path: '/v1/key-rotations/confirm', pairingToken: pairing.value,
+                        body: { did, candidateId: candidate.candidateId, keyId: result.keyId },
+                        mensagemErro: 'A wallet não confirmou a nova chave.'
                     });
-                    status.textContent = 'Chave rotacionada. Redirecionando para uma nova autenticação.';
+                    wallet.definirStatus(status, 'Chave rotacionada. Redirecionando para uma nova autenticação.', 'sucesso');
                     window.location.assign(result.redirectUrl);
                 } catch (exception) {
-                    password.value = '';
-                    error.textContent = ledgerConfirmed
+                    if (ledgerConfirmed) {
+                        button.dataset.reconciliacaoPendente = 'true';
+                    }
+                    wallet.exibirErro(error, ledgerConfirmed
                         ? `${exception.message} O ledger confirmou a rotação; não tente criar outra chave antes de reconciliar a wallet.`
-                        : `${exception.message} A chave candidata foi preservada para uma nova tentativa segura.`;
-                    error.hidden = false;
-                    error.focus();
+                        : `${exception.message} A chave candidata foi preservada para uma nova tentativa segura.`);
+                    wallet.definirStatus(status, ledgerConfirmed
+                        ? 'A rotação foi confirmada no ledger, mas a wallet precisa ser reconciliada.'
+                        : 'A rotação não foi confirmada. Revise os dados antes de tentar novamente.', ledgerConfirmed ? 'pendente' : 'erro');
                 } finally {
-                    button.disabled = false;
+                    wallet.limparCamposSensíveis(password, pairing);
+                    wallet.definirProcessamento({ botao: button, painel: panel, processando: false });
+                    button.disabled = button.dataset.reconciliacaoPendente === 'true';
                 }
             });
         })();
@@ -138,17 +129,9 @@
 @section Styles {
     <style>
         .pagina-cabecalho { margin-bottom: 1.5rem; }
-        .painel-rotacao { max-width: 720px; padding: 1.5rem; }
-        .resumo-identidade { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: .65rem 1rem; margin: 0 0 1.5rem; }
-        .resumo-identidade dt { color: var(--cor-texto-fraco); }
-        .resumo-identidade dd { margin: 0; overflow-wrap: anywhere; }
+        .painel-rotacao { max-width: 720px; }
         .painel-rotacao .campo { margin-bottom: 1rem; }
         .confirmacao-rotacao { display: flex; align-items: flex-start; gap: .65rem; margin: 1.25rem 0; line-height: 1.5; }
         .confirmacao-rotacao input { width: 1.1rem; height: 1.1rem; margin-top: .2rem; }
-        .painel-rotacao .botao { min-height: 44px; }
-        @@media (max-width: 640px) {
-            .resumo-identidade { grid-template-columns: 1fr; gap: .25rem; }
-            .resumo-identidade dd { margin-bottom: .75rem; }
-        }
     </style>
 }

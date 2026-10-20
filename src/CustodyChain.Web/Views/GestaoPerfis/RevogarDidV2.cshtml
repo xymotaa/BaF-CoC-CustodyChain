@@ -8,9 +8,9 @@
     <p class="campo-ajuda">A revogação é permanente para esta identidade. O ledger registra o ato assinado e preserva o histórico de custódia.</p>
 </div>
 
-<section class="cartao painel-revogacao">
+<section id="revocation-panel" class="cartao painel-operacao-wallet painel-revogacao" data-wallet-endpoint="@Model.WalletEndpoint">
     @Html.AntiForgeryToken()
-    <dl>
+    <dl class="resumo-identidade">
         <dt>DID a revogar</dt><dd class="mono">@Model.Did</dd>
         <dt>Administrador signatário</dt><dd class="mono">@Model.DidAdministrador</dd>
     </dl>
@@ -27,48 +27,59 @@
         <input id="pairing-token" class="campo-entrada" type="password" autocomplete="off" required />
     </div>
     <button id="revoke" class="botao botao-primario" type="button">Assinar e revogar</button>
-    <p id="revocation-status" role="status" aria-live="polite" class="campo-ajuda"></p>
+    <p id="revocation-status" role="status" aria-live="polite" class="campo-ajuda estado-operacao"></p>
 </section>
 
 @section Scripts {
 <script>
 (() => {
+    const wallet = window.CustodyChainWallet;
+    const panel = document.getElementById('revocation-panel');
     const button = document.getElementById('revoke'), error = document.getElementById('revocation-error');
     const status = document.getElementById('revocation-status'), password = document.getElementById('wallet-password');
     const pairing = document.getElementById('pairing-token'), confirmation = document.getElementById('confirm-revocation');
-    const antiForgery = document.querySelector('input[name="__RequestVerificationToken"]').value;
+    const antiForgery = wallet.obterTokenAntiforgery(panel);
     const base = '/gestao-perfis/@Model.IntervenienteId/revogar';
-    const post = async (url, body) => {
-        const response = await fetch(url, { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json', 'RequestVerificationToken': antiForgery }, body: JSON.stringify(body) });
-        const payload = await response.json().catch(() => ({}));
-            if (!response.ok) throw new Error(payload.message || 'Não foi possível revogar a identidade.');
-            return payload;
-    };
     button.addEventListener('click', async () => {
-        error.hidden = true;
+        wallet.limparErro(error);
         if (!confirmation.checked || !password.value || !pairing.value) {
-            error.textContent = 'Confirme a revogação e informe a senha e o código de pareamento da wallet.';
-            error.hidden = false; error.focus(); return;
+            wallet.exibirErro(error, 'Confirme a revogação e informe a senha e o código de pareamento da wallet.');
+            return;
         }
-        button.disabled = true;
+        wallet.definirProcessamento({ botao: button, painel, processando: true });
         try {
-            status.textContent = 'Preparando a revogação.';
-            const command = await post(`${base}/comando`, {});
-            status.textContent = 'Aguardando assinatura da wallet administrativa.';
-            const response = await fetch('@Model.WalletEndpoint/v1/proofs/did-revocation', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Wallet-Pairing-Token': pairing.value }, body: JSON.stringify({ did: '@Model.DidAdministrador', password: password.value, command }) });
-            const proof = await response.json().catch(() => ({}));
-            if (!response.ok) throw new Error(proof.message || 'A wallet recusou a assinatura.');
+            wallet.definirStatus(status, 'Preparando a revogação.', 'processando');
+            const command = await wallet.requisicaoAplicacao({
+                url: `${base}/comando`, token: antiForgery, body: {},
+                mensagemErro: 'Não foi possível revogar a identidade.'
+            });
+            wallet.definirStatus(status, 'Aguardando assinatura da wallet administrativa.', 'aguardando');
+            const proof = await wallet.requisicaoWallet({
+                endpoint: panel.dataset.walletEndpoint, path: '/v1/proofs/did-revocation', pairingToken: pairing.value,
+                body: { did: '@Model.DidAdministrador', password: password.value, command },
+                mensagemErro: 'A wallet recusou a assinatura.'
+            });
             password.value = '';
-            const result = await post(`${base}/prova`, { command, keyId: proof.keyId, signature: proof.signature });
+            wallet.definirStatus(status, 'Confirmando a revogação no ledger.', 'processando');
+            const result = await wallet.requisicaoAplicacao({
+                url: `${base}/prova`, token: antiForgery, body: { command, keyId: proof.keyId, signature: proof.signature },
+                mensagemErro: 'Não foi possível revogar a identidade.'
+            });
             if (!result.redirectUrl) {
-                status.textContent = result.message || 'A revogação está em processamento.';
+                wallet.definirStatus(status, result.message || 'A revogação está em processamento e será reconciliada.', 'pendente');
                 button.dataset.processing = 'true';
                 return;
             }
+            wallet.definirStatus(status, 'Revogação confirmada. Redirecionando…', 'sucesso');
             window.location.assign(result.redirectUrl);
         } catch (exception) {
-            password.value = ''; error.textContent = exception.message; error.hidden = false; error.focus();
-        } finally { button.disabled = button.dataset.processing === 'true'; }
+            wallet.exibirErro(error, exception.message);
+            wallet.definirStatus(status, 'A revogação foi rejeitada ou não pôde ser concluída.', 'erro');
+        } finally {
+            wallet.limparCamposSensíveis(password, pairing);
+            wallet.definirProcessamento({ botao: button, painel, processando: false });
+            button.disabled = button.dataset.processing === 'true';
+        }
     });
 })();
 </script>
@@ -77,9 +88,7 @@
 @section Styles {
 <style>
     .pagina-cabecalho { margin-bottom: 1.5rem; }
-    .painel-revogacao { max-width: 640px; padding: 1.5rem; }
-    .painel-revogacao dl { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: .65rem 1rem; margin: 0 0 1.5rem; }
-    .painel-revogacao dt { color: var(--cor-texto-fraco); }.painel-revogacao dd { margin: 0; overflow-wrap: anywhere; }
-    .painel-revogacao .campo { margin-bottom: 1rem; }.painel-revogacao .botao { min-height: 44px; }
+    .painel-revogacao { max-width: 640px; }
+    .painel-revogacao .campo { margin-bottom: 1rem; }
 </style>
 }

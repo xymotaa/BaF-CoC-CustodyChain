@@ -8,7 +8,7 @@
     <p class="campo-ajuda">Crie uma chave candidata na nova wallet e entregue o pacote assinado a um administrador. A aplicação nunca recebe sua chave privada.</p>
 </div>
 
-<section id="recovery-panel" class="cartao painel-recuperacao" data-wallet-endpoint="@Model.WalletEndpoint">
+<section id="recovery-panel" class="cartao painel-operacao-wallet painel-recuperacao" data-wallet-endpoint="@Model.WalletEndpoint">
     @Html.AntiForgeryToken()
     <div class="alerta alerta-aviso">
         A recuperação depende de aprovação administrativa. A chave anterior será marcada como comprometida no ledger.
@@ -28,7 +28,7 @@
         <input id="pairing-token" class="campo-entrada" type="password" autocomplete="off" required />
     </div>
     <button id="create-recovery" class="botao botao-primario" type="button">Criar pacote de recuperação</button>
-    <p id="recovery-status" role="status" aria-live="polite" class="campo-ajuda"></p>
+    <p id="recovery-status" role="status" aria-live="polite" class="campo-ajuda estado-operacao"></p>
 
     <div id="recovery-package" class="campo" hidden>
         <label class="campo-rotulo" for="package">Pacote assinado para o administrador</label>
@@ -42,6 +42,7 @@
 @section Scripts {
     <script>
         (() => {
+            const wallet = window.CustodyChainWallet;
             const panel = document.getElementById('recovery-panel');
             const button = document.getElementById('create-recovery');
             const error = document.getElementById('recovery-error');
@@ -51,82 +52,99 @@
             const pairing = document.getElementById('pairing-token');
             const packagePanel = document.getElementById('recovery-package');
             const packageField = document.getElementById('package');
-            const token = document.querySelector('input[name="__RequestVerificationToken"]').value;
+            const copyButton = document.getElementById('copy-package');
+            const confirmButton = document.getElementById('confirm-recovery');
+            const token = wallet.obterTokenAntiforgery(panel);
             const walletEndpoint = panel.dataset.walletEndpoint;
             let candidate = null;
 
-            const application = async (url, options = {}) => {
-                const response = await fetch(url, {
-                    credentials: 'same-origin', ...options,
-                    headers: { 'RequestVerificationToken': token, ...(options.headers || {}) }
-                });
-                const payload = await response.json().catch(() => ({}));
-                if (!response.ok) throw new Error(payload.message || 'Não foi possível preparar a recuperação.');
-                return payload;
-            };
-            const walletPost = async (path, body) => {
-                const response = await fetch(`${walletEndpoint}${path}`, {
-                    method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Wallet-Pairing-Token': pairing.value },
-                    body: JSON.stringify(body)
-                });
-                const payload = await response.json().catch(() => ({}));
-                if (!response.ok) throw new Error(payload.message || 'A wallet recusou a solicitação.');
-                return payload;
-            };
-
             button.addEventListener('click', async () => {
-                error.hidden = true;
+                wallet.limparErro(error);
                 packagePanel.hidden = true;
-                if (!did.value.trim() || !password.value || !pairing.value) {
-                    error.textContent = 'Informe o DID, a senha da nova wallet e o código de pareamento.';
-                    error.hidden = false; error.focus(); return;
+                if (!wallet.camposPreenchidos(did, password, pairing)) {
+                    wallet.exibirErro(error, 'Informe o DID, a senha da nova wallet e o código de pareamento.');
+                    return;
                 }
-                button.disabled = true;
+                wallet.definirProcessamento({ botao: button, painel, processando: true });
                 try {
-                    status.textContent = 'Consultando o estado atual do DID.';
-                    const preparation = await application(`/recuperar-identidade/preparar?did=${encodeURIComponent(did.value.trim())}`);
-                    status.textContent = 'Criando chave candidata na wallet.';
-                    candidate = await walletPost('/v1/key-recoveries/candidates', {
-                        did: preparation.did, keyId: preparation.keyId, password: password.value
+                    wallet.definirStatus(status, 'Consultando o estado atual do DID.', 'processando');
+                    const preparation = await wallet.requisicaoAplicacao({
+                        url: `/recuperar-identidade/preparar?did=${encodeURIComponent(did.value.trim())}`,
+                        token, method: 'GET', mensagemErro: 'Não foi possível preparar a recuperação.'
                     });
-                    status.textContent = 'Montando e assinando o pedido de recuperação.';
-                    const request = await application('/recuperar-identidade/pedido', {
-                        method: 'POST', headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ did: preparation.did, keyId: candidate.keyId, publicKeyMultibase: candidate.publicKeyMultibase })
+                    wallet.definirStatus(status, 'Criando chave candidata na wallet.', 'aguardando');
+                    candidate = await wallet.requisicaoWallet({
+                        endpoint: walletEndpoint, path: '/v1/key-recoveries/candidates', pairingToken: pairing.value,
+                        body: { did: preparation.did, keyId: preparation.keyId, password: password.value },
+                        mensagemErro: 'A wallet recusou a solicitação.'
                     });
-                    const proof = await walletPost('/v1/proofs/did-key-recovery-request', {
-                        did: preparation.did, password: password.value, candidateId: candidate.candidateId, request
+                    wallet.definirStatus(status, 'Montando o pedido de recuperação.', 'processando');
+                    const request = await wallet.requisicaoAplicacao({
+                        url: '/recuperar-identidade/pedido', token,
+                        body: { did: preparation.did, keyId: candidate.keyId, publicKeyMultibase: candidate.publicKeyMultibase },
+                        mensagemErro: 'Não foi possível preparar a recuperação.'
                     });
-                    password.value = '';
+                    wallet.definirStatus(status, 'Aguardando assinatura do pedido na wallet.', 'aguardando');
+                    const proof = await wallet.requisicaoWallet({
+                        endpoint: walletEndpoint, path: '/v1/proofs/did-key-recovery-request', pairingToken: pairing.value,
+                        body: { did: preparation.did, password: password.value, candidateId: candidate.candidateId, request },
+                        mensagemErro: 'A wallet recusou a solicitação.'
+                    });
                     packageField.value = JSON.stringify({ request, candidateSignature: proof.signature }, null, 2);
                     packagePanel.hidden = false;
-                    status.textContent = 'Pacote criado. Envie-o ao administrador antes da expiração.';
+                    wallet.definirStatus(status, 'Pacote criado. Envie-o ao administrador antes da expiração.', 'sucesso');
                 } catch (exception) {
-                    password.value = '';
-                    error.textContent = exception.message;
-                    error.hidden = false; error.focus();
-                } finally { button.disabled = false; }
-            });
-
-            document.getElementById('copy-package').addEventListener('click', async () => {
-                try { await navigator.clipboard.writeText(packageField.value); status.textContent = 'Pacote copiado.'; }
-                catch { packageField.select(); status.textContent = 'Selecione e copie o pacote manualmente.'; }
-            });
-
-            document.getElementById('confirm-recovery').addEventListener('click', async () => {
-                error.hidden = true;
-                if (!candidate) {
-                    error.textContent = 'Crie novamente o pacote nesta sessão para confirmar a chave candidata.';
-                    error.hidden = false; error.focus(); return;
+                    wallet.exibirErro(error, exception.message);
+                    wallet.definirStatus(status, 'O pacote não foi criado. Revise os dados e tente novamente.', 'erro');
+                } finally {
+                    wallet.limparCamposSensíveis(password, pairing);
+                    wallet.definirProcessamento({ botao: button, painel, processando: false });
                 }
+            });
+
+            copyButton.addEventListener('click', async () => {
                 try {
-                    status.textContent = 'Verificando a aprovação no ledger.';
-                    const confirmation = await application(`/recuperar-identidade/confirmar?did=${encodeURIComponent(candidate.did)}&keyId=${encodeURIComponent(candidate.keyId)}`);
+                    await navigator.clipboard.writeText(packageField.value);
+                    wallet.definirStatus(status, 'Pacote copiado.', 'sucesso');
+                } catch {
+                    packageField.select();
+                    wallet.definirStatus(status, 'Selecione e copie o pacote manualmente.', 'pendente');
+                }
+            });
+
+            confirmButton.addEventListener('click', async () => {
+                wallet.limparErro(error);
+                if (!candidate) {
+                    wallet.exibirErro(error, 'Crie novamente o pacote nesta sessão para confirmar a chave candidata.');
+                    return;
+                }
+                if (!wallet.camposPreenchidos(pairing)) {
+                    wallet.exibirErro(error, 'Informe novamente o código de pareamento para confirmar a chave na wallet.');
+                    return;
+                }
+                wallet.definirProcessamento({ botao: confirmButton, painel, processando: true });
+                try {
+                    wallet.definirStatus(status, 'Verificando a aprovação no ledger.', 'processando');
+                    const confirmation = await wallet.requisicaoAplicacao({
+                        url: `/recuperar-identidade/confirmar?did=${encodeURIComponent(candidate.did)}&keyId=${encodeURIComponent(candidate.keyId)}`,
+                        token, method: 'GET', mensagemErro: 'Não foi possível confirmar a recuperação.'
+                    });
                     if (!confirmation.confirmed) throw new Error('A recuperação ainda não foi aprovada no ledger.');
-                    await walletPost('/v1/key-rotations/confirm', { did: candidate.did, candidateId: candidate.candidateId, keyId: candidate.keyId });
-                    status.textContent = 'Chave ativada na wallet. Você já pode entrar com a identidade recuperada.';
+                    wallet.definirStatus(status, 'Ativando a nova chave na wallet.', 'processando');
+                    await wallet.requisicaoWallet({
+                        endpoint: walletEndpoint, path: '/v1/key-rotations/confirm', pairingToken: pairing.value,
+                        body: { did: candidate.did, candidateId: candidate.candidateId, keyId: candidate.keyId },
+                        mensagemErro: 'A wallet não confirmou a nova chave.'
+                    });
+                    confirmButton.dataset.completed = 'true';
+                    wallet.definirStatus(status, 'Chave ativada na wallet. Você já pode entrar com a identidade recuperada.', 'sucesso');
                 } catch (exception) {
-                    error.textContent = exception.message; error.hidden = false; error.focus();
+                    wallet.exibirErro(error, exception.message);
+                    wallet.definirStatus(status, 'A confirmação ainda não foi concluída.', 'pendente');
+                } finally {
+                    wallet.limparCamposSensíveis(pairing);
+                    wallet.definirProcessamento({ botao: confirmButton, painel, processando: false });
+                    confirmButton.disabled = confirmButton.dataset.completed === 'true';
                 }
             });
         })();
@@ -136,9 +154,9 @@
 @section Styles {
     <style>
         .pagina-cabecalho { margin-bottom: 1.5rem; }
-        .painel-recuperacao { max-width: 720px; padding: 1.5rem; }
+        .painel-recuperacao { max-width: 720px; }
         .painel-recuperacao .campo { margin-top: 1rem; }
-        .painel-recuperacao .botao { min-height: 44px; margin-top: 1rem; }
+        .painel-recuperacao .botao { margin-top: 1rem; }
         .painel-recuperacao textarea { width: 100%; resize: vertical; }
     </style>
 }
