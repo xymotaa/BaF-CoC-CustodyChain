@@ -7,7 +7,7 @@
         return;
     }
 
-    const breakpointMobile = window.matchMedia("(max-width: 900px)");
+    const breakpointMobile = window.matchMedia("(max-width: 56.25rem)");
     const seletorFoco = "a[href], button:not([disabled]), [tabindex]:not([tabindex='-1'])";
     let aberto = false;
 

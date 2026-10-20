@@ -1,11 +1,11 @@
 .app-shell {
     display: grid;
-    grid-template-columns: var(--largura-sidebar) 1fr;
-    grid-template-rows: var(--altura-navbar) 1fr;
+    grid-template-columns: var(--largura-sidebar) minmax(0, 1fr);
+    grid-template-rows: auto minmax(0, 1fr);
     grid-template-areas:
         "sidebar navbar"
         "sidebar main";
-    height: 100dvh;
+    min-block-size: 100dvh;
 }
 
 /* Navbar */
@@ -16,7 +16,10 @@
     align-items: center;
     justify-content: space-between;
     gap: 1rem;
-    padding: 0 1.25rem;
+    min-block-size: var(--altura-navbar);
+    min-inline-size: 0;
+    padding: var(--espaco-2) clamp(1rem, 2vw, 1.25rem);
+    flex-wrap: wrap;
     background: var(--cor-superficie);
     border-bottom: 1px solid var(--cor-borda);
 }
@@ -25,6 +28,7 @@
     display: flex;
     align-items: center;
     gap: 0.75rem;
+    min-inline-size: 0;
 }
 
 .navbar-toggle-btn {
@@ -44,6 +48,15 @@
     align-items: center;
     gap: 0.625rem;
     font-size: 0.875rem;
+    min-inline-size: 0;
+    margin-inline-start: auto;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+}
+
+.navbar-usuario > div {
+    min-inline-size: 0;
+    overflow-wrap: anywhere;
 }
 
 .navbar-usuario-avatar {
@@ -73,13 +86,18 @@
     flex-direction: column;
     overflow-y: auto;
     transition: margin-left 0.2s ease;
+    min-inline-size: 0;
+    block-size: 100dvh;
+    position: sticky;
+    inset-block-start: 0;
+    align-self: start;
 }
 
 .sidebar-marca {
     display: flex;
     align-items: center;
     gap: 0.625rem;
-    height: var(--altura-navbar);
+    min-block-size: var(--altura-navbar);
     padding: 0 1.25rem;
     border-bottom: 1px solid var(--cor-borda);
     font-weight: 700;
@@ -109,6 +127,7 @@
     gap: 0.125rem;
     border-right: 1px solid var(--cor-borda);
     flex: 1;
+    min-inline-size: 0;
 }
 
 .sidebar-grupo-titulo {
@@ -129,6 +148,8 @@
     text-decoration: none;
     font-size: 0.875rem;
     font-weight: 500;
+    min-inline-size: 0;
+    overflow-wrap: anywhere;
 }
 
 @media (hover: hover) {
@@ -159,11 +180,10 @@
 
 .main-content {
     grid-area: main;
-    padding: 1.5rem;
-    max-width: 1200px;
-    width: 100%;
-    overflow-y: auto;
-    min-height: 0;
+    min-inline-size: 0;
+    padding: clamp(1rem, 2vw, 1.5rem);
+    max-inline-size: 75rem;
+    inline-size: 100%;
 }
 
 /* Mobile */
@@ -172,7 +192,7 @@
     display: none;
 }
 
-@media (max-width: 900px) {
+@media (max-width: 56.25rem) {
     .navbar-toggle-btn {
         display: inline-flex;
     }
@@ -187,7 +207,7 @@
     .sidebar {
         position: fixed;
         inset: 0 auto 0 0;
-        width: var(--largura-sidebar);
+        inline-size: min(var(--largura-sidebar), 88vw);
         z-index: 40;
         transform: translateX(-100%);
         transition: transform 0.2s ease;
@@ -212,5 +232,15 @@
 
     body.sidebar-aberta .sidebar-scrim {
         display: block;
+    }
+}
+
+@media (max-width: 40rem) {
+    .navbar {
+        align-content: center;
+    }
+
+    .navbar-usuario {
+        flex: 1 1 12rem;
     }
 }
