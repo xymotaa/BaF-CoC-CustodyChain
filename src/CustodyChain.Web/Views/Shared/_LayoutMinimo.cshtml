@@ -14,8 +14,11 @@
     @await RenderSectionAsync("Styles", required: false)
 </head>
 <body>
+    <a class="skip-link" href="#conteudo-principal">Ir para o conteúdo principal</a>
     @await Html.PartialAsync("_IconesSvg")
-    @RenderBody()
+    <main id="conteudo-principal" tabindex="-1">
+        @RenderBody()
+    </main>
     @await RenderSectionAsync("Scripts", required: false)
 </body>
 </html>

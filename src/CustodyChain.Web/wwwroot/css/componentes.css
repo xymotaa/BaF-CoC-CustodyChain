@@ -5,8 +5,8 @@
     align-items: center;
     justify-content: center;
     gap: 0.5rem;
-    height: 40px;
-    padding: 0 1rem;
+    min-height: var(--altura-controle);
+    padding: var(--espaco-2) var(--espaco-4);
     border-radius: var(--raio-pequeno);
     border: 1px solid transparent;
     font-weight: 600;
@@ -15,7 +15,7 @@
     transition: transform 0.1s ease, background 0.15s ease, border-color 0.15s ease;
 }
 
-.botao:active {
+.botao:not(:disabled):active {
     transform: scale(0.98);
 }
 
@@ -24,18 +24,20 @@
     color: var(--cor-acento-texto);
 }
 
-.botao-primario:hover {
-    background: var(--cor-acento-hover);
+@media (hover: hover) {
+    .botao-primario:not(:disabled):hover {
+        background: var(--cor-acento-hover);
+    }
+
+    .botao-secundario:not(:disabled):hover {
+        background: var(--cor-fundo);
+    }
 }
 
 .botao-secundario {
     background: var(--cor-superficie);
     color: var(--cor-texto);
     border-color: var(--cor-borda-forte);
-}
-
-.botao-secundario:hover {
-    background: var(--cor-fundo);
 }
 
 .botao-largura-total {
@@ -45,6 +47,10 @@
 .botao:disabled {
     opacity: 0.6;
     cursor: not-allowed;
+}
+
+.botao[aria-busy="true"] {
+    cursor: progress;
 }
 
 /* Cartão de superfície (uso deliberado: só quando eleva algo do fundo) */
@@ -77,8 +83,8 @@
 }
 
 .campo-entrada {
-    height: 24px;
-    padding: 0 0.75rem;
+    min-height: var(--altura-controle);
+    padding: var(--espaco-2) var(--espaco-3);
     border: 1px solid var(--cor-borda-forte);
     border-radius: var(--raio-pequeno);
     background: var(--cor-superficie);
@@ -87,11 +93,15 @@
 
 .campo-entrada:focus {
     border-color: var(--cor-acento);
-    outline: none;
 }
 
 .campo-entrada:focus-visible {
-    outline: none;
+    outline: 3px solid var(--cor-acento);
+    outline-offset: 2px;
+}
+
+textarea.campo-entrada {
+    height: auto;
 }
 
 .campo-entrada.campo-invalido {
@@ -151,8 +161,8 @@
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: 32px;
-    height: 32px;
+    width: var(--altura-controle);
+    height: var(--altura-controle);
     border: none;
     border-radius: var(--raio-pequeno);
     background: transparent;
@@ -160,9 +170,11 @@
     cursor: pointer;
 }
 
-.botao-sair:hover {
-    background: var(--cor-fundo);
-    color: var(--cor-texto);
+@media (hover: hover) {
+    .botao-sair:not(:disabled):hover {
+        background: var(--cor-fundo);
+        color: var(--cor-texto);
+    }
 }
 
 /* Distintivo de perfil */

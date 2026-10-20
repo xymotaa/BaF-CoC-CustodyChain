@@ -20,12 +20,11 @@
     @await RenderSectionAsync("Styles", required: false)
 </head>
 <body>
+    <a class="skip-link" href="#conteudo-principal">Ir para o conteúdo principal</a>
     @await Html.PartialAsync("_IconesSvg")
 
-    <input type="checkbox" id="sidebar-toggle" class="sidebar-toggle-input" />
-
     <div class="app-shell">
-        <aside class="sidebar">
+        <aside id="sidebar-principal" class="sidebar">
             <div class="sidebar-marca">
                 <!-- <span class="sidebar-marca-selo"></span>-->
                 <span>Custody Chain</span>
@@ -35,9 +34,10 @@
 
         <header class="navbar">
             <div class="navbar-esquerda">
-                <label for="sidebar-toggle" class="navbar-toggle-btn" aria-label="Alternar menu de navegação">
+                <button id="sidebar-toggle" type="button" class="navbar-toggle-btn"
+                        aria-label="Abrir menu de navegação" aria-controls="sidebar-principal" aria-expanded="false">
                     <svg width="20" height="20"><use href="#icone-menu" /></svg>
-                </label>
+                </button>
             </div>
 
             <div class="navbar-usuario">
@@ -55,13 +55,14 @@
             </div>
         </header>
 
-        <label for="sidebar-toggle" class="sidebar-scrim" aria-hidden="true"></label>
+        <button type="button" class="sidebar-scrim" aria-label="Fechar menu de navegação" tabindex="-1"></button>
 
-        <main class="main-content">
+        <main id="conteudo-principal" class="main-content" tabindex="-1">
             @RenderBody()
         </main>
     </div>
 
+    <script src="~/js/shell.js" asp-append-version="true" defer></script>
     @await RenderSectionAsync("Scripts", required: false)
 </body>
 </html>

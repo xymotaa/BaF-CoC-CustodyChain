@@ -14,7 +14,7 @@ body {
     background: var(--cor-fundo);
     color: var(--cor-texto);
     font-family: var(--font-sans);
-    font-size: 15px;
+    font-size: 16px;
     line-height: 1.5;
     -webkit-font-smoothing: antialiased;
 }
@@ -50,8 +50,26 @@ button, input, select, textarea {
 }
 
 :focus-visible {
-    outline: 2px solid var(--cor-acento);
+    outline: 3px solid var(--cor-acento);
     outline-offset: 2px;
+}
+
+.skip-link {
+    position: fixed;
+    z-index: 100;
+    top: var(--espaco-2);
+    left: var(--espaco-2);
+    padding: var(--espaco-2) var(--espaco-3);
+    border-radius: var(--raio-pequeno);
+    background: var(--cor-acento);
+    color: var(--cor-acento-texto);
+    font-weight: 600;
+    text-decoration: none;
+    transform: translateY(-200%);
+}
+
+.skip-link:focus-visible {
+    transform: translateY(0);
 }
 
 @media (prefers-reduced-motion: reduce) {

@@ -10,7 +10,7 @@
     --cor-borda-forte: #b7c0cc;
     --cor-texto: #1c2430;
     --cor-texto-suave: #4c5768;
-    --cor-texto-fraco: #7c8899;
+    --cor-texto-fraco: #5f6c7e;
 
     /* Acento único: azul institucional */
     --cor-acento: #2c4a6e;
@@ -30,6 +30,15 @@
     --raio-pequeno: 4px;
     --sombra-elevacao: 0 1px 2px rgba(28, 36, 48, 0.06), 0 4px 12px rgba(28, 36, 48, 0.06);
 
+    --espaco-1: 0.25rem;
+    --espaco-2: 0.5rem;
+    --espaco-3: 0.75rem;
+    --espaco-4: 1rem;
+    --espaco-5: 1.5rem;
+    --espaco-6: 2rem;
+    --altura-controle: 44px;
+    --altura-controle-compacto: 36px;
+
     --largura-sidebar: 204px;
     --altura-navbar: 64px;
 }
@@ -43,7 +52,7 @@
         --cor-borda-forte: #3d4859;
         --cor-texto: #e8ebf0;
         --cor-texto-suave: #b0b9c7;
-        --cor-texto-fraco: #7c8899;
+        --cor-texto-fraco: #9eabba;
 
         --cor-acento: #6f97c4;
         --cor-acento-hover: #8bacd4;
@@ -69,7 +78,7 @@
     --cor-borda-forte: #3d4859;
     --cor-texto: #e8ebf0;
     --cor-texto-suave: #b0b9c7;
-    --cor-texto-fraco: #7c8899;
+    --cor-texto-fraco: #9eabba;
 
     --cor-acento: #6f97c4;
     --cor-acento-hover: #8bacd4;

@@ -8,12 +8,6 @@
     height: 100dvh;
 }
 
-.sidebar-toggle-input {
-    position: absolute;
-    opacity: 0;
-    pointer-events: none;
-}
-
 /* Navbar */
 
 .navbar {
@@ -37,8 +31,8 @@
     display: none;
     align-items: center;
     justify-content: center;
-    width: 36px;
-    height: 36px;
+    width: var(--altura-controle);
+    height: var(--altura-controle);
     border: 1px solid var(--cor-borda);
     border-radius: var(--raio-pequeno);
     background: transparent;
@@ -53,8 +47,8 @@
 }
 
 .navbar-usuario-avatar {
-    width: 32px;
-    height: 32px;
+    width: var(--altura-controle-compacto);
+    height: var(--altura-controle-compacto);
     border-radius: 999px;
     background: var(--cor-acento-suave);
     color: var(--cor-acento);
@@ -128,7 +122,8 @@
     display: flex;
     align-items: center;
     gap: 0.625rem;
-    padding: 0.5rem 0.625rem;
+    min-height: var(--altura-controle);
+    padding: var(--espaco-2) 0.625rem;
     border-radius: var(--raio-pequeno);
     color: var(--cor-texto-suave);
     text-decoration: none;
@@ -136,9 +131,11 @@
     font-weight: 500;
 }
 
-.sidebar-link:hover {
-    background: var(--cor-fundo);
-    color: var(--cor-texto);
+@media (hover: hover) {
+    .sidebar-link:hover {
+        background: var(--cor-fundo);
+        color: var(--cor-texto);
+    }
 }
 
 .sidebar-link[aria-current="page"] {
@@ -169,19 +166,11 @@
     min-height: 0;
 }
 
-/* Retração da sidebar (desktop) */
-
-.sidebar-toggle-input:checked ~ .app-shell .sidebar,
-.sidebar-toggle-input:checked + .app-shell .sidebar {
-    margin-left: calc(var(--largura-sidebar) * -1);
-}
-
-.sidebar-toggle-input:checked ~ .app-shell,
-.sidebar-toggle-input:checked + .app-shell {
-    grid-template-columns: 0 1fr;
-}
-
 /* Mobile */
+
+.sidebar-scrim {
+    display: none;
+}
 
 @media (max-width: 900px) {
     .navbar-toggle-btn {
@@ -205,24 +194,23 @@
         box-shadow: var(--sombra-elevacao);
     }
 
-    .sidebar-toggle-input:checked ~ .app-shell .sidebar {
+    body.sidebar-aberta .sidebar {
         transform: translateX(0);
         margin-left: 0;
-    }
-
-    .sidebar-toggle-input:checked ~ .app-shell {
-        grid-template-columns: 1fr;
     }
 
     .sidebar-scrim {
         display: none;
         position: fixed;
         inset: 0;
+        border: 0;
+        padding: 0;
         background: rgba(10, 14, 20, 0.4);
         z-index: 30;
+        cursor: pointer;
     }
 
-    .sidebar-toggle-input:checked ~ .sidebar-scrim {
+    body.sidebar-aberta .sidebar-scrim {
         display: block;
     }
 }
