@@ -108,10 +108,33 @@ public sealed class FrontendShellBaselineTests
         Assert.Contains("tabela-operacional", arquivo, StringComparison.Ordinal);
         Assert.Contains("tabela-arquivo", arquivo, StringComparison.Ordinal);
 
+        var gestaoPerfis = Ler("src/CustodyChain.Web/Views/GestaoPerfis/Index.cshtml");
+        Assert.Contains("pagina-cabecalho-registros", gestaoPerfis, StringComparison.Ordinal);
+        Assert.Contains("painel-listagem-registros", gestaoPerfis, StringComparison.Ordinal);
+        Assert.Contains("tabela-registros", gestaoPerfis, StringComparison.Ordinal);
+        Assert.Contains("painel-listagem-contexto", gestaoPerfis, StringComparison.Ordinal);
+        Assert.Contains("tabela-perfis", gestaoPerfis, StringComparison.Ordinal);
+
         var relatorio = Ler("src/CustodyChain.Web/Views/Relatorios/Processo.cshtml");
         Assert.Contains("tabela-forense", relatorio, StringComparison.Ordinal);
         Assert.Contains("formulario-aprovacao--inline", Ler("src/CustodyChain.Web/Views/DestinacaoFinal/Index.cshtml"), StringComparison.Ordinal);
         Assert.Contains(".tela-login .campo", Ler("src/CustodyChain.Web/wwwroot/css/componentes.css"), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void RotacaoDeChave_UsaPainelCanonicoSemSubtituloRedundante()
+    {
+        var view = Ler("src/CustodyChain.Web/Views/Autenticacao/RotacionarChave.cshtml");
+
+        Assert.Contains("id=\"rotation-panel\" class=\"cartao painel-operacao-wallet painel-rotacao\"", view, StringComparison.Ordinal);
+        Assert.Contains("class=\"painel-rotacao-conteudo\"", view, StringComparison.Ordinal);
+        Assert.DoesNotContain("A wallet cria a nova chave e prova a posse das duas chaves.", view, StringComparison.Ordinal);
+        Assert.Contains("@Html.AntiForgeryToken()", view, StringComparison.Ordinal);
+        Assert.Contains("data-wallet-endpoint=\"@Model.WalletEndpoint\"", view, StringComparison.Ordinal);
+
+        var css = Ler("src/CustodyChain.Web/wwwroot/css/componentes.css");
+        Assert.Contains(".painel-rotacao-conteudo", css, StringComparison.Ordinal);
+        Assert.Contains("max-inline-size: none", css, StringComparison.Ordinal);
     }
 
     private static string Ler(string caminhoRelativo)

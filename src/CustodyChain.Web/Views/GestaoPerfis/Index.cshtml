@@ -3,16 +3,16 @@
     ViewData["Title"] = "Gestão de perfis";
 }
 
-<div class="pagina-cabecalho-acoes">
+<div class="pagina-cabecalho-acoes pagina-cabecalho-registros">
     <div>
         <h1>Gestão de perfis</h1>
         <p class="campo-ajuda">A identidade no ledger é verificada separadamente da situação cadastral.</p>
     </div>
     <div class="navegacao-operacional">
-        <a href="/gestao-perfis/cadastrar" class="botao botao--secundario">Cadastrar interveniente</a>
-        <a href="/gestao-perfis/emitir-credencial" class="botao botao--secundario">Emitir credencial de permissão</a>
-        <a href="/gestao-perfis/credenciais" class="botao botao--secundario">Gerenciar credenciais</a>
-        <a href="/gestao-perfis/recuperar-chave" class="botao botao--secundario">Aprovar recuperação de chave</a>
+        <a href="/gestao-perfis/cadastrar" class="botao botao--primario botao--compacto">Novo interveniente</a>
+        <a href="/gestao-perfis/emitir-credencial" class="botao botao--secundario botao--compacto">Emitir credencial</a>
+        <a href="/gestao-perfis/credenciais" class="botao botao--terciario botao--compacto">Credenciais</a>
+        <a href="/gestao-perfis/recuperar-chave" class="botao botao--terciario botao--compacto">Recuperações</a>
     </div>
 </div>
 
@@ -41,8 +41,19 @@
 }
 else
 {
-    <div class="tabela-operacional-wrapper">
-        <table class="tabela-operacional">
+    <section class="cartao painel-listagem-registros painel-listagem-perfis">
+        <header class="painel-listagem-cabecalho">
+            <div>
+                <p class="painel-listagem-rotulo">Base de identidades</p>
+                <h2>Intervenientes cadastrados</h2>
+            </div>
+            <p class="contador-registros" aria-label="Quantidade de intervenientes">@Model.Intervenientes.Count registro(s)</p>
+        </header>
+        <div class="painel-listagem-contexto">
+            <span>Consulte situação cadastral, DID, perfil e estado da identidade no ledger.</span>
+        </div>
+        <div class="tabela-operacional-wrapper tabela-registros-wrapper">
+        <table class="tabela-operacional tabela-registros tabela-perfis">
             <thead>
                 <tr>
                     <th>Nome</th>
@@ -104,5 +115,6 @@ else
                 }
             </tbody>
         </table>
-    </div>
+        </div>
+    </section>
 }

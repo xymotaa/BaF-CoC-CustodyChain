@@ -638,6 +638,127 @@ textarea.campo-entrada {
 .painel-arquivo { padding: var(--espaco-5); }
 .formulario-inline { display: flex; flex-direction: column; gap: var(--espaco-2); }
 
+/* Gestão densa de evidências: a lista preserva todos os campos forenses sem competir com a navegação. */
+.pagina-cabecalho-registros {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: var(--espaco-5);
+    padding-block-end: var(--espaco-4);
+    border-block-end: 1px solid var(--cor-borda);
+}
+
+.painel-listagem-registros {
+    overflow: hidden;
+    border-color: var(--cor-borda-forte);
+    box-shadow: none;
+}
+
+.barra-filtros {
+    align-items: flex-end;
+    margin: 0;
+    padding: var(--espaco-4) var(--espaco-5);
+    background: var(--cor-fundo);
+    border-block-end: 1px solid var(--cor-borda);
+}
+
+.painel-listagem-cabecalho {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--espaco-4);
+    padding: var(--espaco-4) var(--espaco-5);
+    background: var(--cor-superficie);
+    border-block-end: 1px solid var(--cor-borda);
+}
+
+.painel-listagem-cabecalho h2,
+.painel-listagem-cabecalho p {
+    margin: 0;
+}
+
+.painel-listagem-rotulo {
+    color: var(--cor-texto-fraco);
+    font-size: 0.6875rem;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+}
+
+.contador-registros {
+    padding: var(--espaco-1) var(--espaco-3);
+    border: 1px solid var(--cor-borda);
+    border-radius: 999px;
+    color: var(--cor-texto-suave);
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+    white-space: nowrap;
+}
+
+.painel-listagem-contexto {
+    padding: var(--espaco-3) var(--espaco-5);
+    color: var(--cor-texto-suave);
+    background: var(--cor-fundo);
+    border-block-end: 1px solid var(--cor-borda);
+    font-size: 0.8125rem;
+}
+
+.painel-listagem-registros .tabela-wrapper {
+    border: 0;
+    border-radius: 0;
+}
+
+.tabela-registros {
+    font-size: 0.8125rem;
+}
+
+.tabela-registros thead {
+    background: var(--cor-acento-suave);
+}
+
+.tabela-registros th {
+    color: var(--cor-texto-suave);
+    font-size: 0.6875rem;
+    letter-spacing: 0.03em;
+}
+
+.tabela-registros-wrapper {
+    background: var(--cor-superficie);
+}
+
+.tabela-perfis th,
+.tabela-perfis td {
+    padding-block: var(--espaco-3);
+}
+
+.tabela-perfis td:first-child {
+    font-weight: 600;
+}
+
+.tabela-perfis .acoes-administrativas {
+    justify-content: flex-start;
+}
+
+.tabela-perfis .botao {
+    min-height: 2rem;
+    padding-inline: var(--espaco-2);
+    font-size: 0.75rem;
+}
+
+.tabela-registros tbody tr {
+    transition: background var(--duracao-interacao) ease;
+}
+
+@media (hover: hover) {
+    .tabela-registros tbody tr:hover {
+        background: var(--cor-fundo);
+    }
+}
+
+.tabela-registros .tabela-descricao {
+    max-inline-size: 34ch;
+}
+
 /* Listas operacionais e recebimento. */
 .lista-recebimento {
     display: flex;
@@ -759,6 +880,15 @@ textarea.campo-entrada {
 .painel-revogacao { max-inline-size: 40rem; }
 .painel-recuperacao,
 .painel-rotacao { max-inline-size: var(--largura-painel-wallet); }
+.painel-rotacao {
+    inline-size: 100%;
+    max-inline-size: none;
+    background: var(--cor-superficie);
+}
+.painel-rotacao-conteudo {
+    inline-size: min(100%, var(--largura-painel-wallet));
+    margin-inline: auto;
+}
 .painel-recuperacao .campo { margin-block-start: var(--espaco-4); }
 .painel-recuperacao .botao { margin-block-start: var(--espaco-4); }
 .painel-recuperacao textarea { resize: vertical; }
@@ -925,6 +1055,26 @@ textarea.campo-entrada {
     .formulario-aprovacao--inline,
     .relatorio-acoes {
         inline-size: 100%;
+    }
+
+    .pagina-cabecalho-registros {
+        align-items: stretch;
+        flex-direction: column;
+        padding-block-end: var(--espaco-3);
+    }
+
+    .barra-filtros {
+        padding: var(--espaco-4);
+    }
+
+    .painel-listagem-cabecalho {
+        align-items: flex-start;
+        flex-direction: column;
+        padding: var(--espaco-4);
+    }
+
+    .painel-listagem-contexto {
+        padding-inline: var(--espaco-4);
     }
 
     .item-recebimento-acoes .botao,
