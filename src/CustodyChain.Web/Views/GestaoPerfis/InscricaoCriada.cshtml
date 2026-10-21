@@ -20,17 +20,5 @@
         <dd>@Model.ExpiraEm.ToLocalTime().ToString("dd/MM/yyyy HH:mm")</dd>
     </dl>
     <p class="campo-ajuda">Na wallet do titular, crie a identidade com o DID reservado, solicite o comando de registro e assine-o localmente.</p>
-    <a class="botao botao-primario" href="/gestao-perfis">Voltar para gestão de perfis</a>
+    <a class="botao botao--primario" href="/gestao-perfis">Voltar para gestão de perfis</a>
 </section>
-
-@section Styles {
-    <style>
-        .pagina-cabecalho { margin-bottom: 1.5rem; }
-        .painel-inscricao { max-width: 760px; padding: 1.5rem; }
-        .painel-inscricao dl { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: .65rem 1rem; margin: 0 0 1.5rem; }
-        .painel-inscricao dt { color: var(--cor-texto-fraco); }
-        .painel-inscricao dd { margin: 0; overflow-wrap: anywhere; }
-        .codigo-inscricao { user-select: all; font-weight: 700; }
-        @@media (max-width: 640px) { .painel-inscricao dl { grid-template-columns: 1fr; gap: .25rem; } }
-    </style>
-}

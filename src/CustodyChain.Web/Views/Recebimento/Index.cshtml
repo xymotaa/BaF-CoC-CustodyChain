@@ -3,14 +3,14 @@
     ViewData["Title"] = "Recebimento";
 }
 
-<div class="pagina-cabecalho pagina-cabecalho-acao">
+<div class="pagina-cabecalho pagina-cabecalho-acoes">
     <div>
         <h1>Recebimento</h1>
         <p class="campo-ajuda">Itens em trânsito destinados a você. Confira o lacre antes de confirmar.</p>
     </div>
     <nav class="navegacao-operacional" aria-label="Navegação da cadeia de custódia">
-        <a href="/arquivo" class="botao botao-secundario">Consultar arquivo</a>
-        <a href="/auditoria" class="botao botao-secundario">Consultar histórico</a>
+        <a href="/arquivo" class="botao botao--secundario">Consultar arquivo</a>
+        <a href="/auditoria" class="botao botao--secundario">Consultar histórico</a>
     </nav>
 </div>
 
@@ -84,7 +84,7 @@ else
                         </div>
                         <p class="campo-ajuda estado-operacao" data-operacao-status role="status" aria-live="polite"></p>
                         <p class="campo-erro" data-operacao-error role="alert" tabindex="-1" hidden></p>
-                        <button type="submit" class="botao botao-primario">Assinar e confirmar recebimento</button>
+                        <button type="submit" class="botao botao--primario">Assinar e confirmar recebimento</button>
                     </form>
 
                     <form method="post" class="formulario-inline" data-recebimento-operacao="recusar">
@@ -104,7 +104,7 @@ else
                         </div>
                         <p class="campo-ajuda estado-operacao" data-operacao-status role="status" aria-live="polite"></p>
                         <p class="campo-erro" data-operacao-error role="alert" tabindex="-1" hidden></p>
-                        <button type="submit" class="botao botao-secundario">Assinar e recusar recebimento</button>
+                        <button type="submit" class="botao botao--secundario">Assinar e recusar recebimento</button>
                     </form>
                 </div>
             </section>
@@ -172,93 +172,4 @@ else
             });
         })();
     </script>
-}
-
-@section Styles {
-    <style>
-        .pagina-cabecalho { margin-bottom: 1.5rem; }
-        .pagina-cabecalho h1 { margin-bottom: 0.25rem; }
-
-        .painel-vazio {
-            border: 1px dashed var(--cor-borda-forte);
-            border-radius: var(--raio);
-            padding: 2rem 1.5rem;
-            text-align: center;
-            color: var(--cor-texto-suave);
-        }
-
-        .painel-vazio-icone {
-            display: inline-flex;
-            color: var(--cor-texto-fraco);
-            margin-bottom: 0.5rem;
-        }
-
-        .lista-recebimento {
-            display: flex;
-            flex-direction: column;
-            gap: 1rem;
-            max-width: 720px;
-        }
-
-        .item-recebimento { padding: 1.25rem 1.5rem; }
-
-        .item-recebimento-cabecalho {
-            display: flex;
-            justify-content: space-between;
-            align-items: flex-start;
-            gap: 1rem;
-            margin-bottom: 0.75rem;
-        }
-
-        .item-recebimento-rotulo {
-            font-weight: 600;
-            font-size: 1rem;
-        }
-
-        .item-recebimento-descricao {
-            margin: 0.125rem 0 0;
-            color: var(--cor-texto-suave);
-            font-size: 0.875rem;
-        }
-
-        .item-recebimento-detalhes {
-            display: grid;
-            grid-template-columns: repeat(3, 1fr);
-            gap: 0.75rem;
-            margin: 0 0 1rem;
-            padding: 0.75rem 0;
-            border-top: 1px solid var(--cor-borda);
-            border-bottom: 1px solid var(--cor-borda);
-        }
-
-        .item-recebimento-detalhes dt {
-            font-size: 0.75rem;
-            color: var(--cor-texto-fraco);
-            margin-bottom: 0.125rem;
-        }
-
-        .item-recebimento-detalhes dd {
-            margin: 0;
-            font-size: 0.875rem;
-        }
-
-        .item-recebimento-acoes {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 1rem;
-        }
-
-        .formulario-inline {
-            display: flex;
-            flex-direction: column;
-            gap: 0.5rem;
-        }
-
-        .campo-inline { margin-bottom: 0; }
-
-        @@media (max-width: 640px) {
-            .item-recebimento-detalhes { grid-template-columns: 1fr; }
-            .item-recebimento-acoes { grid-template-columns: 1fr; }
-        }
-    </style>
 }

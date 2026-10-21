@@ -1,7 +1,7 @@
 @model CustodyChain.Web.Models.ViewModels.ProcessamentoPericialListaViewModel
 @{ ViewData["Title"] = "Processamento pericial"; }
 
-<div class="pagina-cabecalho-acao"><div><h1>Processamento pericial</h1><p class="campo-ajuda">Vestígios designados a você. Receba e rompa o lacre para liberar o exame.</p></div></div>
+<div class="pagina-cabecalho-acoes"><div><h1>Processamento pericial</h1><p class="campo-ajuda">Vestígios designados a você. Receba e rompa o lacre para liberar o exame.</p></div></div>
 @if (TempData["MensagemSucesso"] is string sucesso) { <div class="alerta alerta-sucesso" role="status"><span class="alerta-icone"><svg><use href="#icone-sucesso" /></svg></span><span>@sucesso</span></div> }
 @if (TempData["MensagemErro"] is string erro) { <div class="alerta alerta-erro" role="alert"><span class="alerta-icone"><svg><use href="#icone-alerta" /></svg></span><span>@erro</span></div> }
 

@@ -31,7 +31,7 @@
         <label class="campo-rotulo" for="pairing-token">Código de pareamento</label>
         <input id="pairing-token" class="campo-entrada" type="password" autocomplete="off" required />
     </div>
-    <button id="approve-recovery" class="botao botao-primario" type="button">Assinar e confirmar recuperação</button>
+    <button id="approve-recovery" class="botao botao--primario" type="button">Assinar e confirmar recuperação</button>
     <p id="recovery-status" role="status" aria-live="polite" class="campo-ajuda estado-operacao"></p>
 </section>
 
@@ -94,14 +94,4 @@
             });
         })();
     </script>
-}
-
-@section Styles {
-    <style>
-        .pagina-cabecalho { margin-bottom: 1.5rem; }
-        .painel-recuperacao { max-width: 720px; }
-        .painel-recuperacao .campo { margin-top: 1rem; }
-        .painel-recuperacao .botao { margin-top: 1rem; }
-        .painel-recuperacao textarea { width: 100%; resize: vertical; }
-    </style>
 }

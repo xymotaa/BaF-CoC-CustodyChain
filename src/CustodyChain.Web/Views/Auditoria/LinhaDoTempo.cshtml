@@ -3,12 +3,12 @@
     ViewData["Title"] = "Auditoria";
 }
 
-<div class="pagina-cabecalho pagina-cabecalho-acao">
+<div class="pagina-cabecalho pagina-cabecalho-acoes">
     <div>
         <h1>Linha do tempo do vestígio</h1>
         <p class="campo-ajuda">Histórico imutável de eventos registrados no ledger, por rótulo de evidência (RF15).</p>
     </div>
-    <a href="/verificador" target="_blank" class="botao botao-secundario">Verificador independente</a>
+    <a href="/verificador" target="_blank" class="botao botao--secundario">Verificador independente</a>
 </div>
 
 <form asp-controller="Auditoria" asp-action="LinhaDoTempo" method="get" class="formulario-busca">
@@ -16,7 +16,7 @@
         <label for="busca" class="campo-rotulo sr-only">Rótulo de evidência</label>
         <input type="search" id="busca" name="busca" value="@Model.Busca" class="campo-entrada mono" placeholder="Rótulo de evidência (RE)" />
     </div>
-    <button type="submit" class="botao botao-secundario">Buscar</button>
+    <button type="submit" class="botao botao--secundario">Buscar</button>
 </form>
 
 @if (!string.IsNullOrWhiteSpace(Model.Busca) && Model.VestigioId is null)
@@ -72,137 +72,4 @@ else if (Model.VestigioId is not null)
             }
         </ol>
     }
-}
-
-@section Styles {
-    <style>
-        .pagina-cabecalho { margin-bottom: 1.5rem; }
-        .pagina-cabecalho h1 { margin-bottom: 0.25rem; }
-
-        .pagina-cabecalho-acao {
-            display: flex;
-            justify-content: space-between;
-            align-items: flex-start;
-            gap: 1rem;
-            flex-wrap: wrap;
-        }
-
-        .formulario-busca {
-            display: flex;
-            gap: 0.75rem;
-            align-items: flex-end;
-            margin-bottom: 1.5rem;
-            flex-wrap: wrap;
-        }
-
-        .campo-busca { flex: 1 1 320px; margin-bottom: 0; }
-
-        .painel-vazio {
-            border: 1px dashed var(--cor-borda-forte);
-            border-radius: var(--raio);
-            padding: 2rem 1.5rem;
-            text-align: center;
-            color: var(--cor-texto-suave);
-        }
-
-        .painel-vazio-icone {
-            display: inline-flex;
-            color: var(--cor-texto-fraco);
-            margin-bottom: 0.5rem;
-        }
-
-        .relatorio-dados-processo {
-            padding: 1.25rem 1.5rem;
-            margin-bottom: 1.5rem;
-        }
-
-        .relatorio-grade-processo {
-            border: none;
-            padding: 0;
-            margin: 0;
-            display: grid;
-            grid-template-columns: repeat(3, 1fr);
-            gap: 0.75rem;
-        }
-
-        .item-recebimento-detalhes dt {
-            font-size: 0.75rem;
-            color: var(--cor-texto-fraco);
-            margin-bottom: 0.125rem;
-        }
-
-        .item-recebimento-detalhes dd { margin: 0; font-size: 0.875rem; }
-
-        .relatorio-subtitulo { font-size: 1rem; margin-bottom: 0.75rem; }
-
-        .linha-tempo {
-            list-style: none;
-            margin: 0;
-            padding: 0;
-            max-width: 640px;
-        }
-
-        .linha-tempo-item {
-            display: flex;
-            gap: 1rem;
-            padding-bottom: 1.5rem;
-            position: relative;
-        }
-
-        .linha-tempo-item:not(:last-child)::before {
-            content: "";
-            position: absolute;
-            left: 5px;
-            top: 16px;
-            bottom: 0;
-            width: 1px;
-            background: var(--cor-borda);
-        }
-
-        .linha-tempo-marcador {
-            width: 11px;
-            height: 11px;
-            border-radius: 999px;
-            background: var(--cor-acento);
-            margin-top: 4px;
-            flex-shrink: 0;
-        }
-
-        .linha-tempo-conteudo {
-            background: var(--cor-superficie);
-            border: 1px solid var(--cor-borda);
-            border-radius: var(--raio);
-            padding: 0.875rem 1rem;
-            flex: 1;
-        }
-
-        .linha-tempo-cabecalho {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            gap: 0.5rem;
-            margin-bottom: 0.25rem;
-        }
-
-        .linha-tempo-evento { font-weight: 600; font-size: 0.9375rem; }
-
-        .linha-tempo-data {
-            margin: 0 0 0.375rem;
-            font-size: 0.8125rem;
-            color: var(--cor-texto-fraco);
-        }
-
-        .linha-tempo-origem, .linha-tempo-ancorado, .linha-tempo-tx {
-            margin: 0.125rem 0 0;
-            font-size: 0.8125rem;
-            color: var(--cor-texto-suave);
-        }
-
-        .selo-sucesso { background: var(--cor-sucesso-fundo); color: var(--cor-sucesso); }
-        .selo-alerta { background: var(--cor-erro-fundo); color: var(--cor-erro); }
-
-        @@media (max-width: 640px) {
-            .relatorio-grade-processo { grid-template-columns: 1fr; }
-        }
-    </style>
 }

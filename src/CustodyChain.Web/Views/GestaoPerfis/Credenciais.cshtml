@@ -1,6 +1,6 @@
 @model CustodyChain.Web.Models.ViewModels.GestaoCredenciaisViewModel
 @{ ViewData["Title"] = "Credenciais de permissão"; }
-<div class="pagina-cabecalho-acao"><div><h1>Credenciais de permissão</h1><p class="campo-ajuda">A validade é consultada no Fabric; a revogação requer assinatura da wallet emissora.</p></div><a href="/gestao-perfis/emitir-credencial" class="botao botao-secundario">Emitir credencial</a></div>
+<div class="pagina-cabecalho-acoes"><div><h1>Credenciais de permissão</h1><p class="campo-ajuda">A validade é consultada no Fabric; a revogação requer assinatura da wallet emissora.</p></div><a href="/gestao-perfis/emitir-credencial" class="botao botao--secundario">Emitir credencial</a></div>
 @if (Model.Credenciais.Count == 0)
 {
     <div class="painel-vazio"><p>Nenhuma credencial de permissão emitida.</p></div>
@@ -11,7 +11,7 @@ else
     @foreach (var item in Model.Credenciais)
     {
         var classeSituacao = item.Situacao switch { "VIGENTE" => "selo--vigente", "REVOGADA" => "selo--revogado", "EXPIRADA" => "selo--expirado", _ => "selo--pendente" };
-        <tr><td data-rotulo="Titular">@item.TitularNome</td><td data-rotulo="Identificador"><span class="mono codigo-forense">@item.Identificador</span></td><td data-rotulo="Situação"><span class="selo @classeSituacao">@item.Situacao</span></td><td data-rotulo="Emitida em">@item.EmitidaEm.ToLocalTime().ToString("dd/MM/yyyy HH:mm")</td><td data-rotulo="Validade">@(item.ValidaAte?.ToLocalTime().ToString("dd/MM/yyyy HH:mm") ?? "Indeterminada")</td><td data-rotulo="Ação">@if (item.Situacao == "VIGENTE") { <a class="botao botao-secundario" href="/gestao-perfis/credenciais/@item.Id/revogar">Revogar com prova</a> }</td></tr>
+        <tr><td data-rotulo="Titular">@item.TitularNome</td><td data-rotulo="Identificador"><span class="mono codigo-forense">@item.Identificador</span></td><td data-rotulo="Situação"><span class="selo @classeSituacao">@item.Situacao</span></td><td data-rotulo="Emitida em">@item.EmitidaEm.ToLocalTime().ToString("dd/MM/yyyy HH:mm")</td><td data-rotulo="Validade">@(item.ValidaAte?.ToLocalTime().ToString("dd/MM/yyyy HH:mm") ?? "Indeterminada")</td><td data-rotulo="Ação">@if (item.Situacao == "VIGENTE") { <a class="botao botao--secundario" href="/gestao-perfis/credenciais/@item.Id/revogar">Revogar com prova</a> }</td></tr>
     }
     </tbody></table></div>
 }

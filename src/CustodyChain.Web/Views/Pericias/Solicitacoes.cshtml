@@ -3,7 +3,7 @@
     ViewData["Title"] = "Solicitações de perícia";
 }
 
-<div class="pagina-cabecalho-acao"><div><h1>Solicitações de perícia</h1><p class="campo-ajuda">Revise o escopo antes de assinar a credencial que autoriza o perito.</p></div></div>
+<div class="pagina-cabecalho-acoes"><div><h1>Solicitações de perícia</h1><p class="campo-ajuda">Revise o escopo antes de assinar a credencial que autoriza o perito.</p></div></div>
 
 @if (TempData["MensagemSucesso"] is string sucesso)
 {
@@ -42,7 +42,7 @@ else
                         <div><dt>Solicitada em</dt><dd>@item.SolicitadaEm.ToLocalTime().ToString("dd/MM/yyyy HH:mm")</dd></div>
                     </dl>
                 </div>
-                <a class="botao botao-primario" href="/pericias/@item.PericiaId/aprovar">Revisar e assinar</a>
+                <a class="botao botao--primario" href="/pericias/@item.PericiaId/aprovar">Revisar e assinar</a>
             </article>
         }
     </div>

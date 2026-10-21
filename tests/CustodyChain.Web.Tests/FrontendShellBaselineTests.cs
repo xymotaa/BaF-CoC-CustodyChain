@@ -85,17 +85,50 @@ public sealed class FrontendShellBaselineTests
         Assert.Contains("overflow-wrap: anywhere", css, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public void Views_RetiramEstilosInlineEUsamContratosCanonicos()
+    {
+        var diretorioViews = Path.Combine(LocalizarRepositorio(), "src/CustodyChain.Web/Views");
+        var views = Directory.EnumerateFiles(diretorioViews, "*.cshtml", SearchOption.AllDirectories).ToArray();
+
+        Assert.NotEmpty(views);
+        Assert.All(views, caminho =>
+        {
+            var conteudo = File.ReadAllText(caminho);
+            Assert.DoesNotContain("@section Styles", conteudo, StringComparison.Ordinal);
+            Assert.DoesNotContain("<style>", conteudo, StringComparison.Ordinal);
+        });
+
+        var cadastroVestigio = Ler("src/CustodyChain.Web/Views/Vestigios/Cadastrar.cshtml");
+        var arquivo = Ler("src/CustodyChain.Web/Views/Arquivo/Index.cshtml");
+
+        Assert.Contains("pagina-cabecalho-acoes", cadastroVestigio, StringComparison.Ordinal);
+        Assert.Contains("grade-operacional", cadastroVestigio, StringComparison.Ordinal);
+        Assert.Contains("botao--primario", cadastroVestigio, StringComparison.Ordinal);
+        Assert.Contains("tabela-operacional", arquivo, StringComparison.Ordinal);
+        Assert.Contains("tabela-arquivo", arquivo, StringComparison.Ordinal);
+
+        var relatorio = Ler("src/CustodyChain.Web/Views/Relatorios/Processo.cshtml");
+        Assert.Contains("tabela-forense", relatorio, StringComparison.Ordinal);
+        Assert.Contains("formulario-aprovacao--inline", Ler("src/CustodyChain.Web/Views/DestinacaoFinal/Index.cshtml"), StringComparison.Ordinal);
+        Assert.Contains(".tela-login .campo", Ler("src/CustodyChain.Web/wwwroot/css/componentes.css"), StringComparison.Ordinal);
+    }
+
     private static string Ler(string caminhoRelativo)
+    {
+        return File.ReadAllText(Path.Combine(LocalizarRepositorio(), caminhoRelativo));
+    }
+
+    private static string LocalizarRepositorio()
     {
         for (var diretorio = new DirectoryInfo(AppContext.BaseDirectory); diretorio is not null; diretorio = diretorio.Parent)
         {
-            var caminho = Path.Combine(diretorio.FullName, caminhoRelativo);
-            if (File.Exists(caminho))
+            if (Directory.Exists(Path.Combine(diretorio.FullName, "src", "CustodyChain.Web", "Views")))
             {
-                return File.ReadAllText(caminho);
+                return diretorio.FullName;
             }
         }
 
-        throw new FileNotFoundException($"Arquivo não encontrado: {caminhoRelativo}");
+        throw new DirectoryNotFoundException("Raiz do repositório não encontrada.");
     }
 }

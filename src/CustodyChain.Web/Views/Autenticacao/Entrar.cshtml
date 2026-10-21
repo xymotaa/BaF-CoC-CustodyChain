@@ -44,7 +44,7 @@
                 <span id="pareamento-ajuda" class="campo-ajuda">Use o código exibido ao iniciar a wallet local.</span>
             </div>
 
-            <button id="login-submit" type="submit" class="botao botao-primario botao-largura-total">
+            <button id="login-submit" type="submit" class="botao botao--primario botao--bloco">
                 <span id="login-submit-texto">Assinar desafio e entrar</span>
             </button>
             <p id="login-status" class="tela-login-status estado-operacao" role="status" aria-live="polite"></p>
@@ -55,93 +55,6 @@
         </p>
     </div>
 </div>
-
-@section Styles {
-    <style>
-        .tela-login {
-            min-height: 100dvh;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            padding: 1.5rem;
-        }
-
-        .tela-login-cartao {
-            width: 100%;
-            max-width: 420px;
-            padding: 2rem;
-        }
-
-        .tela-login-cabecalho {
-            text-align: center;
-            margin-bottom: 1.75rem;
-        }
-
-        .tela-login-selo {
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            width: 44px;
-            height: 44px;
-            border-radius: var(--raio);
-            background: var(--cor-acento);
-            color: var(--cor-acento-texto);
-            font-weight: 700;
-            font-size: 0.9rem;
-            margin-bottom: 0.875rem;
-        }
-
-        .tela-login-cabecalho h1 {
-            font-size: 1.25rem;
-            margin-bottom: 0.25rem;
-        }
-
-        .tela-login-subtitulo,
-        .tela-login-status {
-            color: var(--cor-texto-fraco);
-            font-size: 0.875rem;
-            margin: 0;
-        }
-
-        .tela-login-status {
-            min-height: 1.3125rem;
-            margin-top: 0.75rem;
-            text-align: center;
-        }
-
-        .tela-login-rodape {
-            text-align: center;
-            margin: 1.25rem 0 0;
-            font-size: 0.8125rem;
-        }
-
-        .campo-entrada-did {
-            font-family: var(--font-mono);
-            font-size: 0.8125rem;
-        }
-
-        .tela-login .campo-entrada,
-        .tela-login .botao {
-            min-height: 44px;
-        }
-
-        .tela-login .campo-entrada:focus-visible {
-            outline: 2px solid var(--cor-acento);
-            outline-offset: 2px;
-        }
-
-        @@media (max-width: 480px) {
-            .tela-login {
-                align-items: flex-start;
-                padding: 1rem;
-            }
-
-            .tela-login-cartao {
-                padding: 1.5rem;
-            }
-        }
-    </style>
-}
 
 @section Scripts {
     <script>

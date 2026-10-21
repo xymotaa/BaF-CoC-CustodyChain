@@ -26,7 +26,7 @@
         <label class="campo-rotulo" for="pairing-token">Código de pareamento</label>
         <input id="pairing-token" class="campo-entrada" type="password" autocomplete="off" required />
     </div>
-    <button id="revoke" class="botao botao-primario" type="button">Assinar e revogar</button>
+    <button id="revoke" class="botao botao--primario" type="button">Assinar e revogar</button>
     <p id="revocation-status" role="status" aria-live="polite" class="campo-ajuda estado-operacao"></p>
 </section>
 
@@ -83,12 +83,4 @@
     });
 })();
 </script>
-}
-
-@section Styles {
-<style>
-    .pagina-cabecalho { margin-bottom: 1.5rem; }
-    .painel-revogacao { max-width: 640px; }
-    .painel-revogacao .campo { margin-bottom: 1rem; }
-</style>
 }

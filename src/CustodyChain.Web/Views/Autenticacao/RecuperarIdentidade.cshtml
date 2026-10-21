@@ -27,15 +27,15 @@
         <label class="campo-rotulo" for="pairing-token">Código de pareamento</label>
         <input id="pairing-token" class="campo-entrada" type="password" autocomplete="off" required />
     </div>
-    <button id="create-recovery" class="botao botao-primario" type="button">Criar pacote de recuperação</button>
+    <button id="create-recovery" class="botao botao--primario" type="button">Criar pacote de recuperação</button>
     <p id="recovery-status" role="status" aria-live="polite" class="campo-ajuda estado-operacao"></p>
 
     <div id="recovery-package" class="campo" hidden>
         <label class="campo-rotulo" for="package">Pacote assinado para o administrador</label>
         <textarea id="package" class="campo-entrada mono" rows="12" readonly></textarea>
         <p class="campo-ajuda">Envie este pacote por um canal seguro ao administrador. Ele expira em cinco minutos.</p>
-        <button id="copy-package" class="botao botao-secundario" type="button">Copiar pacote</button>
-        <button id="confirm-recovery" class="botao botao-secundario" type="button">Confirmar chave após aprovação</button>
+        <button id="copy-package" class="botao botao--secundario" type="button">Copiar pacote</button>
+        <button id="confirm-recovery" class="botao botao--secundario" type="button">Confirmar chave após aprovação</button>
     </div>
 </section>
 
@@ -149,14 +149,4 @@
             });
         })();
     </script>
-}
-
-@section Styles {
-    <style>
-        .pagina-cabecalho { margin-bottom: 1.5rem; }
-        .painel-recuperacao { max-width: 720px; }
-        .painel-recuperacao .campo { margin-top: 1rem; }
-        .painel-recuperacao .botao { margin-top: 1rem; }
-        .painel-recuperacao textarea { width: 100%; resize: vertical; }
-    </style>
 }

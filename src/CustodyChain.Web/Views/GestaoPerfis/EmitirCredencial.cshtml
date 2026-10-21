@@ -3,7 +3,7 @@
     ViewData["Title"] = "Emitir credencial de permissão";
 }
 
-<div class="pagina-cabecalho-acao"><div><h1>Emitir credencial de permissão</h1><p class="campo-ajuda">Coletor recebe autorização por processo; Custódia recebe autorização por processo e vestígio. As operações são definidas pelo perfil.</p></div></div>
+<div class="pagina-cabecalho-acoes"><div><h1>Emitir credencial de permissão</h1><p class="campo-ajuda">Coletor recebe autorização por processo; Custódia recebe autorização por processo e vestígio. As operações são definidas pelo perfil.</p></div></div>
 
 @if (TempData["MensagemSucesso"] is string mensagem)
 {
@@ -93,8 +93,8 @@ else
         <div id="credential-error" class="alerta alerta-erro" role="alert" tabindex="-1" hidden></div>
         <p id="credential-status" role="status" aria-live="polite" class="campo-ajuda estado-operacao"></p>
 
-        <div class="formulario-acoes">
-            <button id="issue-credential" type="submit" class="botao botao-primario">Assinar e emitir VC</button>
+        <div class="acoes-formulario">
+            <button id="issue-credential" type="submit" class="botao botao--primario">Assinar e emitir VC</button>
         </div>
     </form>
 }

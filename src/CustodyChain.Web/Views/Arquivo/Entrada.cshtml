@@ -3,14 +3,14 @@
     ViewData["Title"] = "Entrada no arquivo";
 }
 
-<div class="pagina-cabecalho pagina-cabecalho-acao">
+<div class="pagina-cabecalho pagina-cabecalho-acoes">
     <div>
         <h1>Entrada no arquivo</h1>
         <p class="campo-ajuda">Registra a guarda de um vestígio recebido, com prazo de guarda (art. 158-E).</p>
     </div>
     <nav class="navegacao-operacional" aria-label="Navegação da cadeia de custódia">
-        <a class="botao botao-secundario" href="/arquivo">Consultar arquivo</a>
-        <a class="botao botao-secundario" href="/auditoria">Consultar histórico</a>
+        <a class="botao botao--secundario" href="/arquivo">Consultar arquivo</a>
+        <a class="botao botao--secundario" href="/auditoria">Consultar histórico</a>
     </nav>
 </div>
 
@@ -39,11 +39,11 @@
 }
 else
 {
-    <form id="entrada-arquivo-form" method="post" novalidate class="formulario-vestigio formulario-operacional">
+    <form id="entrada-arquivo-form" method="post" novalidate class="formulario-operacional">
         @Html.AntiForgeryToken()
 
-        <section class="cartao secao-formulario secao-operacional">
-            <div class="grade-campos grade-2col">
+        <section class="cartao secao-operacional">
+            <div class="grade-operacional">
                 <div class="campo">
                     <label asp-for="VestigioId" class="campo-rotulo"></label>
                     <select asp-for="VestigioId" class="campo-entrada @(ViewData.ModelState["VestigioId"]?.Errors.Count > 0 ? "campo-invalido" : "")">
@@ -76,10 +76,10 @@ else
             </div>
         </section>
 
-        <section class="cartao secao-formulario secao-operacional operacao-assinada" aria-labelledby="assinatura-guarda-title">
+        <section class="cartao secao-operacional operacao-assinada" aria-labelledby="assinatura-guarda-title">
             <h2 id="assinatura-guarda-title">Assinatura da guarda</h2>
             <p class="campo-ajuda">A wallet do custodiante confirma o registro antes do armazenamento no ledger.</p>
-            <div class="grade-campos grade-2col">
+            <div class="grade-operacional">
                 <div class="campo">
                     <label for="senha-wallet" class="campo-rotulo">Senha da wallet</label>
                     <input id="senha-wallet" name="SenhaWallet" type="password" autocomplete="current-password" class="campo-entrada" required />
@@ -93,8 +93,8 @@ else
             <p class="campo-erro" data-operacao-error role="alert" tabindex="-1" hidden></p>
         </section>
 
-        <div class="formulario-acoes acoes-formulario">
-            <button type="submit" class="botao botao-primario">Assinar e arquivar</button>
+        <div class="acoes-formulario">
+            <button type="submit" class="botao botao--primario">Assinar e arquivar</button>
         </div>
     </form>
 }
@@ -160,44 +160,4 @@ else
             });
         })();
     </script>
-}
-
-@section Styles {
-    <style>
-        .pagina-cabecalho { margin-bottom: 1.5rem; }
-        .pagina-cabecalho h1 { margin-bottom: 0.25rem; }
-
-        .formulario-vestigio {
-            display: flex;
-            flex-direction: column;
-            gap: 1.25rem;
-            max-width: 760px;
-        }
-
-        .secao-formulario { padding: 1.5rem; }
-        .grade-campos { display: grid; gap: 0 1rem; }
-        .grade-2col { grid-template-columns: 1fr 1fr; }
-
-        @@media (max-width: 640px) {
-            .grade-2col { grid-template-columns: 1fr; }
-        }
-
-        .formulario-acoes { display: flex; justify-content: flex-end; }
-
-        .painel-vazio {
-            border: 1px dashed var(--cor-borda-forte);
-            border-radius: var(--raio);
-            padding: 2rem 1.5rem;
-            text-align: center;
-            color: var(--cor-texto-suave);
-        }
-
-        .painel-vazio-icone {
-            display: inline-flex;
-            color: var(--cor-texto-fraco);
-            margin-bottom: 0.5rem;
-        }
-
-        .painel-vazio p { margin: 0 auto 0.25rem; }
-    </style>
 }

@@ -23,7 +23,7 @@
         <label class="campo-rotulo" for="pairing-token">Código de pareamento</label>
         <input id="pairing-token" class="campo-entrada" type="password" autocomplete="off" required />
     </div>
-    <button id="activate" class="botao botao-primario" type="button">Assinar e ativar</button>
+    <button id="activate" class="botao botao--primario" type="button">Assinar e ativar</button>
     <p id="activation-status" role="status" aria-live="polite" class="campo-ajuda estado-operacao"></p>
 </section>
 
@@ -76,12 +76,4 @@
             });
         })();
     </script>
-}
-
-@section Styles {
-    <style>
-        .pagina-cabecalho { margin-bottom: 1.5rem; }
-        .painel-ativacao { max-width: 640px; }
-        .painel-ativacao .campo { margin-bottom: 1rem; }
-    </style>
 }

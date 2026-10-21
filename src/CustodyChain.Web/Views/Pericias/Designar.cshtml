@@ -3,7 +3,7 @@
     ViewData["Title"] = "Solicitar perícia";
 }
 
-<div class="pagina-cabecalho-acao"><div><h1>Solicitar perícia</h1><p class="campo-ajuda">Indica o perito e mantém o vestígio armazenado até a aprovação administrativa da credencial (RN10).</p></div></div>
+<div class="pagina-cabecalho-acoes"><div><h1>Solicitar perícia</h1><p class="campo-ajuda">Indica o perito e mantém o vestígio armazenado até a aprovação administrativa da credencial (RN10).</p></div></div>
 
 @if (TempData["MensagemSucesso"] is string mensagem)
 {
@@ -76,8 +76,8 @@ else
             </div>
         </section>
 
-        <div class="formulario-acoes">
-            <button type="submit" class="botao botao-primario">Solicitar perícia</button>
+        <div class="acoes-formulario">
+            <button type="submit" class="botao botao--primario">Solicitar perícia</button>
         </div>
     </form>
 }

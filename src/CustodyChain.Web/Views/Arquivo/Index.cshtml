@@ -3,10 +3,10 @@
     ViewData["Title"] = "Arquivo";
 }
 
-<div class="pagina-cabecalho pagina-cabecalho-acao">
+<div class="pagina-cabecalho pagina-cabecalho-acoes">
     <div><h1>Arquivo</h1></div>
     <nav class="navegacao-operacional" aria-label="Navegação da cadeia de custódia">
-        <a href="/auditoria" class="botao botao-secundario">Consultar histórico</a>
+        <a href="/auditoria" class="botao botao--secundario">Consultar histórico</a>
     </nav>
 </div>
 
@@ -26,8 +26,8 @@
                 }
             </select>
         </div>
-        <button type="submit" class="botao botao-secundario botao-altura-campo">Buscar</button>
-        <a href="/arquivo/entrada" class="botao botao-secundario botao-altura-campo">Registrar entrada</a>
+        <button type="submit" class="botao botao--secundario botao-altura-campo">Buscar</button>
+        <a href="/arquivo/entrada" class="botao botao--secundario botao-altura-campo">Registrar entrada</a>
     </form>
 
     @if (Model.Itens.Count == 0)
@@ -97,129 +97,3 @@
         </div>
     }
 </div>
-
-@section Styles {
-    <style>
-        .pagina-cabecalho { margin-bottom: 1.5rem; }
-        .pagina-cabecalho h1 { margin-bottom: 0.25rem; }
-
-        .painel-arquivo {
-            padding: 1.125rem 1.25rem;
-            box-shadow: none;
-        }
-
-        .formulario-busca {
-            display: flex;
-            gap: 0.75rem;
-            align-items: center;
-            flex-wrap: wrap;
-        }
-
-        .campo-busca,
-        .campo-filtro {
-            margin-bottom: 0;
-            gap: 0;
-        }
-
-        .campo-busca { flex: 1 1 280px; }
-        .campo-filtro { flex: 0 1 200px; }
-
-        .botao-altura-campo { height: 36px; }
-
-        .painel-vazio {
-            margin-top: 1.25rem;
-            border: 1px dashed var(--cor-borda-forte);
-            border-radius: var(--raio);
-            padding: 2rem 1.5rem;
-            text-align: center;
-            color: var(--cor-texto-suave);
-        }
-
-        .painel-vazio-icone {
-            display: inline-flex;
-            color: var(--cor-texto-fraco);
-            margin-bottom: 0.5rem;
-        }
-
-        .tabela-wrapper {
-            overflow-x: auto;
-            border-top: 1px solid var(--cor-borda);
-            margin: 1.25rem -1.25rem -1.125rem;
-        }
-
-        .tabela-arquivo th:first-child,
-        .tabela-arquivo td:first-child {
-            padding-left: 1.25rem;
-        }
-
-        .tabela-arquivo th:last-child,
-        .tabela-arquivo td:last-child {
-            padding-right: 1.25rem;
-        }
-
-        .tabela-arquivo {
-            width: 100%;
-            border-collapse: collapse;
-            font-size: 0.875rem;
-        }
-
-        .tabela-arquivo th {
-            text-align: left;
-            padding: 0.75rem 1rem;
-            font-size: 0.75rem;
-            color: var(--cor-texto-fraco);
-            font-weight: 600;
-            border-bottom: 1px solid var(--cor-borda);
-            white-space: nowrap;
-        }
-
-        .tabela-arquivo td {
-            padding: 1rem;
-            border-bottom: 1px solid var(--cor-borda);
-            vertical-align: top;
-            white-space: nowrap;
-        }
-
-        .tabela-arquivo tbody tr:last-child td {
-            border-bottom: none;
-        }
-
-        .tabela-descricao {
-            color: var(--cor-texto-fraco);
-            font-size: 0.8125rem;
-            margin-top: 0.25rem;
-            white-space: normal;
-        }
-
-        .tabela-hash {
-            font-size: 0.8125rem;
-            color: var(--cor-texto-suave);
-        }
-
-        .tabela-prazo-vencido {
-            color: var(--cor-erro);
-            display: inline-flex;
-            align-items: center;
-            gap: 0.375rem;
-        }
-
-        .selo-alerta {
-            background: var(--cor-erro-fundo);
-            color: var(--cor-erro);
-        }
-
-        @@media (max-width: 640px) {
-            .tabela-wrapper.tabela-operacional-wrapper {
-                overflow: visible;
-                border: 0;
-                background: transparent;
-                margin: 1.25rem 0 0;
-            }
-
-            .tabela-arquivo.tabela-operacional td {
-                white-space: normal;
-                padding: var(--espaco-2) var(--espaco-3);
-            }
-        }
-    </style>
-}

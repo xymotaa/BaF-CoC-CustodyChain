@@ -3,16 +3,16 @@
     ViewData["Title"] = "Gestão de perfis";
 }
 
-<div class="pagina-cabecalho-acao">
+<div class="pagina-cabecalho-acoes">
     <div>
         <h1>Gestão de perfis</h1>
         <p class="campo-ajuda">A identidade no ledger é verificada separadamente da situação cadastral.</p>
     </div>
     <div class="navegacao-operacional">
-        <a href="/gestao-perfis/cadastrar" class="botao botao-secundario">Cadastrar interveniente</a>
-        <a href="/gestao-perfis/emitir-credencial" class="botao botao-secundario">Emitir credencial de permissão</a>
-        <a href="/gestao-perfis/credenciais" class="botao botao-secundario">Gerenciar credenciais</a>
-        <a href="/gestao-perfis/recuperar-chave" class="botao botao-secundario">Aprovar recuperação de chave</a>
+        <a href="/gestao-perfis/cadastrar" class="botao botao--secundario">Cadastrar interveniente</a>
+        <a href="/gestao-perfis/emitir-credencial" class="botao botao--secundario">Emitir credencial de permissão</a>
+        <a href="/gestao-perfis/credenciais" class="botao botao--secundario">Gerenciar credenciais</a>
+        <a href="/gestao-perfis/recuperar-chave" class="botao botao--secundario">Aprovar recuperação de chave</a>
     </div>
 </div>
 
@@ -82,22 +82,22 @@ else
                         <td data-rotulo="Ações"><div class="acoes-administrativas">
                             @if (item.Situacao == "GERADO")
                             {
-                                <a class="botao botao-primario" href="/gestao-perfis/@item.Id/ativar">Ativar com prova</a>
+                                <a class="botao botao--primario" href="/gestao-perfis/@item.Id/ativar">Ativar com prova</a>
                             }
                             else if (item.Situacao == "ATIVO")
                             {
                                 <form action="/gestao-perfis/@item.Id/sincronizar-identidade" method="post" class="formulario-acao-tabela">
                                     @Html.AntiForgeryToken()
-                                    <button type="submit" class="botao botao-secundario">Sincronizar identidade</button>
+                                    <button type="submit" class="botao botao--secundario">Sincronizar identidade</button>
                                 </form>
                                 @if (item.SituacaoIdentidadeLedger == "AUSENTE_NO_LEDGER")
                                 {
                                     <form action="/gestao-perfis/@item.Id/reinscrever" method="post" class="formulario-acao-tabela">
                                         @Html.AntiForgeryToken()
-                                        <button type="submit" class="botao botao-primario">Reinscrever DID</button>
+                                        <button type="submit" class="botao botao--primario">Reinscrever DID</button>
                                     </form>
                                 }
-                            <a class="botao botao-secundario" href="/gestao-perfis/@item.Id/revogar">Revogar com prova</a>
+                            <a class="botao botao--secundario" href="/gestao-perfis/@item.Id/revogar">Revogar com prova</a>
                             }
                         </div></td>
                     </tr>

@@ -3,7 +3,7 @@
     ViewData["Title"] = "Cadastrar interveniente";
 }
 
-<div class="pagina-cabecalho-acao"><div><h1>Cadastrar interveniente</h1><p class="campo-ajuda">Reserva a identidade do interveniente e cria uma inscrição para que ele gere a própria chave na wallet.</p></div></div>
+<div class="pagina-cabecalho-acoes"><div><h1>Cadastrar interveniente</h1><p class="campo-ajuda">Reserva a identidade do interveniente e cria uma inscrição para que ele gere a própria chave na wallet.</p></div></div>
 
 @if (!ViewData.ModelState.IsValid)
 {
@@ -56,7 +56,7 @@
         </div>
     </section>
 
-    <div class="formulario-acoes">
-        <button type="submit" class="botao botao-primario">Cadastrar e criar inscrição</button>
+    <div class="acoes-formulario">
+        <button type="submit" class="botao botao--primario">Cadastrar e criar inscrição</button>
     </div>
 </form>

@@ -10,7 +10,7 @@
 
 <form id="approval-form" class="formulario-aprovacao">
     @Html.AntiForgeryToken()
-    <section class="cartao secao-formulario" aria-labelledby="resumo-titulo">
+    <section class="cartao secao-operacional" aria-labelledby="resumo-titulo">
         <h2 id="resumo-titulo">Escopo da autorização</h2>
         <dl class="resumo">
             <div><dt>Vestígio</dt><dd>@Model.RotuloEvidencia</dd></div>
@@ -25,9 +25,9 @@
         </p>
     </section>
 
-    <section class="cartao secao-formulario" aria-labelledby="assinatura-titulo">
+    <section class="cartao secao-operacional" aria-labelledby="assinatura-titulo">
         <h2 id="assinatura-titulo">Assinatura administrativa</h2>
-        <div class="grade-campos grade-2col">
+        <div class="grade-operacional">
             <div class="campo">
                 <label class="campo-rotulo" for="valid-until">Válida até (opcional)</label>
                 <input id="valid-until" name="ValidaAte" type="datetime-local" class="campo-entrada" />
@@ -46,9 +46,9 @@
 
     <div id="approval-error" class="alerta alerta-erro" role="alert" tabindex="-1" hidden></div>
     <p id="approval-status" class="campo-ajuda" role="status" aria-live="polite"></p>
-    <div class="formulario-acoes">
+    <div class="acoes-formulario">
         <a class="botao" href="/pericias/solicitacoes">Voltar</a>
-        <button id="approve-button" type="submit" class="botao botao-primario">Assinar e aprovar</button>
+        <button id="approve-button" type="submit" class="botao botao--primario">Assinar e aprovar</button>
     </div>
 </form>
 
@@ -121,27 +121,4 @@
             });
         })();
     </script>
-}
-
-@section Styles {
-    <style>
-        .pagina-cabecalho { margin-bottom: 1.5rem; }
-        .pagina-cabecalho h1 { margin-bottom: 0.25rem; }
-        .formulario-aprovacao { display: flex; flex-direction: column; gap: 1.25rem; max-width: 800px; }
-        .secao-formulario { padding: 1.5rem; }
-        .secao-formulario h2 { margin: 0 0 1rem; font-size: 1.15rem; }
-        .resumo { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; margin: 0; }
-        .resumo div { display: grid; gap: 0.2rem; }
-        .resumo dt { color: var(--cor-texto-suave); font-size: 0.875rem; }
-        .resumo dd { margin: 0; overflow-wrap: anywhere; }
-        .valor-tecnico { font-family: 'JetBrains Mono', monospace; font-size: 0.875rem; }
-        .operacoes { margin: 1rem 0 0; max-width: 68ch; }
-        .grade-campos { display: grid; gap: 0 1rem; }
-        .grade-2col { grid-template-columns: 1fr 1fr; }
-        .formulario-acoes { display: flex; justify-content: flex-end; gap: 0.75rem; }
-        .formulario-acoes .botao { min-height: 44px; }
-        @@media (max-width: 640px) {
-            .resumo, .grade-2col { grid-template-columns: 1fr; }
-        }
-    </style>
 }

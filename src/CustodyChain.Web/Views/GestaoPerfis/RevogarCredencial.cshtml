@@ -1,13 +1,13 @@
 @model CustodyChain.Web.Models.ViewModels.RevogarCredencialViewModel
 @{ ViewData["Title"] = "Revogar VC"; }
-<div class="pagina-cabecalho-acao"><div><h1>Revogar VC de permissão</h1><p class="campo-ajuda">A revogação será assinada pela wallet emissora e registrada no Fabric.</p></div></div>
+<div class="pagina-cabecalho-acoes"><div><h1>Revogar VC de permissão</h1><p class="campo-ajuda">A revogação será assinada pela wallet emissora e registrada no Fabric.</p></div></div>
 <section id="credential-revocation-panel" class="cartao painel-operacao-wallet" data-wallet-endpoint="@Model.WalletEndpoint">
     @Html.AntiForgeryToken()
     <dl class="resumo-identidade"><dt>Titular</dt><dd>@Model.TitularNome</dd><dt>Credencial</dt><dd class="mono codigo-forense">@Model.Identificador</dd><dt>Emissor</dt><dd class="mono codigo-forense">@Model.EmissorDid</dd></dl>
     <div id="revocation-error" class="alerta alerta-erro" role="alert" tabindex="-1" hidden></div>
     <div class="campo"><label class="campo-rotulo" for="wallet-password">Senha da wallet emissora</label><input id="wallet-password" class="campo-entrada" type="password" autocomplete="current-password" required /></div>
     <div class="campo"><label class="campo-rotulo" for="pairing-token">Código de pareamento da wallet</label><input id="pairing-token" class="campo-entrada" type="password" autocomplete="off" required /></div>
-    <button id="revoke" class="botao botao-primario" type="button">Assinar e revogar VC</button>
+    <button id="revoke" class="botao botao--primario" type="button">Assinar e revogar VC</button>
     <p id="revocation-status" role="status" aria-live="polite" class="campo-ajuda estado-operacao"></p>
 </section>
 @section Scripts { <script>
